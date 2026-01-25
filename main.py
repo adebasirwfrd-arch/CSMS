@@ -1451,6 +1451,10 @@ def create_comment_route(comment: CommentCreate):
     # SYNCHRONOUS save - will fail loudly if Supabase fails
     save_comment(new_comment)
     print(f"[COMMENT] New comment by {comment.author_name}")
+    print(f"[DEBUG_COMMENT] Has Attachment: {bool(comment.attachment_data)}")
+    if comment.attachment_data:
+        print(f"[DEBUG_COMMENT] Attachment Size: {len(comment.attachment_data)} bytes")
+
     
     return new_comment
 
