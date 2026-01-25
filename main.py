@@ -1092,6 +1092,8 @@ def create_schedule_route(schedule: ScheduleCreate, background_tasks: Background
     # SYNCHRONOUS save - will fail loudly if Supabase fails
     save_schedule(new_schedule)
     print(f"[SCHEDULE] Created schedule: {new_schedule['id']}")
+    print(f"[DEBUG_SCHEDULE] Data: {json.dumps(new_schedule, default=str)}")
+
     
     # Send email notification in background
     # Send email notification immediately (Synchronous for Vercel reliability)
