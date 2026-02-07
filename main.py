@@ -1106,22 +1106,29 @@ async def upload_attachment(
     # 3. Upload to Drive with nested folder structure based on task code
     task_code = task.get('code', '')
     task_title = task.get('title', '')
-    print(f"[UPLOAD DEBUG] Task ID: {task_id}")
-    print(f"[UPLOAD DEBUG] Task object: {task}")
-    print(f"[UPLOAD DEBUG] Task code value: '{task_code}'")
-    print(f"[UPLOAD DEBUG] Task title: '{task_title}'")
-    print(f"[UPLOAD DEBUG] Project name: {project['name']}")
+    log_info("UPLOAD", f"Starting upload for task {task_id}, file: {file.filename}")
+    log_info("UPLOAD", f"Task code: '{task_code}', Project: {project['name']}")
     
-    result = await drive_service.upload_file_to_drive(
-        file_data=content, 
-        filename=file.filename, 
-        project_name=project['name'],
-        task_code=task_code,
-        task_title=task_title
-    )
-    
-    if not result.get('success'):
-        raise HTTPException(status_code=500, detail="Failed to upload to Drive")
+    try:
+        result = await drive_service.upload_file_to_drive(
+            file_data=content, 
+            filename=file.filename, 
+            project_name=project['name'],
+            task_code=task_code,
+            task_title=task_title
+        )
+        
+        if not result.get('success'):
+            error_msg = result.get('error', 'Unknown error from Drive service')
+            log_error("UPLOAD", f"Drive upload failed: {error_msg}", send_email=True, 
+                     request_info=f"POST /tasks/{task_id}/upload, file: {file.filename}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload to Drive: {error_msg}")
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is
+    except Exception as e:
+        log_error("UPLOAD", f"Exception during Drive upload: {str(e)}", e, send_email=True,
+                 request_info=f"POST /tasks/{task_id}/upload, file: {file.filename}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload to Drive: {str(e)}")
         
     # 4. Update Task with attachment info including file_id for faster retrieval
     current_attachments = task.get("attachments", [])
@@ -1133,7 +1140,7 @@ async def upload_attachment(
     })
     db.update_task(task_id, {"attachments": current_attachments})
     
-    print(f"[UPLOAD] Attachment saved: {file.filename} -> {result.get('folder_path')}")
+    log_info("UPLOAD", f"Attachment saved: {file.filename} -> {result.get('folder_path')}")
     return {"status": "success", "filename": file.filename, "file_id": result.get('file_id')}
 
 # --- Schedules ---

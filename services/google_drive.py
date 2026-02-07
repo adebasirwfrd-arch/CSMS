@@ -241,8 +241,8 @@ class GoogleDriveService:
         Returns: dict with 'success', 'file_id', and 'folder_path' or None on failure
         """
         if not self.enabled or not self.service:
-            print("[WARN] Google Drive not enabled")
-            return {"success": False, "file_id": None, "folder_path": None}
+            log_warning("DRIVE", "Google Drive not enabled - cannot upload")
+            return {"success": False, "file_id": None, "folder_path": None, "error": "Google Drive service not enabled or not initialized"}
         
         try:
             # Use nested folder structure based on task code
@@ -259,8 +259,8 @@ class GoogleDriveService:
                 folder_path = project_name
             
             if not target_folder_id:
-                print("[ERROR] Could not get target folder ID")
-                return {"success": False, "file_id": None, "folder_path": None}
+                log_error("DRIVE", "Could not get target folder ID", send_email=False)
+                return {"success": False, "file_id": None, "folder_path": None, "error": "Could not create or find target folder in Drive"}
 
             # Upload File to that folder
             file_metadata = {
@@ -281,8 +281,8 @@ class GoogleDriveService:
             return {"success": True, "file_id": file_id, "folder_path": folder_path}
             
         except Exception as e:
-            print(f"[ERROR] Error uploading to Google Drive: {e}")
-            return {"success": False, "file_id": None, "folder_path": None}
+            log_drive_error("UPLOAD", e)
+            return {"success": False, "file_id": None, "folder_path": None, "error": str(e)}
 
     def upload_file(self, filename: str, file_content: bytes, folder_name: str = None) -> str:
         """Upload file to Google Drive and return file ID
