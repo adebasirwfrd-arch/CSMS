@@ -4,3 +4,11 @@ services/google_credentials.json
 
 # Logs
 logs/*.log
+2026 CSMS/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.xlsx
+.DS_Store
+**/__pycache__/

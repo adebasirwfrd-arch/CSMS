@@ -2971,7 +2971,7 @@
             photo: 'Foto', file: 'File', writeReply: 'Tulis balasan...',
             // Project Form
             projectName: 'Nama Proyek', title: 'Judul', well: 'Sumur', status: 'Status', kontrakNo: 'No Kontrak',
-            startDate: 'Tanggal Mulai', endDate: 'Tanggal Selesai', client: 'Klien', deleteProject: 'Hapus Proyek', deleteTask: 'Hapus Tugas',
+            startDate: 'Tanggal Mulai', endDate: 'Tanggal Selesai', client: 'Klien', deleteProject: 'Hapus Proyek', deleteTask: 'Hapus Tugas', fullChecklist: 'Full Checklist',
             // Create Forms
             createNewProject: 'Buat Proyek Baru', createNewTask: 'Buat Tugas Baru', projectStatus: 'Status Proyek',
             rigDownEstimate: 'Estimasi Rig Down', assignedTo: 'Ditugaskan Ke', picEmail: 'Email PIC', picManagerEmail: 'Email Manajer PIC (CC)',
@@ -3719,6 +3719,14 @@
     window.deleteTask = deleteTask;
     window.deleteSchedule = deleteSchedule;
     window.deletePBRecord = deletePBRecord;
+
+    // Full Checklist function (placeholder - functionality to be implemented)
+    function openFullChecklist(projectId, projectName) {
+        console.log('Full Checklist opened for project:', projectId, projectName);
+        // TODO: Implement full checklist functionality
+        alert('Full Checklist for: ' + projectName + '\n\nFunctionality coming soon!');
+    }
+    window.openFullChecklist = openFullChecklist;
 
     // ===== COMMENTS SYSTEM =====
     let allComments = [];
