@@ -482,8 +482,8 @@ async def sync_full_checklist(project_id: str, background_tasks: BackgroundTasks
             raise HTTPException(status_code=404, detail=error_msg)
             
         # 4. Get existing tasks for this project to avoid duplicates
-        existing_tasks = db.get_tasks_by_project(project_id)
-        existing_codes = {t['code'] for t in existing_tasks}
+        existing_tasks = db.get_tasks(project_id)
+        existing_codes = {t['code'] for t in existing_tasks if t.get('code')}
         log_info("SYNC", f"Existing tasks: {len(existing_tasks)}, existing codes: {len(existing_codes)}")
         
         # 5. Filter only new tasks
