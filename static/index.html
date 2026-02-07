@@ -6537,6 +6537,16 @@
             return;
         }
 
+        // Check file size - Vercel limit is ~4.5MB
+        const maxSize = 4 * 1024 * 1024; // 4MB
+        const file = fileInput.files[0];
+        if (file.size > maxSize) {
+            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+            showToast(`File too large (${sizeMB} MB). Max allowed: 4 MB`, 'error');
+            alert(`File terlalu besar!\n\nUkuran file: ${sizeMB} MB\nMaksimal: 4 MB\n\nSilakan kompres file terlebih dahulu.`);
+            return;
+        }
+
         try {
             showToast('Uploading document...', 'info');
 
@@ -6544,7 +6554,7 @@
             formData.append('project_id', projectId);
             formData.append('well_name', form.well_name.value || '');
             formData.append('doc_name', docName);
-            formData.append('file', fileInput.files[0]);
+            formData.append('file', file);
 
             console.log('[DEBUG] Uploading to:', `${API_BASE}/related-docs`);
 
