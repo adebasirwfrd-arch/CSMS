@@ -11,6 +11,7 @@ from googleapiclient.http import MediaInMemoryUpload
 import os
 import json
 from pathlib import Path
+from typing import List, Dict, Any
 from dotenv import load_dotenv
 from services.logger_service import log_drive_operation, log_drive_error, log_info, log_warning, log_error
 
