@@ -245,13 +245,16 @@ class GoogleDriveService:
     async def upload_file_to_drive(self, file_data: bytes, filename: str, project_name: str, task_code: str = None, task_title: str = "") -> dict:
         """Upload file to Google Drive folder with nested task folder structure.
         
-        Returns: dict with 'success', 'file_id', and 'folder_path' or None on failure
+        Returns: dict with 'success', 'file_id', 'folder_path', and 'project_folder_id' or None on failure
         """
         if not self.enabled or not self.service:
             log_warning("DRIVE", "Google Drive not enabled - cannot upload")
-            return {"success": False, "file_id": None, "folder_path": None, "error": "Google Drive service not enabled or not initialized"}
+            return {"success": False, "file_id": None, "folder_path": None, "project_folder_id": None, "error": "Google Drive service not enabled or not initialized"}
         
         try:
+            # Get project folder first (needed for Daftar Isi regeneration)
+            project_folder_id = self.find_or_create_folder(project_name)
+            
             # Use nested folder structure based on task code
             if task_code:
                 target_folder_id = self.create_nested_task_folder(project_name, task_code, task_title)
@@ -262,12 +265,12 @@ class GoogleDriveService:
                 folder_path = f"{project_name}/Element {task_code.split('.')[0]}/{task_code}{folder_suffix}"
             else:
                 # Fallback to project folder only
-                target_folder_id = self.find_or_create_folder(project_name)
+                target_folder_id = project_folder_id
                 folder_path = project_name
             
             if not target_folder_id:
                 log_error("DRIVE", "Could not get target folder ID", send_email=False)
-                return {"success": False, "file_id": None, "folder_path": None, "error": "Could not create or find target folder in Drive"}
+                return {"success": False, "file_id": None, "folder_path": None, "project_folder_id": None, "error": "Could not create or find target folder in Drive"}
 
             # Upload File to that folder
             file_metadata = {
@@ -288,11 +291,11 @@ class GoogleDriveService:
             
             file_id = file.get('id')
             log_drive_operation("UPLOAD", f"{folder_path}/{filename} (ID: {file_id})", success=True)
-            return {"success": True, "file_id": file_id, "folder_path": folder_path}
+            return {"success": True, "file_id": file_id, "folder_path": folder_path, "project_folder_id": project_folder_id}
             
         except Exception as e:
             log_drive_error("UPLOAD", e)
-            return {"success": False, "file_id": None, "folder_path": None, "error": str(e)}
+            return {"success": False, "file_id": None, "folder_path": None, "project_folder_id": None, "error": str(e)}
 
     def upload_file(self, filename: str, file_content: bytes, folder_name: str = None) -> str:
         """Upload file to Google Drive and return file ID

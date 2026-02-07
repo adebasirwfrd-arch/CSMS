@@ -1168,6 +1168,7 @@ def debug_drive_status():
 @app.post("/tasks/{task_id}/upload")
 async def upload_attachment(
     task_id: str, 
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
     # 1. Get Task & Project info
@@ -1221,7 +1222,16 @@ async def upload_attachment(
     db.update_task(task_id, {"attachments": current_attachments})
     
     log_info("UPLOAD", f"Attachment saved: {file.filename} -> {result.get('folder_path')}")
+    
+    # 5. Trigger Daftar Isi PDF regeneration in background
+    project_folder_id = result.get('project_folder_id')
+    if project_folder_id:
+        from services.daftar_isi_service import regenerate_daftar_isi_for_project
+        background_tasks.add_task(regenerate_daftar_isi_for_project, project_folder_id, project['name'])
+        log_info("UPLOAD", f"Triggered Daftar Isi regeneration for project folder: {project_folder_id}")
+    
     return {"status": "success", "filename": file.filename, "file_id": result.get('file_id')}
+
 
 # --- Schedules ---
 
