@@ -894,6 +894,8 @@
             color: white;
         }
     </style>
+    <!-- PDF Compression Library -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 </head>
 
 <!-- Header -->
@@ -6526,6 +6528,26 @@
         document.getElementById('doc-well-name').value = project ? (project.well_name || project.well || '') : '';
     }
 
+    async function compressPDF(file) {
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+
+            // Basic optimization: re-saving with structural optimization
+            // This strips metadata and optimizes the object stream
+            const compressedPdfBytes = await pdfDoc.save({
+                useObjectStreams: true,
+                addDefaultPage: false,
+                updateMetadata: false
+            });
+
+            return new File([compressedPdfBytes], file.name, { type: 'application/pdf' });
+        } catch (e) {
+            console.error('Compression error:', e);
+            return file; // Return original if compression fails
+        }
+    }
+
     async function submitRelatedDoc() {
         const form = document.getElementById('related-doc-form');
         const projectId = form.project_id.value;
@@ -6537,17 +6559,30 @@
             return;
         }
 
-        // Check file size - Vercel limit is ~4.5MB
-        const maxSize = 4 * 1024 * 1024; // 4MB
-        const file = fileInput.files[0];
-        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-
-        // For large files, warn user but still try
-        if (file.size > maxSize) {
-            showToast(`Large file (${sizeMB} MB) - compressing...`, 'info');
-        }
+        let file = fileInput.files[0];
+        const originalSizeMB = (file.size / (1024 * 1024)).toFixed(2);
 
         try {
+            // Compress if it's a PDF
+            if (file.type === 'application/pdf') {
+                showToast('Compressing PDF...', 'info');
+                file = await compressPDF(file);
+                const newSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                console.log(`[DEBUG] Compressed: ${originalSizeMB}MB -> ${newSizeMB}MB`);
+                if (parseFloat(newSizeMB) < parseFloat(originalSizeMB)) {
+                    showToast(`Compressed: ${originalSizeMB}MB -> ${newSizeMB}MB`, 'success');
+                }
+            }
+
+            // Check file size - Vercel limit is ~4.5MB
+            const maxSize = 4.4 * 1024 * 1024; // 4.4MB to be safe
+            if (file.size > maxSize) {
+                const finalSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                showToast(`File still too large (${finalSizeMB} MB). Max allowed: 4.5 MB`, 'error');
+                alert(`File tetap terlalu besar bahkan setelah kompresi!\n\nUkuran: ${finalSizeMB} MB\nMaksimal: ~4.5 MB\n\nSilakan gunakan tool kompresi online atau kecilkan resolusi dokumen Anda.`);
+                return;
+            }
+
             showToast('Uploading document...', 'info');
 
             const formData = new FormData();
@@ -6556,14 +6591,10 @@
             formData.append('doc_name', docName);
             formData.append('file', file);
 
-            console.log('[DEBUG] Uploading to:', `${API_BASE}/related-docs`, 'Size:', sizeMB, 'MB');
-
             const res = await fetch(`${API_BASE}/related-docs`, {
                 method: 'POST',
                 body: formData
             });
-
-            console.log('[DEBUG] Response status:', res.status);
 
             if (res.ok) {
                 showToast('Document uploaded successfully!', 'success');
@@ -6571,26 +6602,19 @@
                 document.getElementById('doc-file-name').textContent = 'No file selected';
                 loadRelatedDocs();
             } else if (res.status === 413) {
-                // File too large for Vercel - show helpful message
-                showToast('File too large for server. Please compress the file.', 'error');
-                alert(`File terlalu besar untuk server!\n\nUkuran: ${sizeMB} MB\nMaksimal: ~4 MB\n\nSolusi:\n1. Kompres PDF menggunakan tools online\n2. Atau split file menjadi beberapa bagian`);
+                showToast('File too large for server.', 'error');
+                alert(`Upload Gagal (Limit Server)!\n\nUkuran file ${originalSizeMB} MB melebihi kapasitas Vercel (4.5MB).`);
             } else {
-                // Get detailed error message
                 let errorMsg = 'Failed to upload document';
                 try {
                     const errData = await res.json();
                     errorMsg = errData.detail || errData.message || errorMsg;
-                    console.error('[DEBUG] Server error:', errData);
-                } catch (e) {
-                    console.error('[DEBUG] Could not parse error response');
-                }
+                } catch (e) { }
                 showToast(`Error: ${errorMsg}`, 'error');
-                alert(`Upload Error:\nStatus: ${res.status}\nMessage: ${errorMsg}`);
             }
         } catch (error) {
             console.error('Error uploading document:', error);
             showToast(`Network error: ${error.message}`, 'error');
-            alert(`Upload Network Error:\n${error.message}`);
         }
     }
 
