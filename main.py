@@ -797,6 +797,39 @@ def generate_project_report(project_id: str, mode: str = "download"):
         ('TOPPADDING', (0, 0), (-1, -1), 6),
     ]))
     elements.append(stats_table)
+    elements.append(Spacer(1, 0.2*inch))
+    
+    # === LINK TO PROJECT FOLDER ===
+    if project_folder_id:
+        drive_folder_link = f"https://drive.google.com/drive/folders/{project_folder_id}"
+        
+        # Create styled link box
+        folder_link_style = ParagraphStyle(
+            'FolderLink',
+            fontSize=11,
+            textColor=colors.white,
+            alignment=TA_CENTER
+        )
+        
+        folder_link_para = Paragraph(
+            f'📂 <b>Buka Folder Project di Google Drive</b><br/>'
+            f'<link href="{drive_folder_link}"><u>{drive_folder_link}</u></link>',
+            folder_link_style
+        )
+        
+        folder_link_table = Table([[folder_link_para]], colWidths=[5.5*inch])
+        folder_link_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E50914')),  # Weatherford red
+            ('BOX', (0, 0), (-1, -1), 2, colors.HexColor('#b8070f')),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('LEFTPADDING', (0, 0), (-1, -1), 15),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(folder_link_table)
+    
     elements.append(Spacer(1, 0.3*inch))
     
     # Group files by folder path for organized output
