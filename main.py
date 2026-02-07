@@ -72,6 +72,41 @@ if static_dir.exists():
 # Include Routers
 app.include_router(reports_router)
 
+# Global Exception Handler - sends email on any unhandled exception
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions and send error email"""
+    import traceback
+    
+    client_ip = request.client.host if request.client else "unknown"
+    request_info = f"{request.method} {request.url.path} from {client_ip}"
+    tb_str = traceback.format_exc()
+    
+    # Log and send email
+    log_error("UNHANDLED", f"Exception in {request.url.path}", exc, request_info=request_info)
+    
+    # Return 500 error to client
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"}
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTPException - only send email for 500 errors"""
+    if exc.status_code >= 500:
+        client_ip = request.client.host if request.client else "unknown"
+        request_info = f"{request.method} {request.url.path} from {client_ip}"
+        log_error("HTTP", f"Server error {exc.status_code}: {exc.detail}", None, request_info=request_info)
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
+    )
+
 # HTTP Request/Response Logging Middleware
 @app.middleware("http")
 async def log_requests(request, call_next):
@@ -179,6 +214,11 @@ def read_root():
 @app.get("/api/status")
 def api_status():
     return {"status": "ok", "service": "CSMS Backend"}
+
+@app.get("/api/test-error")
+def test_error():
+    """Test endpoint to trigger an error - will send email notification"""
+    raise Exception("This is a test error to verify email notifications are working!")
 
 @app.get("/api/debug/supabase")
 def debug_supabase():
