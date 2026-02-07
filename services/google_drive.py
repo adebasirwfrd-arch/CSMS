@@ -265,14 +265,17 @@ class GoogleDriveService:
             
             media = MediaInMemoryUpload(file_data, resumable=True)
             
+            # Use supportsAllDrives=True to support Shared Drives
+            # This is REQUIRED for Service Account uploads to work properly
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
-                fields='id'
+                fields='id',
+                supportsAllDrives=True
             ).execute()
             
             file_id = file.get('id')
-            print(f"[OK] File uploaded to Google Drive: {folder_path}/{filename} (ID: {file_id})")
+            log_drive_operation("UPLOAD", f"{folder_path}/{filename} (ID: {file_id})", success=True)
             return {"success": True, "file_id": file_id, "folder_path": folder_path}
             
         except Exception as e:
