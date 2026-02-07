@@ -6538,16 +6538,22 @@
         }
 
         try {
+            showToast('Uploading document...', 'info');
+
             const formData = new FormData();
             formData.append('project_id', projectId);
             formData.append('well_name', form.well_name.value || '');
             formData.append('doc_name', docName);
             formData.append('file', fileInput.files[0]);
 
+            console.log('[DEBUG] Uploading to:', `${API_BASE}/related-docs`);
+
             const res = await fetch(`${API_BASE}/related-docs`, {
                 method: 'POST',
                 body: formData
             });
+
+            console.log('[DEBUG] Response status:', res.status);
 
             if (res.ok) {
                 showToast('Document uploaded successfully!', 'success');
@@ -6555,11 +6561,22 @@
                 document.getElementById('doc-file-name').textContent = 'No file selected';
                 loadRelatedDocs();
             } else {
-                showToast('Failed to upload document', 'error');
+                // Get detailed error message
+                let errorMsg = 'Failed to upload document';
+                try {
+                    const errData = await res.json();
+                    errorMsg = errData.detail || errData.message || errorMsg;
+                    console.error('[DEBUG] Server error:', errData);
+                } catch (e) {
+                    console.error('[DEBUG] Could not parse error response');
+                }
+                showToast(`Error: ${errorMsg}`, 'error');
+                alert(`Upload Error:\nStatus: ${res.status}\nMessage: ${errorMsg}`);
             }
         } catch (error) {
             console.error('Error uploading document:', error);
-            showToast('Error uploading document', 'error');
+            showToast(`Network error: ${error.message}`, 'error');
+            alert(`Upload Network Error:\n${error.message}`);
         }
     }
 
