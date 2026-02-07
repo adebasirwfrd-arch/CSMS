@@ -6527,6 +6527,11 @@
     }
 
     async function deletePBRecord(pbId) {
+        if (!document.body.classList.contains('admin-mode')) {
+            showToast('Permission denied: Admin mode required', 'error');
+            return;
+        }
+
         if (!confirm('Are you sure you want to delete this PB record? This will only remove the record from the list, the attachment in Drive will remain.')) {
             return;
         }
