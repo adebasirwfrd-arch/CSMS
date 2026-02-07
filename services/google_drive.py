@@ -297,20 +297,6 @@ class GoogleDriveService:
             log_drive_error("UPLOAD", e)
             return {"success": False, "file_id": None, "folder_path": None, "project_folder_id": None, "error": str(e)}
 
-    def delete_file(self, file_id: str) -> bool:
-        """Permanently delete a file from Google Drive"""
-        if not self.enabled or not self.service:
-            log_error("DRIVE", "Drive not enabled for delete_file")
-            return False
-
-        try:
-            self.service.files().delete(fileId=file_id).execute()
-            log_info("DRIVE", f"Successfully deleted file from Drive: {file_id}")
-            return True
-        except Exception as e:
-            log_error("DRIVE", f"Failed to delete file {file_id}: {e}")
-            return False
-
     def upload_file(self, filename: str, file_content: bytes, folder_name: str = None) -> str:
         """Upload file to Google Drive and return file ID
         
