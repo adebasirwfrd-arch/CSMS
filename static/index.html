@@ -3722,8 +3722,11 @@
 
     // Full Checklist function (placeholder - functionality to be implemented)
     function openFullChecklist(projectId, projectName) {
+        if (!document.body.classList.contains('admin-mode')) {
+            alert('Akses Ditolak: Fitur ini hanya untuk Admin.');
+            return;
+        }
         console.log('Full Checklist opened for project:', projectId, projectName);
-        // TODO: Implement full checklist functionality
         alert('Full Checklist for: ' + projectName + '\n\nFunctionality coming soon!');
     }
     window.openFullChecklist = openFullChecklist;
@@ -4894,7 +4897,7 @@
                         <p style="margin-bottom: 20px;"><strong>${t('endDate')}:</strong> ${project.end_date || 'N/A'}</p>
                         
                         <!-- Full Checklist Button -->
-                        <div style="margin-bottom: 20px;">
+                        <div class="admin-only" style="margin-bottom: 20px;">
                             <button class="full-checklist-btn" onclick="openFullChecklist('${project.id}', '${project.name.replace(/'/g, "\\\\'")}')" style="background: linear-gradient(135deg, #4CAF50, #45a049); color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; width: fit-content; transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
                                 📋 ${t('fullChecklist') || 'Full Checklist'}
                             </button>
