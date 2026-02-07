@@ -1314,14 +1314,19 @@ async def create_related_doc(
     """Create a new related document with file upload"""
     import uuid
     
+    log_info("RELATED_DOC", f"Starting upload: doc_name={doc_name}, project_id={project_id}, filename={file.filename}")
+    
     # Upload to Google Drive
     try:
         file_content = await file.read()
+        log_info("RELATED_DOC", f"File read successfully, size={len(file_content)} bytes")
         
         # Upload to "RelatedDocs" subfolder
         file_id = drive_service.upload_file(file.filename, file_content, "RelatedDocs")
+        log_info("RELATED_DOC", f"Drive upload result: file_id={file_id}")
         
         if not file_id:
+            log_error("RELATED_DOC", "Failed to upload file to Google Drive - file_id is None", send_email=True)
             raise Exception("Failed to upload file to Google Drive")
         
         new_doc = {
@@ -1334,15 +1339,17 @@ async def create_related_doc(
             "created_at": datetime.now().isoformat()
         }
         
+        log_info("RELATED_DOC", f"Saving to database: {new_doc['id']}")
+        
         # SYNCHRONOUS save - will fail loudly if Supabase fails
         save_related_doc(new_doc)
-        print(f"[RELATED_DOC] Created: {new_doc['id']}")
+        log_info("RELATED_DOC", f"Created successfully: {new_doc['id']}")
         
         return new_doc
     except Exception as e:
-        print(f"[ERROR] Failed to upload related doc: {e}")
         import traceback
-        traceback.print_exc()
+        error_trace = traceback.format_exc()
+        log_error("RELATED_DOC", f"Upload failed: {e}\n\nTraceback:\n{error_trace}", send_email=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/related-docs/{doc_id}")
