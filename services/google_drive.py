@@ -176,12 +176,12 @@ class GoogleDriveService:
     def create_nested_task_folder(self, project_name: str, task_code: str, task_title: str = "") -> str:
         """Create nested folder structure based on task code hierarchy.
         
-        Structure: Project → Element X → [SubElement] → TaskCode Title
-        Max depth: 3 levels to avoid overly deep nesting for codes like 4.3.2.2.1
+        Structure: Project → Element X → X.Y → X.Y.Z → ... → Final TaskCode Title
+        Creates full hierarchy for ALL levels in the task code.
         
         Examples:
-        - "1.1.1" → Project/Element 1/1.1.1 MWT REPORT
-        - "4.3.2.2.1" → Project/Element 4/4.3/4.3.2.2.1 FOTO_OBSERVATION_CARD
+        - "1.1.1" → Project/Element 1/1.1/1.1.1 MWT REPORT
+        - "4.3.2.2.1" → Project/Element 4/4.3/4.3.2/4.3.2.2/4.3.2.2.1 FOTO_OBSERVATION_CARD
         """
         if not self.enabled or not self.service:
             log_warning("DRIVE", "Drive not enabled for nested folder creation")
@@ -212,31 +212,30 @@ class GoogleDriveService:
             
             log_drive_operation("NESTED", f"Created/found: {project_name}/{element_folder_name}")
             
-            # 4. For codes with 3+ parts, create ONE intermediate folder
-            # e.g., "4.3.2.2.1" → create "4.3" folder, then "4.3.2.2.1 Title" inside
-            if len(parts) >= 3:
-                # Create intermediate folder using first 2 parts (e.g., "4.3")
-                intermediate_code = '.'.join(parts[:2])
-                current_parent_id = self.find_or_create_folder(intermediate_code, current_parent_id, prefix_search=True)
+            # 4. Create ALL intermediate folders for each level
+            # e.g., "4.3.2.2.1" → create "4.3", "4.3.2", "4.3.2.2", then "4.3.2.2.1 Title"
+            for i in range(1, len(parts)):
+                folder_code = '.'.join(parts[:i+1])  # "4.3", "4.3.2", "4.3.2.2", "4.3.2.2.1"
+                is_final = (folder_code == task_code)
+                
+                if is_final:
+                    # Final folder: include title
+                    if task_title:
+                        safe_title = "".join(x for x in task_title if (x.isalnum() or x in "._- "))
+                        folder_name = f"{folder_code} {safe_title}"
+                    else:
+                        folder_name = folder_code
+                    current_parent_id = self.find_or_create_folder(folder_name, current_parent_id)
+                else:
+                    # Intermediate folder: use prefix search to find "4.3" or "4.3 SomeTitle"
+                    current_parent_id = self.find_or_create_folder(folder_code, current_parent_id, prefix_search=True)
+                
                 if not current_parent_id:
-                    log_error("DRIVE", f"Could not create intermediate folder: {intermediate_code}", send_email=False)
+                    log_error("DRIVE", f"Could not create folder: {folder_code}", send_email=False)
                     return None
-                log_drive_operation("NESTED", f"Created/found: .../{intermediate_code}")
+                log_drive_operation("NESTED", f"Created/found: .../{folder_code}")
             
-            # 5. Create final task folder with full code and title
-            if task_title:
-                safe_title = "".join(x for x in task_title if (x.isalnum() or x in "._- "))
-                final_folder_name = f"{task_code} {safe_title}"
-            else:
-                final_folder_name = task_code
-            
-            final_folder_id = self.find_or_create_folder(final_folder_name, current_parent_id)
-            if not final_folder_id:
-                log_error("DRIVE", f"Could not create final folder: {final_folder_name}", send_email=False)
-                return None
-            
-            log_drive_operation("NESTED", f"Created/found: .../{final_folder_name}")
-            return final_folder_id
+            return current_parent_id
             
         except Exception as e:
             log_drive_error("NESTED_FOLDER", e)
