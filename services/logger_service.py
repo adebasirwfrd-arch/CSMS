@@ -8,6 +8,8 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from collections import defaultdict
+import time
 
 # Check if we're in a serverless environment (Vercel)
 IS_SERVERLESS = os.getenv('VERCEL', '') == '1' or os.getenv('AWS_LAMBDA_FUNCTION_NAME', '') != ''
@@ -29,6 +31,30 @@ if not IS_SERVERLESS:
         FILE_LOGGING_ENABLED = True
     except (OSError, PermissionError):
         FILE_LOGGING_ENABLED = False
+
+# Rate limiting for error emails (prevent spam)
+_error_email_timestamps = defaultdict(list)  # key: error_location -> list of timestamps
+ERROR_EMAIL_RATE_LIMIT = 5  # max emails per error location
+ERROR_EMAIL_RATE_WINDOW = 300  # within 5 minutes (300 seconds)
+
+def _check_rate_limit(error_location: str) -> bool:
+    """Check if we can send another error email for this location.
+    Returns True if within rate limit, False if exceeded."""
+    current_time = time.time()
+    timestamps = _error_email_timestamps[error_location]
+    
+    # Remove timestamps older than the rate window
+    _error_email_timestamps[error_location] = [
+        ts for ts in timestamps if current_time - ts < ERROR_EMAIL_RATE_WINDOW
+    ]
+    
+    # Check if under limit
+    if len(_error_email_timestamps[error_location]) >= ERROR_EMAIL_RATE_LIMIT:
+        return False
+    
+    # Add current timestamp
+    _error_email_timestamps[error_location].append(current_time)
+    return True
 
 # Create custom formatter
 class CSMSFormatter(logging.Formatter):
@@ -86,7 +112,8 @@ def create_logger(name: str = "CSMS") -> logging.Logger:
             file_handler.suffix = "%Y-%m-%d"
             logger.addHandler(file_handler)
         except Exception as e:
-            print(f"[WARN] Could not setup file logging: {e}")
+            # Use basic logging if file handler fails
+            logger.warning(f"Could not setup file logging: {e}")
     
     return logger
 
@@ -143,15 +170,21 @@ def log_email(operation: str, recipient: str = "", success: bool = True):
 
 # Email notification for errors (lazy import to avoid circular dependency)
 _email_service = None
+_email_service_loaded = False  # Track if we've tried loading
 
 def _get_email_service():
     """Lazy load email service to avoid circular import"""
-    global _email_service
-    if _email_service is None:
+    global _email_service, _email_service_loaded
+    if not _email_service_loaded:
+        _email_service_loaded = True
         try:
             from services.email_service import email_service
             _email_service = email_service
-        except ImportError:
+        except ImportError as e:
+            app_logger.warning(f"Could not import email_service: {e}", extra={"module_name": "EMAIL"})
+            _email_service = None
+        except Exception as e:
+            app_logger.warning(f"Error loading email_service: {e}", extra={"module_name": "EMAIL"})
             _email_service = None
     return _email_service
 
@@ -175,19 +208,26 @@ def log_error(module: str, message: str, error: Exception = None, send_email: bo
         app_logger.error(message, extra={"module_name": module.upper()})
         tb_str = ""
     
-    # Send email notification for errors
+    # Send email notification for errors (with rate limiting)
     if send_email:
+        error_location = f"{module.upper()} - {message[:50]}"
+        
+        # Check rate limit before sending
+        if not _check_rate_limit(error_location):
+            app_logger.debug(f"Error email rate limit exceeded for: {error_location}", extra={"module_name": "EMAIL"})
+            return
+        
         try:
             email_svc = _get_email_service()
             if email_svc:
                 email_svc.send_error_notification(
                     error_message=str(error) if error else message,
-                    error_location=f"{module.upper()} - {message[:50]}",
+                    error_location=error_location,
                     traceback_str=tb_str,
                     request_info=request_info
                 )
         except Exception as email_err:
-            # Don't fail if email fails, just log it
+            # Don't fail if email fails, just log it (without sending another email!)
             app_logger.warning(f"Failed to send error email: {email_err}", extra={"module_name": "EMAIL"})
 
 def log_critical_error(module: str, message: str, error: Exception, request_info: str = ""):
@@ -212,6 +252,7 @@ def log_warning(module: str, message: str):
 # Log startup
 app_logger.info("=" * 50, extra={"module_name": "SYSTEM"})
 app_logger.info("CSMS Logger Service Initialized", extra={"module_name": "SYSTEM"})
-app_logger.info(f"Log file: {LOG_FILE}", extra={"module_name": "SYSTEM"})
+app_logger.info(f"Serverless mode: {IS_SERVERLESS}", extra={"module_name": "SYSTEM"})
+app_logger.info(f"File logging: {FILE_LOGGING_ENABLED}", extra={"module_name": "SYSTEM"})
 app_logger.info("=" * 50, extra={"module_name": "SYSTEM"})
 
