@@ -809,266 +809,105 @@ def generate_project_report(project_id: str, mode: str = "download"):
     # Sort folders by path
     sorted_folders = sorted(files_by_folder.keys())
     
-    # Process each folder and its files
-    attachment_index = 0
+    # Define file type icons for visual representation
+    def get_file_icon(ext):
+        icons = {
+            'pdf': '📄', 'doc': '📝', 'docx': '📝', 
+            'xls': '📊', 'xlsx': '📊', 'ppt': '📽️', 'pptx': '📽️',
+            'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️', 'bmp': '🖼️',
+            'mp4': '🎬', 'avi': '🎬', 'mov': '🎬',
+            'mp3': '🎵', 'wav': '🎵',
+            'zip': '📦', 'rar': '📦', '7z': '📦',
+            'txt': '📃', 'csv': '📃',
+        }
+        return icons.get(ext.lower(), '📎')
+    
+    # Create link style (blue, underlined)
+    link_style = ParagraphStyle(
+        'FileLink', 
+        fontSize=10, 
+        textColor=colors.HexColor('#1a73e8'),  # Google blue
+        underline=True
+    )
+    
+    file_name_style = ParagraphStyle(
+        'FileName', 
+        fontSize=10, 
+        textColor=colors.black
+    )
+    
+    folder_header_style = ParagraphStyle(
+        'FolderHeader', 
+        fontSize=12, 
+        textColor=colors.HexColor('#E50914'),  # Weatherford red
+        fontName='Helvetica-Bold',
+        spaceBefore=15,
+        spaceAfter=8
+    )
+    
+    # Process each folder
     for folder_path in sorted_folders:
         files_in_folder = files_by_folder[folder_path]
         
-        # Folder header
-        elements.append(Paragraph(f"<b>📁 {folder_path}</b>", ParagraphStyle(
-            'FolderHeader', fontSize=11, textColor=colors.HexColor('#2563eb'), spaceBefore=15, spaceAfter=4
-        )))
+        # Folder header with icon
+        elements.append(Paragraph(f"📁 <b>{folder_path}</b>", folder_header_style))
+        
+        # Create table data for files in this folder
+        table_data = []
+        table_data.append(['', 'Nama File', 'Jenis', 'Link'])  # Header
         
         for file_info in files_in_folder:
-            attachment_index += 1
             filename = file_info.get('name', 'Unknown')
-            file_id = file_info.get('id')  # Already have file ID from Drive scan
-            file_path = file_info.get('path', '')
+            file_id = file_info.get('id', '')
             file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+            icon = get_file_icon(file_ext)
             
-            # Page break for each attachment
-            elements.append(PageBreak())
+            # Google Drive direct link
+            drive_link = f"https://drive.google.com/file/d/{file_id}/view" if file_id else ""
             
-            # Attachment header with border box - show path for context
-            header_table = Table(
-                [[f"File {attachment_index}: {filename}", f"Path: {file_path}"]],
-                colWidths=[4.5*inch, 2*inch]
-            )
-            header_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E50914')),
-                ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-                ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 11),
-                ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-                ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-                ('TOPPADDING', (0, 0), (-1, -1), 8),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-            ]))
-            elements.append(header_table)
-            elements.append(Spacer(1, 0.1*inch))
+            # Create clickable link
+            link_para = Paragraph(
+                f'<link href="{drive_link}"><u>Buka di Drive</u></link>',
+                link_style
+            ) if drive_link else Paragraph('-', file_name_style)
             
-            try:
-                # We already have file_id from Drive scan - no need to search!
-                if not file_id:
-                    elements.append(Paragraph("<i>[File ID not available]</i>", ParagraphStyle(
-                        'FileError', fontSize=10, textColor=colors.HexColor('#999999'), alignment=TA_CENTER, spaceBefore=50
-                    )))
-                    continue
-                
-                # Download file
-                file_data = drive_service.download_file(file_id)
-                if not file_data:
-                    elements.append(Paragraph("<i>[Could not download file]</i>", ParagraphStyle(
-                        'FileError', fontSize=10, textColor=colors.HexColor('#999999'), alignment=TA_CENTER, spaceBefore=50
-                    )))
-                    continue
-                
-                # Process based on file type
-                if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp']:
-                    # Compress image before embedding (reduces PDF size significantly)
-                    img_buffer = io.BytesIO(file_data)
-                    pil_img = PILImage.open(img_buffer)
-                    
-                    # Compress the image (max 1200x1600px, JPEG quality 75)
-                    compressed_buffer = compress_image_for_pdf(pil_img, max_width=1200, max_height=1600, quality=75)
-                    pil_img = PILImage.open(compressed_buffer)
-                    
-                    max_width = 6 * inch
-                    max_height = 7.5 * inch
-                    img_width, img_height = pil_img.size
-                    scale = min(max_width / img_width, max_height / img_height, 1)
-                    final_width = img_width * scale
-                    final_height = img_height * scale
-                    
-                    compressed_buffer.seek(0)
-                    rl_img = RLImage(compressed_buffer, width=final_width, height=final_height)
-                    
-                    # Wrap in table for border
-                    img_table = Table([[rl_img]], colWidths=[final_width + 10])
-                    img_table.setStyle(TableStyle([
-                        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#333333')),
-                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                        ('TOPPADDING', (0, 0), (-1, -1), 5),
-                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                    ]))
-                    elements.append(img_table)
-                    
-                elif file_ext == 'pdf':
-                    # PDF - render pages with PyMuPDF
-                    try:
-                        import fitz
-                        pdf_doc = fitz.open(stream=file_data, filetype='pdf')
-                        total_pages = len(pdf_doc)
-                        max_pages = min(20, total_pages)
-                        
-                        for page_num in range(max_pages):
-                            if page_num > 0:
-                                elements.append(PageBreak())
-                                # Page continuation header
-                                cont_header = Table(
-                                    [[f"{filename} - Page {page_num + 1} of {total_pages}"]],
-                                    colWidths=[6.5*inch]
-                                )
-                                cont_header.setStyle(TableStyle([
-                                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#444444')),
-                                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-                                    ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                                    ('FONTSIZE', (0, 0), (-1, -1), 10),
-                                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                                    ('TOPPADDING', (0, 0), (-1, -1), 6),
-                                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                                ]))
-                                elements.append(cont_header)
-                                elements.append(Spacer(1, 0.1*inch))
-                            
-                            page = pdf_doc[page_num]
-                            # Reduced DPI: Matrix(1.33, 1.33) = ~96 DPI vs Matrix(2, 2) = 144 DPI
-                            mat = fitz.Matrix(1.33, 1.33)  # 96 DPI - good balance of quality/size
-                            pix = page.get_pixmap(matrix=mat)
-                            
-                            # Convert to PIL and compress as JPEG
-                            img_data = pix.tobytes("png")
-                            img_buffer = io.BytesIO(img_data)
-                            pil_img = PILImage.open(img_buffer)
-                            
-                            # Compress the rendered PDF page
-                            compressed_buffer = compress_image_for_pdf(pil_img, max_width=1000, max_height=1400, quality=70)
-                            pil_img = PILImage.open(compressed_buffer)
-                            
-                            max_width = 6.2 * inch
-                            max_height = 8 * inch
-                            img_width, img_height = pil_img.size
-                            scale = min(max_width / img_width, max_height / img_height, 1)
-                            final_width = img_width * scale
-                            final_height = img_height * scale
-                            
-                            compressed_buffer.seek(0)
-                            rl_img = RLImage(compressed_buffer, width=final_width, height=final_height)
-                            
-                            # Wrap in bordered table
-                            img_table = Table([[rl_img]], colWidths=[final_width + 6])
-                            img_table.setStyle(TableStyle([
-                                ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#333333')),
-                                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                                ('TOPPADDING', (0, 0), (-1, -1), 3),
-                                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-                            ]))
-                            elements.append(img_table)
-                        
-                        pdf_doc.close()
-                        
-                        if total_pages > max_pages:
-                            elements.append(Paragraph(f"<i>[Showing first {max_pages} of {total_pages} pages]</i>", ParagraphStyle(
-                                'PageNote', fontSize=9, textColor=colors.HexColor('#888888'), alignment=TA_CENTER, spaceBefore=10
-                            )))
-                            
-                    except Exception as e:
-                        print(f"[WARN] PyMuPDF PDF error {filename}: {e}")
-                        elements.append(Paragraph(f"<i>[PDF preview not available]</i>", ParagraphStyle(
-                            'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
-                        )))
-                
-                elif file_ext in ['xlsx', 'xls', 'docx', 'doc', 'pptx', 'ppt']:
-                    # Office files - convert to PDF using Google Drive, then render
-                    try:
-                        import fitz
-                        
-                        # Convert Office file to PDF via Google Drive
-                        pdf_data = drive_service.convert_office_to_pdf(file_id, filename)
-                        
-                        if pdf_data:
-                            # Render the converted PDF
-                            pdf_doc = fitz.open(stream=pdf_data, filetype='pdf')
-                            total_pages = len(pdf_doc)
-                            max_pages = min(20, total_pages)
-                            
-                            for page_num in range(max_pages):
-                                if page_num > 0:
-                                    elements.append(PageBreak())
-                                    # Page continuation header
-                                    cont_header = Table(
-                                        [[f"{filename} - Page {page_num + 1} of {total_pages}"]],
-                                        colWidths=[6.5*inch]
-                                    )
-                                    cont_header.setStyle(TableStyle([
-                                        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#444444')),
-                                        ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-                                        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                                        ('FONTSIZE', (0, 0), (-1, -1), 10),
-                                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                                        ('TOPPADDING', (0, 0), (-1, -1), 6),
-                                        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                                    ]))
-                                    elements.append(cont_header)
-                                    elements.append(Spacer(1, 0.1*inch))
-                                
-                                page = pdf_doc[page_num]
-                                # Reduced DPI for smaller file size
-                                mat = fitz.Matrix(1.33, 1.33)  # 96 DPI
-                                pix = page.get_pixmap(matrix=mat)
-                                
-                                # Convert and compress as JPEG
-                                img_data = pix.tobytes("png")
-                                img_buffer = io.BytesIO(img_data)
-                                pil_img = PILImage.open(img_buffer)
-                                
-                                # Compress the rendered page
-                                compressed_buffer = compress_image_for_pdf(pil_img, max_width=1000, max_height=1400, quality=70)
-                                pil_img = PILImage.open(compressed_buffer)
-                                
-                                max_width = 6.2 * inch
-                                max_height = 8 * inch
-                                img_width, img_height = pil_img.size
-                                scale = min(max_width / img_width, max_height / img_height, 1)
-                                final_width = img_width * scale
-                                final_height = img_height * scale
-                                
-                                compressed_buffer.seek(0)
-                                rl_img = RLImage(compressed_buffer, width=final_width, height=final_height)
-                                
-                                # Wrap in bordered table
-                                img_table = Table([[rl_img]], colWidths=[final_width + 6])
-                                img_table.setStyle(TableStyle([
-                                    ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#333333')),
-                                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                                    ('TOPPADDING', (0, 0), (-1, -1), 3),
-                                    ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-                                ]))
-                                elements.append(img_table)
-                            
-                            pdf_doc.close()
-                            
-                            if total_pages > max_pages:
-                                elements.append(Paragraph(f"<i>[Showing first {max_pages} of {total_pages} pages]</i>", ParagraphStyle(
-                                    'PageNote', fontSize=9, textColor=colors.HexColor('#888888'), alignment=TA_CENTER, spaceBefore=10
-                                )))
-                        else:
-                            # Conversion failed - show placeholder
-                            elements.append(Paragraph(f"<i>[Could not convert {file_ext.upper()} file - stored in Google Drive]</i>", ParagraphStyle(
-                                'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
-                            )))
-                            
-                    except Exception as e:
-                        print(f"[WARN] Office conversion error {filename}: {e}")
-                        elements.append(Paragraph(f"<i>[Document conversion failed]</i>", ParagraphStyle(
-                            'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
-                        )))
-                else:
-                    # Unknown file type
-                    elements.append(Paragraph(f"<i>[File type {file_ext.upper()} - stored in Google Drive]</i>", ParagraphStyle(
-                        'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
-                    )))
-                    
-            except Exception as e:
-                print(f"[WARN] Could not process file {filename}: {e}")
-                elements.append(Paragraph(f"<i>[Error processing file]</i>", ParagraphStyle(
-                    'FileError', fontSize=10, textColor=colors.HexColor('#999999'), alignment=TA_CENTER, spaceBefore=50
-                )))
+            table_data.append([
+                icon,
+                Paragraph(filename[:50] + ('...' if len(filename) > 50 else ''), file_name_style),
+                file_ext.upper() if file_ext else '-',
+                link_para
+            ])
+        
+        # Create styled table
+        file_table = Table(table_data, colWidths=[0.4*inch, 3.2*inch, 0.8*inch, 1.5*inch])
+        file_table.setStyle(TableStyle([
+            # Header row styling
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#333333')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            
+            # Data rows styling
+            ('FONTSIZE', (0, 1), (-1, -1), 9),
+            ('ALIGN', (0, 0), (0, -1), 'CENTER'),  # Icon column
+            ('ALIGN', (2, 0), (2, -1), 'CENTER'),  # Type column
+            ('ALIGN', (3, 0), (3, -1), 'CENTER'),  # Link column
+            
+            # Grid and padding
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#dddddd')),
+            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#333333')),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            
+            # Alternate row colors
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f9f9f9')]),
+        ]))
+        
+        elements.append(file_table)
+        elements.append(Spacer(1, 0.2*inch))
     
     # === FOOTER ===
     elements.append(Spacer(1, 0.5*inch))
