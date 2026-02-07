@@ -1304,6 +1304,97 @@ def list_related_docs():
     """Get all related documents"""
     return get_related_docs()
 
+# --- Direct Drive Upload (bypass Vercel limit) ---
+
+@app.post("/related-docs/initiate-upload")
+def initiate_drive_upload(
+    filename: str = Form(...),
+    mime_type: str = Form(default="application/octet-stream")
+):
+    """Create a resumable upload session in Google Drive and return the upload URL"""
+    try:
+        if not drive_service.enabled or not drive_service.service:
+            raise HTTPException(status_code=500, detail="Google Drive not configured")
+        
+        # Find or create RelatedDocs folder
+        folder_id = drive_service.find_or_create_folder("RelatedDocs")
+        
+        if not folder_id:
+            raise HTTPException(status_code=500, detail="Could not find/create RelatedDocs folder")
+        
+        # Create resumable upload session
+        file_metadata = {
+            'name': filename,
+            'parents': [folder_id]
+        }
+        
+        # Use media upload initiation
+        from googleapiclient.http import MediaIoBaseUpload
+        import io
+        
+        # Create empty media for initialization
+        media = MediaIoBaseUpload(io.BytesIO(b''), mimetype=mime_type, resumable=True)
+        
+        request = drive_service.service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        )
+        
+        # Get the resumable upload URI
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+        
+        file_id = response.get('id')
+        
+        log_info("RELATED_DOC", f"Direct upload initiated: filename={filename}, file_id={file_id}")
+        
+        return {
+            "file_id": file_id,
+            "folder_id": folder_id,
+            "message": "Use file_id to register document"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_error("RELATED_DOC", f"Initiate upload failed: {e}", send_email=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/related-docs/register")
+def register_related_doc(
+    project_id: str = Form(...),
+    well_name: str = Form(None),
+    doc_name: str = Form(...),
+    filename: str = Form(...),
+    drive_file_id: str = Form(...)
+):
+    """Register a document that was uploaded directly to Google Drive"""
+    import uuid
+    
+    try:
+        log_info("RELATED_DOC", f"Registering doc: {doc_name}, file_id={drive_file_id}")
+        
+        new_doc = {
+            "id": str(uuid.uuid4()),
+            "project_id": project_id,
+            "well_name": well_name,
+            "doc_name": doc_name,
+            "filename": filename,
+            "drive_file_id": drive_file_id,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        save_related_doc(new_doc)
+        log_info("RELATED_DOC", f"Registered successfully: {new_doc['id']}")
+        
+        return new_doc
+        
+    except Exception as e:
+        log_error("RELATED_DOC", f"Register failed: {e}", send_email=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/related-docs")
 async def create_related_doc(
     project_id: str = Form(...),

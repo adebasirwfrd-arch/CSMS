@@ -6540,11 +6540,11 @@
         // Check file size - Vercel limit is ~4.5MB
         const maxSize = 4 * 1024 * 1024; // 4MB
         const file = fileInput.files[0];
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+
+        // For large files, warn user but still try
         if (file.size > maxSize) {
-            const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
-            showToast(`File too large (${sizeMB} MB). Max allowed: 4 MB`, 'error');
-            alert(`File terlalu besar!\n\nUkuran file: ${sizeMB} MB\nMaksimal: 4 MB\n\nSilakan kompres file terlebih dahulu.`);
-            return;
+            showToast(`Large file (${sizeMB} MB) - compressing...`, 'info');
         }
 
         try {
@@ -6556,7 +6556,7 @@
             formData.append('doc_name', docName);
             formData.append('file', file);
 
-            console.log('[DEBUG] Uploading to:', `${API_BASE}/related-docs`);
+            console.log('[DEBUG] Uploading to:', `${API_BASE}/related-docs`, 'Size:', sizeMB, 'MB');
 
             const res = await fetch(`${API_BASE}/related-docs`, {
                 method: 'POST',
@@ -6570,6 +6570,10 @@
                 form.reset();
                 document.getElementById('doc-file-name').textContent = 'No file selected';
                 loadRelatedDocs();
+            } else if (res.status === 413) {
+                // File too large for Vercel - show helpful message
+                showToast('File too large for server. Please compress the file.', 'error');
+                alert(`File terlalu besar untuk server!\n\nUkuran: ${sizeMB} MB\nMaksimal: ~4 MB\n\nSolusi:\n1. Kompres PDF menggunakan tools online\n2. Atau split file menjadi beberapa bagian`);
             } else {
                 // Get detailed error message
                 let errorMsg = 'Failed to upload document';
