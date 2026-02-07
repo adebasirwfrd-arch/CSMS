@@ -87,19 +87,17 @@ class DriveTemplateService:
 
     async def _scan_recursive(self, folder_id: str, tasks_list: List[Dict[str, str]], current_path: str = ""):
         """Scan folder names to extract codes and titles for task metadata."""
-        query = f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-        results = drive_service.service.files().list(
-            q=query,
-            fields="files(id, name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        
-        folders = results.get('files', [])
+        if not drive_service.enabled or not drive_service.service:
+            log_warning("TEMPLATE", "Drive service not available for scanning")
+            return
+            
+        # Use the helper method instead of direct service call
+        all_items = drive_service.fetch_files_in_folder(folder_id)
+        folders = [item for item in all_items if item.get('mimeType') == 'application/vnd.google-apps.folder']
         
         for folder in folders:
             name = folder['name']
-            folder_id = folder['id']
+            f_id = folder['id']
             
             # Simple heuristic to identify task folders (e.g., "1.1.1 MWT REPORT")
             # We look for a pattern like "X.Y.Z Title"
@@ -129,7 +127,7 @@ class DriveTemplateService:
                 })
             
             # Recurse
-            await self._scan_recursive(folder_id, tasks_list, name)
+            await self._scan_recursive(f_id, tasks_list, name)
 
 # Singleton instance
 template_service = DriveTemplateService()
