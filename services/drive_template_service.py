@@ -23,32 +23,57 @@ class DriveTemplateService:
     async def _clone_recursive(self, source_id: str, target_parent_id: str):
         """Recursively copy folders and files from source to target."""
         # 1. List all items in source folder
-        query = f"'{source_id}' in parents and trashed = false"
-        results = drive_service.service.files().list(
-            q=query,
-            fields="files(id, name, mimeType)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        
-        items = results.get('files', [])
-        
-        for item in items:
+        log_info("TEMPLATE", f"Scanning source folder {source_id}...")
+        source_items = drive_service.fetch_files_in_folder(source_id)
+        if not source_items:
+            return
+
+        # 2. List all items in target folder to avoid duplicates (idempotency)
+        target_items = drive_service.fetch_files_in_folder(target_parent_id)
+        target_names = {item['name']: item['id'] for item in target_items}
+
+        folders_to_recurse = []
+        files_to_copy = []
+
+        for item in source_items:
             item_id = item['id']
             item_name = item['name']
             item_mime = item['mimeType']
             
             if item_mime == 'application/vnd.google-apps.folder':
-                # Create corresponding folder in target
-                new_folder_id = drive_service.find_or_create_folder(item_name, target_parent_id)
+                # Check if folder already exists in target
+                if item_name in target_names:
+                    new_folder_id = target_names[item_name]
+                    log_info("TEMPLATE", f"Folder already exists, skipping creation: {item_name}")
+                else:
+                    new_folder_id = drive_service.find_or_create_folder(item_name, target_parent_id)
+                    log_info("TEMPLATE", f"Created folder: {item_name}")
+                
                 if new_folder_id:
-                    # Recurse into the new folder
-                    await self._clone_recursive(item_id, new_folder_id)
+                    folders_to_recurse.append((item_id, new_folder_id))
             else:
-                # Copy file
-                await drive_service.copy_file(item_id, target_parent_id, item_name)
-                # Small sleep to be nice to API rate limits
-                await asyncio.sleep(0.1)
+                # Check if file already exists
+                if item_name in target_names:
+                    # log_info("TEMPLATE", f"File already exists, skipping copy: {item_name}")
+                    pass
+                else:
+                    files_to_copy.append((item_id, target_parent_id, item_name))
+
+        # 3. Copy files in parallel (batches of 5 to avoid rate limits)
+        if files_to_copy:
+            log_info("TEMPLATE", f"Copying {len(files_to_copy)} files to {target_parent_id}...")
+            batch_size = 5
+            for i in range(0, len(files_to_copy), batch_size):
+                batch = files_to_copy[i:i + batch_size]
+                tasks = [drive_service.copy_file(fid, pid, name) for fid, pid, name in batch]
+                await asyncio.gather(*tasks)
+                # Small gap between batches
+                await asyncio.sleep(0.2)
+
+        # 4. Recurse into folders (sequential recursion to avoid deep concurrency issues)
+        for s_id, t_id in folders_to_recurse:
+            await self._clone_recursive(s_id, t_id)
+
 
     async def get_template_structure(self) -> List[Dict[str, str]]:
         """Scan the master template and return a flat list of folder hierarchy for task creation."""

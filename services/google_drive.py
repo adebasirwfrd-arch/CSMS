@@ -550,12 +550,22 @@ class GoogleDriveService:
                     print(f"[INFO] Deleted temp file: {temp_file_id}")
                 except Exception as e:
                     print(f"[WARN] Could not delete temp file: {e}")
-    async def copy_file(self, file_id: str, parent_id: str, new_name: str = None) -> str:
-        """Copy a file to a new location in Google Drive."""
+    async def copy_file(self, file_id: str, parent_id: str, new_name: str = None, skip_if_exists: bool = False) -> str:
+        """Copy a file to a new location in Google Drive.
+        If skip_if_exists is True, checks if a file with new_name already exists in parent_id.
+        """
         if not self.enabled or not self.service:
             return None
         
         try:
+            if skip_if_exists and new_name:
+                # Basic check for existing file
+                check_query = f"name = '{new_name}' and '{parent_id}' in parents and trashed = false"
+                check_results = self.service.files().list(q=check_query, fields="files(id)").execute()
+                if check_results.get('files'):
+                    # print(f"[SKIP] File already exists: {new_name}")
+                    return check_results.get('files')[0]['id']
+
             body = {'parents': [parent_id]}
             if new_name:
                 body['name'] = new_name
@@ -586,6 +596,23 @@ class GoogleDriveService:
         except Exception as e:
             log_error("DRIVE", f"Error getting metadata for {file_id}: {e}", send_email=False)
             return None
+
+    def fetch_files_in_folder(self, folder_id: str) -> List[Dict[str, Any]]:
+        """List ALL files and folders in a specific folder with name and mimeType."""
+        if not self.enabled or not self.service:
+            return []
+        try:
+            query = f"'{folder_id}' in parents and trashed = false"
+            results = self.service.files().list(
+                q=query,
+                fields="files(id, name, mimeType)",
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True
+            ).execute()
+            return results.get('files', [])
+        except Exception as e:
+            log_error("DRIVE", f"Error fetching files in folder {folder_id}: {e}")
+            return []
 
 # Singleton instance for consistent authentication and caching across services
 drive_service = GoogleDriveService()

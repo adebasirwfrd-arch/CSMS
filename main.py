@@ -451,17 +451,25 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
     return new_project
 
 @app.post("/projects/{project_id}/sync-full-checklist")
-async def sync_full_checklist(project_id: str):
+async def sync_full_checklist(project_id: str, background_tasks: BackgroundTasks):
     """Sync tasks from Google Drive template structure to DB for a project."""
     try:
         from database import db
-        # 1. Get template structure from Drive
+        # 1. Get project info to get the name
+        project = db.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        # 2. Trigger background folder/template check/resume
+        background_tasks.add_task(project_setup_task, project['name'])
+        
+        # 3. Get template structure from Drive
         template_tasks = await template_service.get_template_structure()
         
         if not template_tasks:
             raise HTTPException(status_code=404, detail="No template structure found in Drive")
             
-        # 2. Get existing tasks for this project to avoid duplicates
+        # 4. Get existing tasks for this project to avoid duplicates
         existing_tasks = db.get_tasks_by_project(project_id)
         existing_codes = {t['code'] for t in existing_tasks}
         
