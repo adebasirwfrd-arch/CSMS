@@ -51,7 +51,7 @@ class GoogleDriveService:
     def _get_drive_service(self):
         """Get Google Drive service - try OAuth first, then Service Account fallback"""
         
-        # Method 1: Try OAuth2 token
+        # Method 1: Try OAuth2 token (PREFERRED - has storage quota)
         if self.token_json:
             try:
                 log_info("DRIVE", "Attempting OAuth2 token authentication...")
@@ -67,24 +67,32 @@ class GoogleDriveService:
                     try:
                         creds.refresh(Request())
                         log_info("DRIVE", "Token refreshed successfully")
+                        # Log reminder to update token in Vercel
+                        log_warning("DRIVE", "IMPORTANT: OAuth token was refreshed. For persistent access, update GOOGLE_TOKEN_JSON in Vercel with new token.")
                     except Exception as refresh_err:
-                        log_warning("DRIVE", f"Failed to refresh token: {refresh_err}")
-                        raise refresh_err
-
-                log_info("DRIVE", "OAuth credentials loaded from env")
-                self.auth_method = "OAuth2" if not creds.expired else "OAuth2 (refreshed)"
-                return build('drive', 'v3', credentials=creds)
+                        log_error("DRIVE", f"Failed to refresh OAuth token: {refresh_err}. You may need to re-authenticate.", send_email=True)
+                        # Don't raise - try to use the token anyway, or fall through to Service Account
+                        creds = None
+                
+                if creds and creds.valid:
+                    log_info("DRIVE", "OAuth credentials loaded and valid!")
+                    self.auth_method = "OAuth2"
+                    return build('drive', 'v3', credentials=creds)
+                elif creds and not creds.valid:
+                    log_warning("DRIVE", "OAuth token is invalid/expired. Falling back to Service Account.")
+                    
             except json.JSONDecodeError as e:
-                log_error("DRIVE", f"Failed to parse GOOGLE_TOKEN_JSON", e, send_email=False)
+                log_error("DRIVE", "Failed to parse GOOGLE_TOKEN_JSON", e, send_email=False)
             except Exception as e:
                 log_warning("DRIVE", f"OAuth2 authentication failed: {e}")
         else:
             log_info("DRIVE", "GOOGLE_TOKEN_JSON not set, skipping OAuth2")
         
-        # Method 2: Fallback to Service Account
+        # Method 2: Fallback to Service Account (NOTE: Cannot upload to personal Drive!)
         if self.service_account_json:
             try:
                 log_info("DRIVE", "Attempting Service Account authentication...")
+                log_warning("DRIVE", "NOTE: Service Account can only upload to Shared Drives, not personal Drive!")
                 from google.oauth2 import service_account
                 sa_info = json.loads(self.service_account_json)
                 log_info("DRIVE", f"Service Account email: {sa_info.get('client_email', 'N/A')}")
