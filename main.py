@@ -1299,34 +1299,6 @@ async def upload_csms_pb_chunk(
         log_error("CSMS_PB", f"Chunk upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/csms-pb/{pb_id}/attachment")
-async def upload_csms_pb_attachment(pb_id: str, file: UploadFile = File(...)):
-    """Upload attachment to a CSMS PB record"""
-    records = get_csms_pb_records()
-    pb_record = next((r for r in records if r['id'] == pb_id), None)
-    
-    if not pb_record:
-        raise HTTPException(status_code=404, detail="PB record not found")
-    
-    # Save file to Google Drive
-    try:
-        file_content = await file.read()
-        file_id = drive_service.upload_file(file.filename, file_content)
-        
-        attachment = {
-            "filename": file.filename,
-            "drive_file_id": file_id,
-            "uploaded_at": datetime.now().isoformat()
-        }
-        
-        if 'attachments' not in pb_record:
-            pb_record['attachments'] = []
-        pb_record['attachments'].append(attachment)
-        
-        save_csms_pb_records(records)
-        return {"status": "success", "attachment": attachment}
-    except Exception as e:
-        print(f"[ERROR] Failed to upload PB attachment: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/csms-pb/statistics")
