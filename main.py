@@ -1347,12 +1347,37 @@ async def create_related_doc(
 
 @app.delete("/related-docs/{doc_id}")
 def delete_related_doc_route(doc_id: str):
-    """Delete a related document"""
-    # SYNCHRONOUS delete - will fail loudly if Supabase fails
-    delete_related_doc(doc_id)
-    print(f"[RELATED_DOC] Deleted: {doc_id}")
-    
-    return {"status": "deleted"}
+    """Delete a related document and its file from Google Drive"""
+    try:
+        # First, get the document to find the drive_file_id
+        all_docs = get_related_docs()
+        doc = next((d for d in all_docs if d.get('id') == doc_id), None)
+        
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        drive_file_id = doc.get('drive_file_id')
+        
+        # Delete from Google Drive first
+        if drive_file_id and drive_service.enabled:
+            try:
+                drive_service.service.files().delete(fileId=drive_file_id).execute()
+                print(f"[RELATED_DOC] Deleted Drive file: {drive_file_id}")
+            except Exception as drive_err:
+                print(f"[RELATED_DOC] Warning: Could not delete Drive file {drive_file_id}: {drive_err}")
+                # Continue with database delete even if Drive delete fails
+        
+        # Then delete from database
+        delete_related_doc(doc_id)
+        print(f"[RELATED_DOC] Deleted from database: {doc_id}")
+        
+        return {"status": "deleted", "drive_file_deleted": bool(drive_file_id)}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[RELATED_DOC] Delete error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/download/{file_id}")
 async def download_drive_file(file_id: str):
