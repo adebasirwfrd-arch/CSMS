@@ -46,6 +46,7 @@ from routers.reports import router as reports_router
 from services.logger_service import (
     app_logger, log_request, log_response, log_info, log_error, log_warning
 )
+from services.drive_template_service import template_service
 import time
 
 app = FastAPI()
@@ -387,6 +388,18 @@ def send_reminders(background_tasks: BackgroundTasks):
         "count": sent_count,
         "projects": reminders_info
     }
+# --- Background Tasks ---
+
+async def project_setup_task(project_name: str):
+    """Workflow to ensure folder exists and clone template in background."""
+    try:
+        # 1. Create/Find project folder
+        folder_id = drive_service.find_or_create_folder(project_name)
+        if folder_id:
+            # 2. Clone template recursive
+            await template_service.clone_template_to_project(folder_id)
+    except Exception as e:
+        log_error("SYSTEM", f"Background setup failed for {project_name}: {e}")
 
 # --- Projects ---
 
@@ -399,8 +412,8 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
     # 1. Create in DB (fast local write + background Supabase sync)
     new_project = db.create_project(project.dict())
     
-    # 2. Trigger Folder Creation (in background)
-    background_tasks.add_task(drive_service.find_or_create_folder, new_project['name'])
+    # 2. Trigger Folder Creation & Template Clone (in background)
+    background_tasks.add_task(project_setup_task, new_project['name'])
     
     # 3. Generate Standard Tasks - BATCH INSERT (much faster!)
     tasks_to_create = [
@@ -436,6 +449,44 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
             print(f"[AUTO-REMINDER] Error checking rig down date: {e}")
     
     return new_project
+
+@app.post("/projects/{project_id}/sync-full-checklist")
+async def sync_full_checklist(project_id: str):
+    """Sync tasks from Google Drive template structure to DB for a project."""
+    try:
+        from database import db
+        # 1. Get template structure from Drive
+        template_tasks = await template_service.get_template_structure()
+        
+        if not template_tasks:
+            raise HTTPException(status_code=404, detail="No template structure found in Drive")
+            
+        # 2. Get existing tasks for this project to avoid duplicates
+        existing_tasks = db.get_tasks_by_project(project_id)
+        existing_codes = {t['code'] for t in existing_tasks}
+        
+        # 3. Filter only new tasks
+        tasks_to_add = []
+        for t in template_tasks:
+            if t['code'] not in existing_codes:
+                tasks_to_add.append({
+                    "title": t['title'],
+                    "project_id": project_id,
+                    "code": t['code'],
+                    "category": t['category'],
+                    "status": "Upcoming"
+                })
+        
+        # 4. Batch create if any
+        if tasks_to_add:
+            db.batch_create_tasks(tasks_to_add)
+            return {"status": "success", "added": len(tasks_to_add)}
+        else:
+            return {"status": "success", "added": 0, "message": "All tasks already exist"}
+            
+    except Exception as e:
+        log_error("API", f"Error syncing full checklist: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.patch("/projects/{project_id}")
 def update_project(project_id: str, updates: dict):

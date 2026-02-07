@@ -3721,13 +3721,57 @@
     window.deletePBRecord = deletePBRecord;
 
     // Full Checklist function (placeholder - functionality to be implemented)
-    function openFullChecklist(projectId, projectName) {
+    async function openFullChecklist(projectId, projectName) {
         if (!document.body.classList.contains('admin-mode')) {
             alert('Akses Ditolak: Fitur ini hanya untuk Admin.');
             return;
         }
-        console.log('Full Checklist opened for project:', projectId, projectName);
-        alert('Full Checklist for: ' + projectName + '\n\nFunctionality coming soon!');
+
+        if (!confirm(`Konfirmasi: Ingin mensinkronisasi daftar tugas lengkap dari Google Drive untuk proyek "${projectName}"?\n\nIni akan membaca struktur folder template di Drive dan menambahkannya sebagai tugas baru.`)) {
+            return;
+        }
+
+        const btn = document.querySelector('.full-checklist-btn');
+        const originalHtml = btn.innerHTML;
+
+        try {
+            // Disable button and show loading state
+            btn.disabled = true;
+            btn.style.opacity = '0.7';
+            btn.innerHTML = '⏳ Syncing...';
+
+            const response = await fetch(`${API_URL}/projects/${projectId}/sync-full-checklist`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.detail || 'Sync failed');
+            }
+
+            const data = await response.json();
+
+            if (data.added > 0) {
+                alert(`✅ Berhasil! ${data.added} tugas baru telah ditambahkan.`);
+            } else {
+                alert(`ℹ️ Semua tugas dari template sudah ada di proyek ini.`);
+            }
+
+            // Refresh project detail if currently open
+            if (typeof showProjectDetail === 'function') {
+                showProjectDetail(projectId);
+            }
+
+        } catch (err) {
+            console.error('Sync Error:', err);
+            alert('❌ Gagal sinkronisasi: ' + err.message);
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.innerHTML = originalHtml;
+            }
+        }
     }
     window.openFullChecklist = openFullChecklist;
 

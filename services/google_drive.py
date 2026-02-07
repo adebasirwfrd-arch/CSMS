@@ -550,3 +550,39 @@ class GoogleDriveService:
                     print(f"[INFO] Deleted temp file: {temp_file_id}")
                 except Exception as e:
                     print(f"[WARN] Could not delete temp file: {e}")
+    async def copy_file(self, file_id: str, parent_id: str, new_name: str = None) -> str:
+        """Copy a file to a new location in Google Drive."""
+        if not self.enabled or not self.service:
+            return None
+        
+        try:
+            body = {'parents': [parent_id]}
+            if new_name:
+                body['name'] = new_name
+                
+            copied_file = self.service.files().copy(
+                fileId=file_id,
+                body=body,
+                fields='id',
+                supportsAllDrives=True
+            ).execute()
+            
+            return copied_file.get('id')
+        except Exception as e:
+            log_error("DRIVE", f"Error copying file {file_id}: {e}", send_email=False)
+            return None
+
+    async def get_file_metadata(self, file_id: str) -> dict:
+        """Get metadata for a specific file or folder."""
+        if not self.enabled or not self.service:
+            return None
+            
+        try:
+            return self.service.files().get(
+                fileId=file_id,
+                fields='id, name, mimeType',
+                supportsAllDrives=True
+            ).execute()
+        except Exception as e:
+            log_error("DRIVE", f"Error getting metadata for {file_id}: {e}", send_email=False)
+            return None
