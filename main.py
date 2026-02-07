@@ -607,6 +607,45 @@ def compress_image_for_pdf(pil_image, max_width=1200, max_height=1600, quality=7
     
     return output_buffer
 
+
+def scan_drive_folder_for_files(folder_id: str, current_path: str = "") -> list:
+    """Recursively scan a Google Drive folder and return all files with their paths.
+    
+    Returns list of dicts with: id, name, path, mimeType
+    """
+    files_found = []
+    
+    if not drive_service.enabled or not drive_service.service:
+        return files_found
+    
+    try:
+        items = drive_service.fetch_files_in_folder(folder_id)
+        
+        for item in items:
+            item_name = item.get('name', '')
+            item_id = item.get('id', '')
+            mime_type = item.get('mimeType', '')
+            
+            item_path = f"{current_path}/{item_name}" if current_path else item_name
+            
+            if mime_type == 'application/vnd.google-apps.folder':
+                # Recursively scan subfolders
+                sub_files = scan_drive_folder_for_files(item_id, item_path)
+                files_found.extend(sub_files)
+            else:
+                # It's a file - skip "DAFTAR ISI.pdf"
+                if item_name != "DAFTAR ISI.pdf":
+                    files_found.append({
+                        'id': item_id,
+                        'name': item_name,
+                        'path': item_path,
+                        'mimeType': mime_type
+                    })
+    except Exception as e:
+        log_error("REPORT", f"Error scanning Drive folder: {e}")
+    
+    return files_found
+
 @app.get("/projects/{project_id}/report")
 def generate_project_report(project_id: str, mode: str = "download"):
     """Generate a comprehensive PDF report for a project with all attachments embedded
@@ -720,14 +759,22 @@ def generate_project_report(project_id: str, mode: str = "download"):
     elements.append(PageBreak())
     elements.append(Paragraph("Task Summary & Attachments", heading_style))
     
-    # Task statistics
+    # Get all files from Google Drive project folder (THE ACTUAL SOURCE OF TRUTH)
+    project_folder_id = drive_service.find_or_create_folder(project['name'])
+    drive_files = []
+    if project_folder_id:
+        log_info("REPORT", f"Scanning Drive folder {project_folder_id} for all files...")
+        drive_files = scan_drive_folder_for_files(project_folder_id)
+        log_info("REPORT", f"Found {len(drive_files)} files in Drive folder")
+    
+    # Task statistics  
     completed = len([t for t in tasks if t.get('status') == 'Completed'])
-    total_attachments = sum(len(t.get('attachments', [])) for t in tasks)
+    total_attachments = len(drive_files)  # Use actual Drive file count
     
     stats_data = [
         ['Total Tasks:', str(len(tasks))],
         ['Completed:', f"{completed} ({(completed/max(len(tasks),1)*100):.0f}%)"],
-        ['Total Attachments:', str(total_attachments)]
+        ['Total Files in Drive:', str(total_attachments)]
     ]
     stats_table = Table(stats_data, colWidths=[1.5*inch, 2*inch])
     stats_table.setStyle(TableStyle([
@@ -741,114 +788,190 @@ def generate_project_report(project_id: str, mode: str = "download"):
     elements.append(stats_table)
     elements.append(Spacer(1, 0.3*inch))
     
-    # List each task with attachments
+    # Group files by folder path for organized output
+    from collections import defaultdict
+    files_by_folder = defaultdict(list)
+    for f in drive_files:
+        folder_path = '/'.join(f['path'].split('/')[:-1]) or project['name']
+        files_by_folder[folder_path].append(f)
+    
+    # Sort folders by path
+    sorted_folders = sorted(files_by_folder.keys())
+    
+    # Process each folder and its files
     attachment_index = 0
-    for task in tasks:
-        task_code = task.get('code', '')
-        task_title = task.get('title', 'Untitled')
-        task_status = task.get('status', 'Upcoming')
-        attachments = task.get('attachments', [])
+    for folder_path in sorted_folders:
+        files_in_folder = files_by_folder[folder_path]
         
-        status_color = colors.HexColor('#46D369') if task_status == 'Completed' else colors.HexColor('#F5A623') if task_status == 'In Progress' else colors.HexColor('#666666')
-        
-        # Task header
-        task_header = f"<b>{task_code}</b> - {task_title}"
-        elements.append(Paragraph(task_header, ParagraphStyle(
-            'TaskHeader', fontSize=11, textColor=colors.black, spaceBefore=12, spaceAfter=4
-        )))
-        elements.append(Paragraph(f"Status: <font color='#{status_color.hexval()[2:]}'>{task_status}</font>", ParagraphStyle(
-            'TaskStatus', fontSize=9, textColor=colors.HexColor('#888888')
+        # Folder header
+        elements.append(Paragraph(f"<b>📁 {folder_path}</b>", ParagraphStyle(
+            'FolderHeader', fontSize=11, textColor=colors.HexColor('#2563eb'), spaceBefore=15, spaceAfter=4
         )))
         
-        # Process attachments - each on its own page with border
-        if attachments:
-            for att in attachments:
-                attachment_index += 1
-                filename = att.get('filename', 'Unknown')
-                uploaded = att.get('uploaded_at', '')[:10] if att.get('uploaded_at') else ''
-                file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+        for file_info in files_in_folder:
+            attachment_index += 1
+            filename = file_info.get('name', 'Unknown')
+            file_id = file_info.get('id')  # Already have file ID from Drive scan
+            file_path = file_info.get('path', '')
+            file_ext = filename.lower().split('.')[-1] if '.' in filename else ''
+            
+            # Page break for each attachment
+            elements.append(PageBreak())
+            
+            # Attachment header with border box - show path for context
+            header_table = Table(
+                [[f"File {attachment_index}: {filename}", f"Path: {file_path}"]],
+                colWidths=[4.5*inch, 2*inch]
+            )
+            header_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E50914')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+                ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('ALIGN', (0, 0), (0, 0), 'LEFT'),
+                ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('LEFTPADDING', (0, 0), (-1, -1), 10),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ]))
+            elements.append(header_table)
+            elements.append(Spacer(1, 0.1*inch))
+            
+            try:
+                # We already have file_id from Drive scan - no need to search!
+                if not file_id:
+                    elements.append(Paragraph("<i>[File ID not available]</i>", ParagraphStyle(
+                        'FileError', fontSize=10, textColor=colors.HexColor('#999999'), alignment=TA_CENTER, spaceBefore=50
+                    )))
+                    continue
                 
-                # Page break for each attachment
-                elements.append(PageBreak())
+                # Download file
+                file_data = drive_service.download_file(file_id)
+                if not file_data:
+                    elements.append(Paragraph("<i>[Could not download file]</i>", ParagraphStyle(
+                        'FileError', fontSize=10, textColor=colors.HexColor('#999999'), alignment=TA_CENTER, spaceBefore=50
+                    )))
+                    continue
                 
-                # Attachment header with border box
-                header_table = Table(
-                    [[f"Attachment {attachment_index}: {filename}", f"Uploaded: {uploaded}"]],
-                    colWidths=[4.5*inch, 2*inch]
-                )
-                header_table.setStyle(TableStyle([
-                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#E50914')),
-                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-                    ('FONTNAME', (0, 0), (0, 0), 'Helvetica-Bold'),
-                    ('FONTSIZE', (0, 0), (-1, -1), 11),
-                    ('ALIGN', (0, 0), (0, 0), 'LEFT'),
-                    ('ALIGN', (1, 0), (1, 0), 'RIGHT'),
-                    ('TOPPADDING', (0, 0), (-1, -1), 8),
-                    ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-                    ('LEFTPADDING', (0, 0), (-1, -1), 10),
-                    ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-                ]))
-                elements.append(header_table)
-                elements.append(Spacer(1, 0.1*inch))
-                
-                try:
-                    # Priority 1: Use stored file_id if available (INSTANT - for KMBR)
-                    file_id = att.get('file_id')
+                # Process based on file type
+                if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp']:
+                    # Compress image before embedding (reduces PDF size significantly)
+                    img_buffer = io.BytesIO(file_data)
+                    pil_img = PILImage.open(img_buffer)
                     
-                    # Priority 2: Search for file (for new projects)
-                    if not file_id:
-                        file_id = drive_service.find_file_in_folder(filename, project['name'])
+                    # Compress the image (max 1200x1600px, JPEG quality 75)
+                    compressed_buffer = compress_image_for_pdf(pil_img, max_width=1200, max_height=1600, quality=75)
+                    pil_img = PILImage.open(compressed_buffer)
                     
-                    if not file_id:
-                        elements.append(Paragraph("<i>[File not found in Google Drive]</i>", ParagraphStyle(
-                            'FileError', fontSize=10, textColor=colors.HexColor('#999999'), alignment=TA_CENTER, spaceBefore=50
+                    max_width = 6 * inch
+                    max_height = 7.5 * inch
+                    img_width, img_height = pil_img.size
+                    scale = min(max_width / img_width, max_height / img_height, 1)
+                    final_width = img_width * scale
+                    final_height = img_height * scale
+                    
+                    compressed_buffer.seek(0)
+                    rl_img = RLImage(compressed_buffer, width=final_width, height=final_height)
+                    
+                    # Wrap in table for border
+                    img_table = Table([[rl_img]], colWidths=[final_width + 10])
+                    img_table.setStyle(TableStyle([
+                        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#333333')),
+                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                        ('TOPPADDING', (0, 0), (-1, -1), 5),
+                        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                    ]))
+                    elements.append(img_table)
+                    
+                elif file_ext == 'pdf':
+                    # PDF - render pages with PyMuPDF
+                    try:
+                        import fitz
+                        pdf_doc = fitz.open(stream=file_data, filetype='pdf')
+                        total_pages = len(pdf_doc)
+                        max_pages = min(20, total_pages)
+                        
+                        for page_num in range(max_pages):
+                            if page_num > 0:
+                                elements.append(PageBreak())
+                                # Page continuation header
+                                cont_header = Table(
+                                    [[f"{filename} - Page {page_num + 1} of {total_pages}"]],
+                                    colWidths=[6.5*inch]
+                                )
+                                cont_header.setStyle(TableStyle([
+                                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#444444')),
+                                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+                                    ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+                                    ('FONTSIZE', (0, 0), (-1, -1), 10),
+                                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                                    ('TOPPADDING', (0, 0), (-1, -1), 6),
+                                    ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                                ]))
+                                elements.append(cont_header)
+                                elements.append(Spacer(1, 0.1*inch))
+                            
+                            page = pdf_doc[page_num]
+                            # Reduced DPI: Matrix(1.33, 1.33) = ~96 DPI vs Matrix(2, 2) = 144 DPI
+                            mat = fitz.Matrix(1.33, 1.33)  # 96 DPI - good balance of quality/size
+                            pix = page.get_pixmap(matrix=mat)
+                            
+                            # Convert to PIL and compress as JPEG
+                            img_data = pix.tobytes("png")
+                            img_buffer = io.BytesIO(img_data)
+                            pil_img = PILImage.open(img_buffer)
+                            
+                            # Compress the rendered PDF page
+                            compressed_buffer = compress_image_for_pdf(pil_img, max_width=1000, max_height=1400, quality=70)
+                            pil_img = PILImage.open(compressed_buffer)
+                            
+                            max_width = 6.2 * inch
+                            max_height = 8 * inch
+                            img_width, img_height = pil_img.size
+                            scale = min(max_width / img_width, max_height / img_height, 1)
+                            final_width = img_width * scale
+                            final_height = img_height * scale
+                            
+                            compressed_buffer.seek(0)
+                            rl_img = RLImage(compressed_buffer, width=final_width, height=final_height)
+                            
+                            # Wrap in bordered table
+                            img_table = Table([[rl_img]], colWidths=[final_width + 6])
+                            img_table.setStyle(TableStyle([
+                                ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#333333')),
+                                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                                ('TOPPADDING', (0, 0), (-1, -1), 3),
+                                ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+                            ]))
+                            elements.append(img_table)
+                        
+                        pdf_doc.close()
+                        
+                        if total_pages > max_pages:
+                            elements.append(Paragraph(f"<i>[Showing first {max_pages} of {total_pages} pages]</i>", ParagraphStyle(
+                                'PageNote', fontSize=9, textColor=colors.HexColor('#888888'), alignment=TA_CENTER, spaceBefore=10
+                            )))
+                            
+                    except Exception as e:
+                        print(f"[WARN] PyMuPDF PDF error {filename}: {e}")
+                        elements.append(Paragraph(f"<i>[PDF preview not available]</i>", ParagraphStyle(
+                            'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
                         )))
-                        continue
-                    
-                    # Download file
-                    file_data = drive_service.download_file(file_id)
-                    if not file_data:
-                        elements.append(Paragraph("<i>[Could not download file]</i>", ParagraphStyle(
-                            'FileError', fontSize=10, textColor=colors.HexColor('#999999'), alignment=TA_CENTER, spaceBefore=50
-                        )))
-                        continue
-                    
-                    # Process based on file type
-                    if file_ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp']:
-                        # Compress image before embedding (reduces PDF size significantly)
-                        img_buffer = io.BytesIO(file_data)
-                        pil_img = PILImage.open(img_buffer)
+                
+                elif file_ext in ['xlsx', 'xls', 'docx', 'doc', 'pptx', 'ppt']:
+                    # Office files - convert to PDF using Google Drive, then render
+                    try:
+                        import fitz
                         
-                        # Compress the image (max 1200x1600px, JPEG quality 75)
-                        compressed_buffer = compress_image_for_pdf(pil_img, max_width=1200, max_height=1600, quality=75)
-                        pil_img = PILImage.open(compressed_buffer)
+                        # Convert Office file to PDF via Google Drive
+                        pdf_data = drive_service.convert_office_to_pdf(file_id, filename)
                         
-                        max_width = 6 * inch
-                        max_height = 7.5 * inch
-                        img_width, img_height = pil_img.size
-                        scale = min(max_width / img_width, max_height / img_height, 1)
-                        final_width = img_width * scale
-                        final_height = img_height * scale
-                        
-                        compressed_buffer.seek(0)
-                        rl_img = RLImage(compressed_buffer, width=final_width, height=final_height)
-                        
-                        # Wrap in table for border
-                        img_table = Table([[rl_img]], colWidths=[final_width + 10])
-                        img_table.setStyle(TableStyle([
-                            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#333333')),
-                            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-                            ('TOPPADDING', (0, 0), (-1, -1), 5),
-                            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-                        ]))
-                        elements.append(img_table)
-                        
-                    elif file_ext == 'pdf':
-                        # PDF - render pages with PyMuPDF
-                        try:
-                            import fitz
-                            pdf_doc = fitz.open(stream=file_data, filetype='pdf')
+                        if pdf_data:
+                            # Render the converted PDF
+                            pdf_doc = fitz.open(stream=pdf_data, filetype='pdf')
                             total_pages = len(pdf_doc)
                             max_pages = min(20, total_pages)
                             
@@ -873,16 +996,16 @@ def generate_project_report(project_id: str, mode: str = "download"):
                                     elements.append(Spacer(1, 0.1*inch))
                                 
                                 page = pdf_doc[page_num]
-                                # Reduced DPI: Matrix(1.33, 1.33) = ~96 DPI vs Matrix(2, 2) = 144 DPI
-                                mat = fitz.Matrix(1.33, 1.33)  # 96 DPI - good balance of quality/size
+                                # Reduced DPI for smaller file size
+                                mat = fitz.Matrix(1.33, 1.33)  # 96 DPI
                                 pix = page.get_pixmap(matrix=mat)
                                 
-                                # Convert to PIL and compress as JPEG
+                                # Convert and compress as JPEG
                                 img_data = pix.tobytes("png")
                                 img_buffer = io.BytesIO(img_data)
                                 pil_img = PILImage.open(img_buffer)
                                 
-                                # Compress the rendered PDF page
+                                # Compress the rendered page
                                 compressed_buffer = compress_image_for_pdf(pil_img, max_width=1000, max_height=1400, quality=70)
                                 pil_img = PILImage.open(compressed_buffer)
                                 
@@ -913,114 +1036,28 @@ def generate_project_report(project_id: str, mode: str = "download"):
                                 elements.append(Paragraph(f"<i>[Showing first {max_pages} of {total_pages} pages]</i>", ParagraphStyle(
                                     'PageNote', fontSize=9, textColor=colors.HexColor('#888888'), alignment=TA_CENTER, spaceBefore=10
                                 )))
-                                
-                        except Exception as e:
-                            print(f"[WARN] PyMuPDF PDF error {filename}: {e}")
-                            elements.append(Paragraph(f"<i>[PDF preview not available]</i>", ParagraphStyle(
+                        else:
+                            # Conversion failed - show placeholder
+                            elements.append(Paragraph(f"<i>[Could not convert {file_ext.upper()} file - stored in Google Drive]</i>", ParagraphStyle(
                                 'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
                             )))
-                    
-                    elif file_ext in ['xlsx', 'xls', 'docx', 'doc', 'pptx', 'ppt']:
-                        # Office files - convert to PDF using Google Drive, then render
-                        try:
-                            import fitz
                             
-                            # Convert Office file to PDF via Google Drive
-                            pdf_data = drive_service.convert_office_to_pdf(file_id, filename)
-                            
-                            if pdf_data:
-                                # Render the converted PDF
-                                pdf_doc = fitz.open(stream=pdf_data, filetype='pdf')
-                                total_pages = len(pdf_doc)
-                                max_pages = min(20, total_pages)
-                                
-                                for page_num in range(max_pages):
-                                    if page_num > 0:
-                                        elements.append(PageBreak())
-                                        # Page continuation header
-                                        cont_header = Table(
-                                            [[f"{filename} - Page {page_num + 1} of {total_pages}"]],
-                                            colWidths=[6.5*inch]
-                                        )
-                                        cont_header.setStyle(TableStyle([
-                                            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#444444')),
-                                            ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
-                                            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                                            ('FONTSIZE', (0, 0), (-1, -1), 10),
-                                            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                                            ('TOPPADDING', (0, 0), (-1, -1), 6),
-                                            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                                        ]))
-                                        elements.append(cont_header)
-                                        elements.append(Spacer(1, 0.1*inch))
-                                    
-                                    page = pdf_doc[page_num]
-                                    # Reduced DPI for smaller file size
-                                    mat = fitz.Matrix(1.33, 1.33)  # 96 DPI
-                                    pix = page.get_pixmap(matrix=mat)
-                                    
-                                    # Convert and compress as JPEG
-                                    img_data = pix.tobytes("png")
-                                    img_buffer = io.BytesIO(img_data)
-                                    pil_img = PILImage.open(img_buffer)
-                                    
-                                    # Compress the rendered page
-                                    compressed_buffer = compress_image_for_pdf(pil_img, max_width=1000, max_height=1400, quality=70)
-                                    pil_img = PILImage.open(compressed_buffer)
-                                    
-                                    max_width = 6.2 * inch
-                                    max_height = 8 * inch
-                                    img_width, img_height = pil_img.size
-                                    scale = min(max_width / img_width, max_height / img_height, 1)
-                                    final_width = img_width * scale
-                                    final_height = img_height * scale
-                                    
-                                    compressed_buffer.seek(0)
-                                    rl_img = RLImage(compressed_buffer, width=final_width, height=final_height)
-                                    
-                                    # Wrap in bordered table
-                                    img_table = Table([[rl_img]], colWidths=[final_width + 6])
-                                    img_table.setStyle(TableStyle([
-                                        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#333333')),
-                                        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                                        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-                                        ('TOPPADDING', (0, 0), (-1, -1), 3),
-                                        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-                                    ]))
-                                    elements.append(img_table)
-                                
-                                pdf_doc.close()
-                                
-                                if total_pages > max_pages:
-                                    elements.append(Paragraph(f"<i>[Showing first {max_pages} of {total_pages} pages]</i>", ParagraphStyle(
-                                        'PageNote', fontSize=9, textColor=colors.HexColor('#888888'), alignment=TA_CENTER, spaceBefore=10
-                                    )))
-                            else:
-                                # Conversion failed - show placeholder
-                                elements.append(Paragraph(f"<i>[Could not convert {file_ext.upper()} file - stored in Google Drive]</i>", ParagraphStyle(
-                                    'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
-                                )))
-                                
-                        except Exception as e:
-                            print(f"[WARN] Office conversion error {filename}: {e}")
-                            elements.append(Paragraph(f"<i>[Document conversion failed]</i>", ParagraphStyle(
-                                'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
-                            )))
-                    else:
-                        # Unknown file type
-                        elements.append(Paragraph(f"<i>[File type {file_ext.upper()} - stored in Google Drive]</i>", ParagraphStyle(
+                    except Exception as e:
+                        print(f"[WARN] Office conversion error {filename}: {e}")
+                        elements.append(Paragraph(f"<i>[Document conversion failed]</i>", ParagraphStyle(
                             'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
                         )))
-                        
-                except Exception as e:
-                    print(f"[WARN] Could not process attachment {filename}: {e}")
-                    elements.append(Paragraph(f"<i>[Error processing file]</i>", ParagraphStyle(
-                        'FileError', fontSize=10, textColor=colors.HexColor('#999999'), alignment=TA_CENTER, spaceBefore=50
+                else:
+                    # Unknown file type
+                    elements.append(Paragraph(f"<i>[File type {file_ext.upper()} - stored in Google Drive]</i>", ParagraphStyle(
+                        'FileNote', fontSize=10, textColor=colors.HexColor('#666666'), alignment=TA_CENTER, spaceBefore=50
                     )))
-        else:
-            elements.append(Paragraph("<i>No attachments for this task</i>", ParagraphStyle(
-                'NoAttachment', fontSize=10, textColor=colors.HexColor('#999999'), leftIndent=20
-            )))
+                    
+            except Exception as e:
+                print(f"[WARN] Could not process file {filename}: {e}")
+                elements.append(Paragraph(f"<i>[Error processing file]</i>", ParagraphStyle(
+                    'FileError', fontSize=10, textColor=colors.HexColor('#999999'), alignment=TA_CENTER, spaceBefore=50
+                )))
     
     # === FOOTER ===
     elements.append(Spacer(1, 0.5*inch))
