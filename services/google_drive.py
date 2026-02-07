@@ -55,7 +55,7 @@ class GoogleDriveService:
         if self.token_json:
             try:
                 log_info("DRIVE", "Attempting OAuth2 token authentication...")
-            # Parse token JSON from environment variable
+                # Parse token JSON from environment variable
                 token_info = json.loads(self.token_json)
                 
                 # Create credentials object
@@ -63,51 +63,46 @@ class GoogleDriveService:
                 
                 # Check if token needs refresh
                 if creds and creds.expired and creds.refresh_token:
-                    print("[INFO] Refreshing expired OAuth token...")
+                    log_info("DRIVE", "Refreshing expired OAuth token...")
                     try:
                         creds.refresh(Request())
-                        print("[OK] Token refreshed successfully")
-                        # NOTE: We can't save the new token back to env/secrets from here
-                        # It will only last for this session or until expiry
+                        log_info("DRIVE", "Token refreshed successfully")
                     except Exception as refresh_err:
-                        print(f"[WARN] Failed to refresh token: {refresh_err}")
-                        # If refresh fails, we might still try to use it or fail to fallback
+                        log_warning("DRIVE", f"Failed to refresh token: {refresh_err}")
                         raise refresh_err
 
-                print("[OK] OAuth credentials loaded from env")
+                log_info("DRIVE", "OAuth credentials loaded from env")
                 self.auth_method = "OAuth2" if not creds.expired else "OAuth2 (refreshed)"
                 return build('drive', 'v3', credentials=creds)
             except json.JSONDecodeError as e:
-                print(f"[ERROR] Failed to parse GOOGLE_TOKEN_JSON: {e}")
+                log_error("DRIVE", f"Failed to parse GOOGLE_TOKEN_JSON", e, send_email=False)
             except Exception as e:
-                print(f"[WARN] OAuth2 authentication failed: {e}")
+                log_warning("DRIVE", f"OAuth2 authentication failed: {e}")
         else:
-            print("[INFO] GOOGLE_TOKEN_JSON not set, skipping OAuth2")
+            log_info("DRIVE", "GOOGLE_TOKEN_JSON not set, skipping OAuth2")
         
         # Method 2: Fallback to Service Account
         if self.service_account_json:
             try:
-                print("[INFO] Attempting Service Account authentication...")
+                log_info("DRIVE", "Attempting Service Account authentication...")
                 from google.oauth2 import service_account
                 sa_info = json.loads(self.service_account_json)
-                print(f"  [DEBUG] Service Account email: {sa_info.get('client_email', 'N/A')}")
+                log_info("DRIVE", f"Service Account email: {sa_info.get('client_email', 'N/A')}")
                 creds = service_account.Credentials.from_service_account_info(
                     sa_info, scopes=SCOPES
                 )
-                print("[OK] Service Account credentials loaded")
+                log_info("DRIVE", "Service Account credentials loaded")
                 self.auth_method = "Service Account"
                 return build('drive', 'v3', credentials=creds)
             except json.JSONDecodeError as e:
-                print(f"[ERROR] Failed to parse SERVICE_ACCOUNT_JSON: {e}")
+                log_error("DRIVE", "Failed to parse SERVICE_ACCOUNT_JSON", e, send_email=False)
             except Exception as e:
-                print(f"[ERROR] Service Account authentication failed: {e}")
-                import traceback
-                traceback.print_exc()
+                log_error("DRIVE", f"Service Account authentication failed", e, send_email=True)
         else:
-            print("[INFO] SERVICE_ACCOUNT_JSON not set, skipping Service Account")
+            log_info("DRIVE", "SERVICE_ACCOUNT_JSON not set, skipping Service Account")
         
         # Neither method worked
-        print("[ERROR] All authentication methods failed!")
+        log_error("DRIVE", "All authentication methods failed! Google Drive will be disabled.", send_email=True)
         return None
     
     def find_or_create_folder(self, folder_name: str, parent_id: str = None, prefix_search: bool = False) -> str:
