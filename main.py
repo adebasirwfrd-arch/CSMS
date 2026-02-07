@@ -458,7 +458,7 @@ async def sync_full_checklist(project_id: str, background_tasks: BackgroundTasks
     try:
         log_info("SYNC", f"Starting sync_full_checklist for project_id: {project_id}")
         
-        from database import db
+        # db is already available at module level (line 65)
         # 1. Get project info to get the name
         project = db.get_project(project_id)
         if not project:
