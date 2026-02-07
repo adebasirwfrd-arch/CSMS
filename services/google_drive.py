@@ -174,68 +174,72 @@ class GoogleDriveService:
             return None
 
     def create_nested_task_folder(self, project_name: str, task_code: str, task_title: str = "") -> str:
-        """Create nested folder structure based on task code hierarchy."""
+        """Create nested folder structure based on task code hierarchy.
+        
+        Structure: Project → Element X → [SubElement] → TaskCode Title
+        Max depth: 3 levels to avoid overly deep nesting for codes like 4.3.2.2.1
+        
+        Examples:
+        - "1.1.1" → Project/Element 1/1.1.1 MWT REPORT
+        - "4.3.2.2.1" → Project/Element 4/4.3/4.3.2.2.1 FOTO_OBSERVATION_CARD
+        """
         if not self.enabled or not self.service:
-            print("[WARN] Drive not enabled for nested folder creation")
+            log_warning("DRIVE", "Drive not enabled for nested folder creation")
             return None
         
         if not task_code:
-            print("[WARN] No task code provided, falling back to project folder")
+            log_warning("DRIVE", "No task code provided, falling back to project folder")
             return self.find_or_create_folder(project_name)
         
         try:
             # 1. Create/find project folder
             project_folder_id = self.find_or_create_folder(project_name)
             if not project_folder_id:
-                print("[ERROR] Could not create project folder")
+                log_error("DRIVE", "Could not create project folder", send_email=False)
                 return None
             
-            # 2. Parse task code (e.g., "3.1.1" → ["3", "1", "1"])
+            # 2. Parse task code (e.g., "4.3.2.2.1" → ["4", "3", "2", "2", "1"])
             parts = task_code.split('.')
             if not parts:
                 return project_folder_id
             
-            # 3. Create Element folder (first part, e.g., "Element 1")
+            # 3. Create Element folder (first part, e.g., "Element 4")
             element_folder_name = f"Element {parts[0]}"
             current_parent_id = self.find_or_create_folder(element_folder_name, project_folder_id)
             if not current_parent_id:
-                print(f"[ERROR] Could not create element folder: {element_folder_name}")
+                log_error("DRIVE", f"Could not create element folder: {element_folder_name}", send_email=False)
                 return project_folder_id
             
-            print(f"[NESTED] Created/found: {project_name}/{element_folder_name}")
+            log_drive_operation("NESTED", f"Created/found: {project_name}/{element_folder_name}")
             
-            # 4. Create intermediate folders for remaining parts
-            for i in range(1, len(parts)):
-                folder_code = '.'.join(parts[:i+1])  # "3.1", "3.1.1"
-                
-                # Check if this is the FINAL folder
-                is_last_folder = (folder_code == task_code)
-                
-                if is_last_folder:
-                    # Final folder: We always create/find specific name "[Code] [Title]" if title exists
-                    if task_title:
-                        safe_title = "".join(x for x in task_title if (x.isalnum() or x in "._- "))
-                        target_name = f"{folder_code} {safe_title}"
-                    else:
-                        target_name = folder_code
-                    
-                    # We use standard find_or_create because we know the exact full name we want
-                    current_parent_id = self.find_or_create_folder(target_name, current_parent_id)
-                    
-                else:
-                    # Intermediate folder (e.g. "3.1"): Use PREFIX SEARCH
-                    # Try to find "3.1 Title" OR just "3.1"
-                    current_parent_id = self.find_or_create_folder(folder_code, current_parent_id, prefix_search=True)
-                
+            # 4. For codes with 3+ parts, create ONE intermediate folder
+            # e.g., "4.3.2.2.1" → create "4.3" folder, then "4.3.2.2.1 Title" inside
+            if len(parts) >= 3:
+                # Create intermediate folder using first 2 parts (e.g., "4.3")
+                intermediate_code = '.'.join(parts[:2])
+                current_parent_id = self.find_or_create_folder(intermediate_code, current_parent_id, prefix_search=True)
                 if not current_parent_id:
-                    print(f"[ERROR] Could not create folder: {folder_code}")
+                    log_error("DRIVE", f"Could not create intermediate folder: {intermediate_code}", send_email=False)
                     return None
-                print(f"[NESTED] Created/found: .../{folder_code}")
+                log_drive_operation("NESTED", f"Created/found: .../{intermediate_code}")
             
-            return current_parent_id
+            # 5. Create final task folder with full code and title
+            if task_title:
+                safe_title = "".join(x for x in task_title if (x.isalnum() or x in "._- "))
+                final_folder_name = f"{task_code} {safe_title}"
+            else:
+                final_folder_name = task_code
+            
+            final_folder_id = self.find_or_create_folder(final_folder_name, current_parent_id)
+            if not final_folder_id:
+                log_error("DRIVE", f"Could not create final folder: {final_folder_name}", send_email=False)
+                return None
+            
+            log_drive_operation("NESTED", f"Created/found: .../{final_folder_name}")
+            return final_folder_id
             
         except Exception as e:
-            print(f"[ERROR] Error creating nested folder structure: {e}")
+            log_drive_error("NESTED_FOLDER", e)
             return None
 
     async def upload_file_to_drive(self, file_data: bytes, filename: str, project_name: str, task_code: str = None, task_title: str = "") -> dict:
