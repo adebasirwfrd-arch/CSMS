@@ -1234,6 +1234,71 @@ def delete_csms_pb_route(pb_id: str):
     return {"status": "success", "deleted_pb": pb_id}
 
 
+@app.post("/csms-pb/initiate-upload")
+async def initiate_csms_pb_upload(filename: str = Form(...), mime_type: str = Form(...)):
+    """Initiate a resumable upload session for CSMS PB attachment"""
+    try:
+        upload_url, file_id = drive_service.get_resumable_upload_session(filename, mime_type, folder_name="CSMS_PB_Attachments")
+        if not upload_url:
+            raise HTTPException(status_code=500, detail="Failed to initiate Drive upload session")
+        return {"upload_url": upload_url}
+    except Exception as e:
+        log_error("CSMS_PB", f"Failed to initiate upload: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/csms-pb/upload-chunk")
+async def upload_csms_pb_chunk(
+    pb_id: str = Form(...),
+    upload_url: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    start_byte: int = Form(...),
+    total_size: int = Form(...),
+    chunk_file: UploadFile = File(...)
+):
+    """Upload a chunk of a CSMS PB attachment"""
+    try:
+        import requests
+        chunk_data = await chunk_file.read()
+        chunk_size = len(chunk_data)
+        end_byte = start_byte + chunk_size - 1
+        
+        headers = {
+            "Content-Range": f"bytes {start_byte}-{end_byte}/{total_size}",
+            "Content-Length": str(chunk_size)
+        }
+        
+        response = requests.put(upload_url, headers=headers, data=chunk_data)
+        
+        if response.status_code in [200, 201, 308]:
+            if chunk_index == total_chunks - 1:
+                # Last chunk
+                try:
+                    res_data = response.json()
+                    file_id = res_data.get("id")
+                    
+                    if not file_id:
+                        raise Exception("No file_id in Google response")
+                    
+                    # Update CSMS PB record with file_id
+                    records = get_csms_pb_records()
+                    pb = next((r for r in records if r['id'] == pb_id), None)
+                    if pb:
+                        pb['drive_file_id'] = file_id
+                        update_csms_pb(pb_id, {"drive_file_id": file_id})
+                    
+                    return {"status": "complete", "file_id": file_id}
+                except Exception as e:
+                    log_error("CSMS_PB", f"Error finalizing upload: {e}")
+                    raise HTTPException(status_code=500, detail=str(e))
+            else:
+                return {"status": "chunk_accepted"}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"Drive error: {response.text}")
+    except Exception as e:
+        log_error("CSMS_PB", f"Chunk upload failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/csms-pb/{pb_id}/attachment")
 async def upload_csms_pb_attachment(pb_id: str, file: UploadFile = File(...)):
     """Upload attachment to a CSMS PB record"""

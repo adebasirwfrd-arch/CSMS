@@ -2231,7 +2231,23 @@
                 </div>
 
                 <div class="form-group">
-                    <input type="file" id="pb-attachment" style="font-size: 12px;">
+                    <label class="form-label" data-i18n="attachment">Attachment</label>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button type="button" onclick="document.getElementById('pb-attachment').click()"
+                                style="background: var(--netflix-red); color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 600;">
+                                <svg viewBox="0 0 24 24" fill="white" width="18" height="18">
+                                    <path
+                                        d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z" />
+                                </svg>
+                                <span data-i18n="selectFile">Select File</span>
+                            </button>
+                            <span id="pb-attachment-name" style="font-size: 13px; color: var(--text-muted);">No file
+                                selected</span>
+                        </div>
+                        <input type="file" id="pb-attachment" style="display: none;"
+                            onchange="updatePBAttachmentName(this)">
+                    </div>
                 </div>
 
                 <button type="button" class="btn btn-save" onclick="submitPBRecord()" style="width: 100%;">
@@ -6377,15 +6393,15 @@
     }
 
     // ===== CSMS PB Functions =====
-    function populatePBProjectDropdown() {
-        const select = document.getElementById('pb-project-select');
-        select.innerHTML = '<option value="">Select Project</option>' +
-            allProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-    }
-
-    function onPBProjectChange(projectId) {
-        const project = allProjects.find(p => p.id === projectId);
-        document.getElementById('pb-well-name').value = project ? (project.well_name || project.well || '') : '';
+    function updatePBAttachmentName(input) {
+        const nameSpan = document.getElementById('pb-attachment-name');
+        if (input.files && input.files.length > 0) {
+            nameSpan.textContent = input.files[0].name;
+            nameSpan.style.color = 'var(--success)';
+        } else {
+            nameSpan.textContent = 'No file selected';
+            nameSpan.style.color = 'var(--text-muted)';
+        }
     }
 
     async function submitPBRecord() {
@@ -6394,6 +6410,7 @@
         const pbDate = form.pb_date.value;
         const picName = form.pic_name.value;
         const score = parseFloat(form.score.value);
+        const fileInput = document.getElementById('pb-attachment');
 
         if (!projectId || !pbDate || !picName || isNaN(score)) {
             showToast('Please fill all required fields', 'error');
@@ -6406,6 +6423,7 @@
         }
 
         try {
+            showToast('Saving PB record...', 'info');
             const pbData = {
                 project_id: projectId,
                 well_name: form.well_name.value,
@@ -6421,30 +6439,90 @@
                 body: JSON.stringify(pbData)
             });
 
-            if (res.ok) {
-                const newRecord = await res.json();
+            if (!res.ok) throw new Error('Failed to save PB record');
+            const newRecord = await res.json();
 
-                // Upload attachment if present
-                const fileInput = document.getElementById('pb-attachment');
-                if (fileInput.files.length > 0) {
-                    const formData = new FormData();
-                    formData.append('file', fileInput.files[0]);
-                    await fetch(`${API_BASE}/csms-pb/${newRecord.id}/attachment`, {
+            // Handle attachment via chunked upload if present
+            if (fileInput.files.length > 0) {
+                const file = fileInput.files[0];
+                const filename = file.name;
+                const totalSize = file.size;
+
+                showToast(`Starting attachment upload: ${(totalSize / (1024 * 1024)).toFixed(2)} MB...`, 'info');
+
+                // 1. Initiate upload
+                const initFormData = new FormData();
+                initFormData.append('filename', filename);
+                initFormData.append('mime_type', file.type || 'application/octet-stream');
+
+                const initRes = await fetch(`${API_BASE}/csms-pb/initiate-upload`, {
+                    method: 'POST',
+                    body: initFormData
+                });
+
+                if (!initRes.ok) throw new Error('Failed to initiate attachment upload');
+                const { upload_url } = await initRes.json();
+
+                // 2. Upload chunks
+                const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB
+                const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+
+                for (let i = 0; i < totalChunks; i++) {
+                    const start = i * CHUNK_SIZE;
+                    const end = Math.min(start + CHUNK_SIZE, totalSize);
+                    const chunk = file.slice(start, end);
+                    const progress = Math.round((i / totalChunks) * 100);
+
+                    showToast(`Uploading Attachment: ${progress}%...`, 'info');
+
+                    const chunkFormData = new FormData();
+                    chunkFormData.append('pb_id', newRecord.id);
+                    chunkFormData.append('upload_url', upload_url);
+                    chunkFormData.append('chunk_index', i);
+                    chunkFormData.append('total_chunks', totalChunks);
+                    chunkFormData.append('start_byte', start);
+                    chunkFormData.append('total_size', totalSize);
+                    chunkFormData.append('chunk_file', chunk, filename);
+
+                    const chunkRes = await fetch(`${API_BASE}/csms-pb/upload-chunk`, {
                         method: 'POST',
-                        body: formData
+                        body: chunkFormData
                     });
-                }
 
-                showToast('PB Record saved successfully!', 'success');
-                form.reset();
-                loadPBRecords();
-                updateStatistics(); // Refresh statistics dashboard
-            } else {
-                showToast('Failed to save PB record', 'error');
+                    if (!chunkRes.ok) throw new Error('Attachment chunk upload failed');
+                    const resData = await chunkRes.json();
+
+                    if (resData.status === 'complete') {
+                        showToast('Attachment uploaded successfully!', 'success');
+                        break;
+                    }
+                }
             }
+
+            showToast('PB Record and attachment saved!', 'success');
+            form.reset();
+            document.getElementById('pb-attachment-name').textContent = 'No file selected';
+            document.getElementById('pb-attachment-name').style.color = 'var(--text-muted)';
+            loadPBRecords();
+            updateStatistics();
         } catch (error) {
             console.error('Error submitting PB record:', error);
-            showToast('Error submitting record', 'error');
+            showToast(`Error: ${error.message}`, 'error');
+        }
+    }
+
+    function populatePBProjectDropdown() {
+        const select = document.getElementById('pb-project-select');
+        if (!select) return;
+        select.innerHTML = '<option value="">Select Project</option>' +
+            allProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    }
+
+    function onPBProjectChange(projectId) {
+        const project = allProjects.find(p => p.id === projectId);
+        const wellInput = document.getElementById('pb-well-name');
+        if (wellInput) {
+            wellInput.value = project ? (project.well_name || project.well || '') : '';
         }
     }
 
@@ -6479,14 +6557,36 @@
         container.innerHTML = records.slice(-10).reverse().map(r => {
             const project = allProjects.find(p => p.id === r.project_id) || {};
             const scoreColor = r.score < 60 ? 'var(--netflix-red)' : (r.score < 80 ? 'var(--warning)' : 'var(--success)');
+            const downloadUrl = r.drive_file_id ? `${API_BASE}/download/${r.drive_file_id}` : null;
+
             return `
-                <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 12px; margin-bottom: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong style="color: var(--text-primary);">${project.name || 'Unknown'}</strong>
-                        <div style="background: ${scoreColor}; padding: 4px 12px; border-radius: 20px; font-weight: 700;">${r.score}%</div>
+                <div style="background: var(--bg-tertiary); border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid var(--border); transition: transform 0.2s;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 700; font-size: 16px; color: var(--text-primary); margin-bottom: 4px;">
+                                ${project.name || 'Unknown'}
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                                <span>📍 ${r.well_name || '-'}</span>
+                                <span>•</span>
+                                <span>📅 ${formatDate(r.pb_date)}</span>
+                            </div>
+                        </div>
+                        <div style="background: ${scoreColor}; padding: 6px 14px; border-radius: 20px; font-weight: 800; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                            ${r.score}%
+                        </div>
                     </div>
-                    <div style="font-size: 12px; color: var(--text-muted);">
-                        ${r.well_name || ''} • ${formatDate(r.pb_date)} • PIC: ${r.pic_name}
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 12px; margin-top: 8px;">
+                        <div style="font-size: 11px; color: var(--text-muted);">
+                            PIC: <span style="color: var(--text-primary); font-weight: 600;">${r.pic_name}</span>
+                        </div>
+                        ${downloadUrl ? `
+                            <button onclick="triggerFileDownload('${downloadUrl}', 'PB_Attachment_${r.pic_name}')" 
+                               style="background: rgba(229, 9, 20, 0.1); color: var(--netflix-red); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(229, 9, 20, 0.2); font-size: 11px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                                📥 Download
+                            </button>
+                        ` : ''}
                     </div>
                 </div>
             `;
