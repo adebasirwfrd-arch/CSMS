@@ -616,10 +616,13 @@ def scan_drive_folder_for_files(folder_id: str, current_path: str = "") -> list:
     files_found = []
     
     if not drive_service.enabled or not drive_service.service:
+        log_warning("REPORT", "Drive service not enabled/available for scan")
         return files_found
     
     try:
+        log_info("REPORT", f"Scanning folder: {folder_id}, path: {current_path or 'ROOT'}")
         items = drive_service.fetch_files_in_folder(folder_id)
+        log_info("REPORT", f"Found {len(items)} items in folder {folder_id}")
         
         for item in items:
             item_name = item.get('name', '')
@@ -630,11 +633,13 @@ def scan_drive_folder_for_files(folder_id: str, current_path: str = "") -> list:
             
             if mime_type == 'application/vnd.google-apps.folder':
                 # Recursively scan subfolders
+                log_info("REPORT", f"  -> Entering folder: {item_name}")
                 sub_files = scan_drive_folder_for_files(item_id, item_path)
                 files_found.extend(sub_files)
             else:
                 # It's a file - skip "DAFTAR ISI.pdf"
                 if item_name != "DAFTAR ISI.pdf":
+                    log_info("REPORT", f"  -> Found file: {item_name}")
                     files_found.append({
                         'id': item_id,
                         'name': item_name,
@@ -645,6 +650,7 @@ def scan_drive_folder_for_files(folder_id: str, current_path: str = "") -> list:
         log_error("REPORT", f"Error scanning Drive folder: {e}")
     
     return files_found
+
 
 @app.get("/projects/{project_id}/report")
 def generate_project_report(project_id: str, mode: str = "download"):
@@ -760,12 +766,17 @@ def generate_project_report(project_id: str, mode: str = "download"):
     elements.append(Paragraph("Task Summary & Attachments", heading_style))
     
     # Get all files from Google Drive project folder (THE ACTUAL SOURCE OF TRUTH)
+    log_info("REPORT", f"Looking for project folder: '{project['name']}'")
     project_folder_id = drive_service.find_or_create_folder(project['name'])
+    log_info("REPORT", f"Project folder ID result: {project_folder_id}")
+    
     drive_files = []
     if project_folder_id:
         log_info("REPORT", f"Scanning Drive folder {project_folder_id} for all files...")
         drive_files = scan_drive_folder_for_files(project_folder_id)
         log_info("REPORT", f"Found {len(drive_files)} files in Drive folder")
+    else:
+        log_error("REPORT", f"Could not find project folder for '{project['name']}'", send_email=True)
     
     # Task statistics  
     completed = len([t for t in tasks if t.get('status') == 'Completed'])
