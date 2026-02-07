@@ -3086,7 +3086,7 @@
             photo: 'Photo', file: 'File', writeReply: 'Write a reply...',
             // Project Form
             projectName: 'Project Name', title: 'Title', well: 'Well', status: 'Status', kontrakNo: 'Contract No',
-            startDate: 'Start Date', endDate: 'End Date', client: 'Client', deleteProject: 'Delete Project', deleteTask: 'Delete Task',
+            startDate: 'Start Date', endDate: 'End Date', client: 'Client', deleteProject: 'Delete Project', deleteTask: 'Delete Task', fullChecklist: 'Full Checklist',
             // Create Forms
             createNewProject: 'Create New Project', createNewTask: 'Create New Task', projectStatus: 'Project Status',
             rigDownEstimate: 'Rig Down Estimate', assignedTo: 'Assigned To', picEmail: 'PIC Email', picManagerEmail: 'PIC Manager Email (CC)',
@@ -4893,9 +4893,16 @@
                         <p style="margin-bottom: 8px;"><strong>${t('startDate')}:</strong> ${project.start_date || 'N/A'}</p>
                         <p style="margin-bottom: 20px;"><strong>${t('endDate')}:</strong> ${project.end_date || 'N/A'}</p>
                         
+                        <!-- Full Checklist Button -->
+                        <div style="margin-bottom: 20px;">
+                            <button class="full-checklist-btn" onclick="openFullChecklist('${project.id}', '${project.name.replace(/'/g, "\\\\'")}')" style="background: linear-gradient(135deg, #4CAF50, #45a049); color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; width: fit-content; transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+                                📋 ${t('fullChecklist') || 'Full Checklist'}
+                            </button>
+                        </div>
+
                         <!-- Admin Delete Button -->
                         <div class="admin-only" style="margin-bottom: 20px;">
-                            <button class="delete-btn" onclick="deleteProject('${project.id}', '${project.name.replace(/'/g, "\\'")}')">
+                            <button class="delete-btn" onclick="deleteProject('${project.id}', '${project.name.replace(/'/g, "\\\\'")}')">
                                 🗑️ ${t('deleteProject')}
                             </button>
                         </div>
