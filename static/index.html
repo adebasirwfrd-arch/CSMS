@@ -3738,7 +3738,7 @@
                 btn.innerHTML = '⏳ Syncing...';
             }
 
-            const response = await fetch(`${API_URL}/projects/${projectId}/sync-full-checklist`, {
+            const response = await fetch(`${API_BASE}/projects/${projectId}/sync-full-checklist`, {
                 method: 'POST'
             });
 
