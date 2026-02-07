@@ -3743,8 +3743,14 @@
             });
 
             if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.detail || 'Sync failed');
+                let errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+                try {
+                    const errData = await response.json();
+                    errorMsg = errData.detail || errorMsg;
+                } catch (jsonErr) {
+                    console.error('Failed to parse error response:', jsonErr);
+                }
+                throw new Error(errorMsg);
             }
 
             const data = await response.json();
@@ -3762,7 +3768,8 @@
 
         } catch (err) {
             console.error('Sync Error:', err);
-            alert('❌ Gagal sinkronisasi: ' + err.message);
+            const errorDetail = err.message || String(err);
+            alert(`❌ Gagal sinkronisasi:\n\n${errorDetail}\n\nSilakan coba lagi atau hubungi admin.`);
         } finally {
             if (btn) {
                 btn.disabled = false;
