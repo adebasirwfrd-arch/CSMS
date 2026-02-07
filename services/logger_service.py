@@ -2,21 +2,33 @@
 CSMS Activity Logger Service
 ============================
 Centralized logging for the CSMS application.
-Provides structured logging to both console and file with daily rotation.
+Provides structured logging to console (always) and file (when writable).
 """
 import logging
 import os
 from datetime import datetime
-from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
+
+# Check if we're in a serverless environment (Vercel)
+IS_SERVERLESS = os.getenv('VERCEL', '') == '1' or os.getenv('AWS_LAMBDA_FUNCTION_NAME', '') != ''
 
 # Determine log directory (relative to project root)
 PROJECT_ROOT = Path(__file__).parent.parent
 LOG_DIR = PROJECT_ROOT / "logs"
 LOG_FILE = LOG_DIR / "csms_activity.log"
 
-# Ensure log directory exists
-LOG_DIR.mkdir(exist_ok=True)
+# Only try to create log directory if not serverless
+FILE_LOGGING_ENABLED = False
+if not IS_SERVERLESS:
+    try:
+        LOG_DIR.mkdir(exist_ok=True)
+        # Test if writable
+        test_file = LOG_DIR / ".write_test"
+        test_file.touch()
+        test_file.unlink()
+        FILE_LOGGING_ENABLED = True
+    except (OSError, PermissionError):
+        FILE_LOGGING_ENABLED = False
 
 # Create custom formatter
 class CSMSFormatter(logging.Formatter):
@@ -44,7 +56,7 @@ def create_logger(name: str = "CSMS") -> logging.Logger:
     
     logger.setLevel(logging.DEBUG)
     
-    # Console Handler - INFO and above
+    # Console Handler - INFO and above (always enabled)
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_format = CSMSFormatter(
@@ -52,26 +64,29 @@ def create_logger(name: str = "CSMS") -> logging.Logger:
         datefmt="%Y-%m-%d %H:%M:%S"
     )
     console_handler.setFormatter(console_format)
-    
-    # File Handler - DEBUG and above with daily rotation
-    file_handler = TimedRotatingFileHandler(
-        filename=str(LOG_FILE),
-        when="midnight",
-        interval=1,
-        backupCount=30,  # Keep 30 days of logs
-        encoding="utf-8"
-    )
-    file_handler.setLevel(logging.DEBUG)
-    file_format = CSMSFormatter(
-        fmt="[%(asctime)s] [%(levelname)s] [%(module_name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S"
-    )
-    file_handler.setFormatter(file_format)
-    file_handler.suffix = "%Y-%m-%d"
-    
-    # Add handlers
     logger.addHandler(console_handler)
-    logger.addHandler(file_handler)
+    
+    # File Handler - Only if filesystem is writable (not on Vercel)
+    if FILE_LOGGING_ENABLED:
+        try:
+            from logging.handlers import TimedRotatingFileHandler
+            file_handler = TimedRotatingFileHandler(
+                filename=str(LOG_FILE),
+                when="midnight",
+                interval=1,
+                backupCount=30,
+                encoding="utf-8"
+            )
+            file_handler.setLevel(logging.DEBUG)
+            file_format = CSMSFormatter(
+                fmt="[%(asctime)s] [%(levelname)s] [%(module_name)s] %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S"
+            )
+            file_handler.setFormatter(file_format)
+            file_handler.suffix = "%Y-%m-%d"
+            logger.addHandler(file_handler)
+        except Exception as e:
+            print(f"[WARN] Could not setup file logging: {e}")
     
     return logger
 
