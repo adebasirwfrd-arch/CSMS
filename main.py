@@ -1311,88 +1311,97 @@ def initiate_drive_upload(
     filename: str = Form(...),
     mime_type: str = Form(default="application/octet-stream")
 ):
-    """Create a resumable upload session in Google Drive and return the upload URL"""
+    """Initiate a resumable upload session and return the URL for direct upload from frontend"""
     try:
-        if not drive_service.enabled or not drive_service.service:
+        if not drive_service.enabled:
             raise HTTPException(status_code=500, detail="Google Drive not configured")
         
-        # Find or create RelatedDocs folder
-        folder_id = drive_service.find_or_create_folder("RelatedDocs")
+        upload_url, _ = drive_service.get_resumable_upload_session(filename, mime_type)
         
-        if not folder_id:
-            raise HTTPException(status_code=500, detail="Could not find/create RelatedDocs folder")
-        
-        # Create resumable upload session
-        file_metadata = {
-            'name': filename,
-            'parents': [folder_id]
-        }
-        
-        # Use media upload initiation
-        from googleapiclient.http import MediaIoBaseUpload
-        import io
-        
-        # Create empty media for initialization
-        media = MediaIoBaseUpload(io.BytesIO(b''), mimetype=mime_type, resumable=True)
-        
-        request = drive_service.service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id'
-        )
-        
-        # Get the resumable upload URI
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-        
-        file_id = response.get('id')
-        
-        log_info("RELATED_DOC", f"Direct upload initiated: filename={filename}, file_id={file_id}")
-        
+        if not upload_url:
+            raise HTTPException(status_code=500, detail="Failed to initiate resumable upload")
+            
         return {
-            "file_id": file_id,
-            "folder_id": folder_id,
-            "message": "Use file_id to register document"
+            "upload_url": upload_url,
+            "message": "Upload file content via PUT to upload_url"
         }
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        log_error("RELATED_DOC", f"Initiate upload failed: {e}", send_email=True)
+        log_error("REPORT", f"Error initiating resumable upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/related-docs/register")
-def register_related_doc(
+@app.post("/related-docs/upload-chunk")
+async def upload_related_doc_chunk(
     project_id: str = Form(...),
     well_name: str = Form(None),
     doc_name: str = Form(...),
     filename: str = Form(...),
-    drive_file_id: str = Form(...)
+    upload_url: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    start_byte: int = Form(...),
+    total_size: int = Form(...),
+    chunk_file: UploadFile = File(...)
 ):
-    """Register a document that was uploaded directly to Google Drive"""
-    import uuid
-    
+    """Upload a chunk of a document to Google Drive via proxy to bypass Vercel limits"""
     try:
-        log_info("RELATED_DOC", f"Registering doc: {doc_name}, file_id={drive_file_id}")
+        import requests
         
-        new_doc = {
-            "id": str(uuid.uuid4()),
-            "project_id": project_id,
-            "well_name": well_name,
-            "doc_name": doc_name,
-            "filename": filename,
-            "drive_file_id": drive_file_id,
-            "created_at": datetime.now().isoformat()
+        chunk_data = await chunk_file.read()
+        chunk_size = len(chunk_data)
+        end_byte = start_byte + chunk_size - 1
+        
+        # Headers for Google Drive Resumable Upload (Chunked)
+        # Content-Range format: bytes start-end/total
+        headers = {
+            "Content-Range": f"bytes {start_byte}-{end_byte}/{total_size}",
+            "Content-Length": str(chunk_size)
         }
         
-        save_related_doc(new_doc)
-        log_info("RELATED_DOC", f"Registered successfully: {new_doc['id']}")
+        log_info("RELATED_DOC", f"Uploading chunk {chunk_index+1}/{total_chunks} for {filename} ({start_byte}-{end_byte}/{total_size})")
         
-        return new_doc
+        # Forward chunk to Google Drive
+        # Note: We don't need Authorization header here because the resumable URL already contains the session token
+        response = requests.put(upload_url, headers=headers, data=chunk_data)
         
+        # Google returns 308 Permanent Redirect for intermediate chunks
+        # or 200/201 for the final chunk
+        if response.status_code in [200, 201, 308]:
+            if chunk_index == total_chunks - 1:
+                # Last chunk! Google returns file info in JSON
+                try:
+                    res_data = response.json()
+                    file_id = res_data.get("id")
+                    
+                    if not file_id:
+                        log_error("RELATED_DOC", f"Final chunk upload success but no file_id in response: {response.text}")
+                        raise Exception("No file_id in Google response")
+                        
+                    # Register document
+                    import uuid
+                    new_doc = {
+                        "id": str(uuid.uuid4()),
+                        "project_id": project_id,
+                        "well_name": well_name,
+                        "doc_name": doc_name,
+                        "filename": filename,
+                        "drive_file_id": file_id,
+                        "created_at": datetime.now().isoformat()
+                    }
+                    
+                    save_related_doc(new_doc)
+                    log_info("RELATED_DOC", f"Chunked upload complete and registered: {new_doc['id']}")
+                    return {"status": "complete", "doc": new_doc}
+                except Exception as e:
+                    log_error("RELATED_DOC", f"Error finalizing chunked upload: {e}")
+                    raise HTTPException(status_code=500, detail=str(e))
+            else:
+                return {"status": "chunk_accepted", "next_expected": end_byte + 1}
+        else:
+            log_error("RELATED_DOC", f"Google Drive rejected chunk {chunk_index}: {response.status_code} {response.text}")
+            raise HTTPException(status_code=response.status_code, detail=f"Google Drive error: {response.text}")
+            
     except Exception as e:
-        log_error("RELATED_DOC", f"Register failed: {e}", send_email=True)
+        log_error("RELATED_DOC", f"Chunk upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/related-docs")

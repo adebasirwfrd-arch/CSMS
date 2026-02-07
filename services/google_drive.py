@@ -11,7 +11,7 @@ from googleapiclient.http import MediaInMemoryUpload
 import os
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from dotenv import load_dotenv
 from services.logger_service import log_drive_operation, log_drive_error, log_info, log_warning, log_error
 
@@ -340,6 +340,87 @@ class GoogleDriveService:
         except Exception as e:
             print(f"[ERROR] Error uploading file: {e}")
             return None
+
+    def get_resumable_upload_session(self, filename: str, mime_type: str, folder_name: str = "RelatedDocs") -> Tuple[str, str]:
+        """
+        Initiate a resumable upload session and return the Location URL.
+        Returns: (upload_url, file_id)
+        """
+        if not self.enabled or not self.service:
+            log_error("DRIVE", "Drive not enabled for resumable upload")
+            return None, None
+
+        try:
+            parent_id = self.find_or_create_folder(folder_name) or self.folder_id
+            
+            # 1. Initiate resumable upload
+            import requests # Using requests for the raw HTTP call if needed, or google-api-client
+            # Actually, we can use the discovery service to get the metadata/session
+            
+            file_metadata = {
+                'name': filename,
+                'parents': [parent_id]
+            }
+            
+            # Since we want to return a URL the BROWSER can use, we need to be careful.
+            # Google's resumable upload initiation returns a 'Location' header.
+            # The client needs an access token to use that URL effectively if it's not a public session.
+            # But we are using Service Account/OAuth from backend. 
+            # A better way is for the backend to handle the proxying or use a signed URL if supported.
+            # Google Drive doesn't exactly have "Signed URLs" like S3 in a simple way for non-public files.
+            
+            # ALTERNATIVE: Use the actual google-api-python-client to get the session URI
+            from googleapiclient.http import MediaInMemoryUpload
+            import io
+            
+            # This is a trick to get the resumable URI from the library
+            media = MediaInMemoryUpload(b'', mimetype=mime_type, resumable=True)
+            request = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id',
+                supportsAllDrives=True
+            )
+            
+            # Instead of executing, we extract the URI
+            # The library internally builds the request.
+            # We can use the library's internal structures or just perform the raw POST.
+            
+            # Let's do a raw POST to be sure we get the clean Location header
+            # We need the current token
+            if self.auth_method == "OAuth2":
+                creds = self.service._http.credentials
+                if creds.expired:
+                    creds.refresh(Request())
+                token = creds.token
+            else:
+                # Service Account
+                creds = self.service._http.credentials
+                creds.refresh(Request())
+                token = creds.token
+
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "X-Upload-Content-Type": mime_type,
+                "Content-Type": "application/json; charset=UTF-8"
+            }
+            
+            url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable"
+            payload = json.dumps(file_metadata)
+            
+            import requests
+            response = requests.post(url, headers=headers, data=payload)
+            
+            if response.status_code == 200:
+                upload_url = response.headers.get("Location")
+                return upload_url, None # file_id is not created yet in v3 resumable
+            else:
+                log_error("DRIVE", f"Failed to initiate resumable upload: {response.text}")
+                return None, None
+
+        except Exception as e:
+            log_error("DRIVE", f"Error in get_resumable_upload_session: {e}")
+            return None, None
 
     def find_file_in_folder(self, filename: str, project_name: str) -> str:
         """Find a file by name in a project folder"""
