@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from services.google_drive import GoogleDriveService
+from services.google_drive import GoogleDriveService, drive_service
 from config import STANDARD_TASKS
 from database import (
     Database, TASKS_FILE, PROJECTS_FILE, SCHEDULES_FILE, COMMENTS_FILE, CSMS_PB_FILE, RELATED_DOCS_FILE,
@@ -63,7 +63,7 @@ app.add_middleware(
 )
 
 db = Database()
-drive_service = GoogleDriveService()
+# drive_service is now imported from services.google_drive as a singleton
 
 # Mount static files for assets (logo, etc.)
 static_dir = Path(__file__).parent / "static"

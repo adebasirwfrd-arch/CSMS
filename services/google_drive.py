@@ -586,3 +586,6 @@ class GoogleDriveService:
         except Exception as e:
             log_error("DRIVE", f"Error getting metadata for {file_id}: {e}", send_email=False)
             return None
+
+# Singleton instance for consistent authentication and caching across services
+drive_service = GoogleDriveService()
