@@ -18,14 +18,17 @@ except ImportError:
     supabase_service = None
     SUPABASE_ENABLED = False
 
-print(f"[DB] ========================================")
-print(f"[DB] Supabase enabled: {SUPABASE_ENABLED}")
+# Import logger
+from services.logger_service import log_db_operation, log_db_error, log_info, log_warning
+
+log_info("DB", "========================================")
+log_info("DB", f"Supabase enabled: {SUPABASE_ENABLED}")
 if SUPABASE_ENABLED:
-    print(f"[DB] MODE: Supabase is SINGLE SOURCE OF TRUTH")
-    print(f"[DB] All reads/writes go directly to Supabase")
+    log_info("DB", "MODE: Supabase is SINGLE SOURCE OF TRUTH")
+    log_info("DB", "All reads/writes go directly to Supabase")
 else:
-    print(f"[DB] MODE: Local JSON fallback (Supabase not configured)")
-print(f"[DB] ========================================")
+    log_info("DB", "MODE: Local JSON fallback (Supabase not configured)")
+log_info("DB", "========================================")
 
 # Local JSON storage paths (fallback only)
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -91,7 +94,7 @@ class Database:
         if SUPABASE_ENABLED:
             # SYNCHRONOUS - will raise exception if fails
             result = supabase_service.create_project(new_project)
-            print(f"[DB] Project created in Supabase: {result.get('id')}")
+            log_db_operation("CREATE", "project", result.get('id'), success=True)
             return result
         else:
             # Local fallback
@@ -105,7 +108,7 @@ class Database:
         if SUPABASE_ENABLED:
             # SYNCHRONOUS - will raise exception if fails
             result = supabase_service.update_project(project_id, updates)
-            print(f"[DB] Project updated in Supabase: {project_id}")
+            log_db_operation("UPDATE", "project", project_id, success=True)
             return result
         else:
             projects = self.get_projects()
@@ -121,7 +124,7 @@ class Database:
         if SUPABASE_ENABLED:
             # SYNCHRONOUS - will raise exception if fails
             result = supabase_service.delete_project(project_id)
-            print(f"[DB] Project deleted from Supabase: {project_id}")
+            log_db_operation("DELETE", "project", project_id, success=True)
             return result
         else:
             projects = [p for p in self.get_projects() if p['id'] != project_id]

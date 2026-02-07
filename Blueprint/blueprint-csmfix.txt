@@ -1,0 +1,101 @@
+BLUEPRINT CSMS FIX
+==================
+
+1.  **PROJECT OVERVIEW**
+    *   **Name**: CSMS (Contractor Safety Management System) Project Management
+    *   **Architecture**: Python FastAPI Backend serving a Static Frontend (Vanilla HTML/JS/CSS).
+    *   **Hosting**: deployed on Vercel (configured via `vercel.json`).
+    *   **Database**: Hybrid/Dual-mode.
+        *   Primary: Supabase (PostgreSQL via `supabase-py`).
+        *   Fallback: Local JSON files in `data/` directory.
+    *   **Storage**: Google Drive (via API) for file attachments and folder organization.
+    *   **Email**: Brevo API for notifications/reminders.
+
+2.  **PROJECT STRUCTURE**
+    /
+    ├── api/
+    │   └── index.py            # Vercel entry point (imports main:app)
+    ├── data/                   # Local JSON database files (fallback)
+    ├── routers/                # FastAPI Routers
+    │   └── reports.py          # Report generation endpoints
+    ├── services/               # Business Logic & Integrations
+    │   ├── email_service.py    # Brevo email integration
+    │   ├── excel_sync.py       # Excel sync logic
+    │   ├── google_drive.py     # Google Drive API wrapper
+    │   ├── report_engine.py    # Report generation logic (PDF/Excel)
+    │   └── supabase_service.py # Supabase client wrapper
+    ├── static/                 # Frontend Assets
+    │   ├── index.html          # MAIN APPLICATION (SPA Logic included)
+    │   ├── report_generator.html # Standalone report tool
+    │   ├── privacy-policy.html
+    │   └── weatherford_logo.png
+    ├── config.py               # Configuration constants (Standard Tasks)
+    ├── database.py             # Database Abstraction Layer (DAL)
+    ├── main.py                 # Backend Entry Point (App & Routes)
+    ├── requirements.txt        # Python dependencies
+    └── vercel.json             # Vercel Deployment Config
+
+3.  **BACKEND ANALYSIS (FastAPI)**
+
+    **A. Core Routes (`main.py`)**
+    *   `GET /` -> Serves `static/index.html`.
+    *   `GET /api/status` -> Health check.
+    *   `GET /api/debug/supabase` -> Debugs DB connection.
+    *   `POST /api/force-sync` -> Force restores local JSON from Supabase.
+    *   `POST /api/send-reminders` -> Triggers email reminders (Background Task).
+    
+    **B. Project Management Routes**
+    *   `GET /projects` -> List all projects.
+    *   `POST /projects` -> Create new project (triggers background Drive folder creation + Task generation).
+    *   `GET /projects/{id}` -> Get project details + tasks (sorted).
+    *   `PATCH /projects/{id}` -> Update project details.
+    *   `DELETE /projects/{id}` -> Delete project and its tasks.
+    *   `GET /projects/{id}/report` -> Generates PDF report with embedded attachments.
+
+    **C. Report Routes (`routers/reports.py`)**
+    *   `POST /api/reports/generate` -> Generates report from template + source files.
+    *   `POST /api/reports/preview` -> Previews data from uploaded source file (PDF/Excel).
+
+    **D. Data Layer (`database.py` & `services/supabase_service.py`)**
+    *   Implements a "Single Source of Truth" pattern.
+    *   ALL writes go to Supabase synchronously if enabled.
+    *   Reads prefer Supabase, fallback to local JSON.
+    *   Entities: Projects, Tasks, Schedules, Comments, CSMS PB, Related Docs.
+
+    **E. Key Services**
+    *   **Google Drive**: Handles nested folder creation (Project -> Element -> Task), file uploads, and Office-to-PDF conversion.
+    *   **Email**: Sends project completion reminders and Rig Down alerts.
+
+4.  **FRONTEND ANALYSIS (Vanilla JS SPA)**
+
+    **A. Structure (`static/index.html`)**
+    *   **Single File SPA**: HTML structure, CSS styles, and JS logic are all contained in this one file (approx 7000 lines).
+    *   **Navigation**: Uses `navigateTo(screenId)` to toggle visibility of sections (`home-screen`, `projects-screen`, `schedule-screen`, etc.).
+    *   **State Management**: Global variables (`allProjects`, `allTasks`, `allSchedules`) populated via API fetch.
+
+    **B. Key Components (Logical Modules)**
+    1.  **Header & Drawer**: Navigation, User Profile, Sync Status.
+    2.  **Home Screen**: Dashboard stats, Greeting.
+    3.  **Projects Screen**: List of projects with status filters/chips, Project creation modal.
+    4.  **Project Detail View**: 
+        *   Project Metadata.
+        *   Task List (grouped/sorted).
+        *   Task Detail Modal (File Uploads via Google Drive API).
+    5.  **Schedule/Calendar**: 
+        *   Calendar Grid (Weekly/Monthly views).
+        *   Meeting Types: MWT, HSE, CSMS PB, etc.
+    6.  **Admin/Tools**: 
+        *   Report Generator.
+        *   Related Docs Manager.
+
+    **C. Integration Points**
+    *   **API Calls**: Uses `fetch('/projects'...)`, `fetch('/api/...' )`.
+    *   **Webview Support**: Detects `window.ReactNativeWebView` to handle downloads via postMessage (for Mobile App wrapper).
+
+5.  **CRITICAL FLOWS**
+    *   **Project Creation**: 
+        Frontend Form -> POST /projects -> DB Insert -> Drive Folder Create (Background) -> Batch Task Create -> Excel Sync.
+    *   **File Upload**: 
+        Frontend -> POST to Drive API (Backend wrapper) -> Updates Task JSON with file ID -> Drive saves file in hierarchical folder.
+    *   **Reporting**:
+        Frontend -> GET /projects/{id}/report -> Backend fetches data + downloads files from Drive -> Compresses images -> Generates PDF via ReportLab.

@@ -226,5 +226,69 @@ class EmailService:
         
         return self._send_email(recipients, subject, body_html, cc_emails)
 
+    def send_error_notification(self, error_message: str, error_location: str, traceback_str: str = "", request_info: str = "") -> bool:
+        """Send error notification email to admin
+        
+        Args:
+            error_message: The error message
+            error_location: Module/file where the error occurred
+            traceback_str: Full traceback string
+            request_info: Optional request context (method, path, etc.)
+        """
+        admin_email = os.getenv('ERROR_NOTIFICATION_EMAIL', 'ade.basirwfrd@gmail.com')
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        subject = f"[CSMS ERROR] {error_location}: {error_message[:50]}..."
+        
+        # Escape HTML in traceback
+        safe_traceback = traceback_str.replace('<', '&lt;').replace('>', '&gt;') if traceback_str else "No traceback available"
+        safe_message = error_message.replace('<', '&lt;').replace('>', '&gt;')
+        
+        body_html = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5;">
+            <div style="background: #dc3545; color: white; padding: 20px; border-radius: 8px;">
+                <h2 style="margin: 0;">⚠️ CSMS Application Error</h2>
+            </div>
+            <div style="padding: 20px; background: white; border-radius: 8px; margin-top: 10px; border: 1px solid #ddd;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; width: 120px;"><strong>Timestamp</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">{timestamp}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Location</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; color: #dc3545; font-weight: bold;">{error_location}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Error</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">{safe_message}</td>
+                    </tr>
+                    {"<tr><td style='padding: 10px; border-bottom: 1px solid #eee;'><strong>Request</strong></td><td style='padding: 10px; border-bottom: 1px solid #eee;'>" + request_info + "</td></tr>" if request_info else ""}
+                </table>
+                
+                <div style="margin-top: 20px;">
+                    <strong>Traceback:</strong>
+                    <pre style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 4px; overflow-x: auto; font-size: 12px; line-height: 1.4;">{safe_traceback}</pre>
+                </div>
+            </div>
+            <p style="color: #666; font-size: 12px; margin-top: 20px;">
+                This is an automated error notification from CSMS Backend.<br>
+                Environment: Vercel Production
+            </p>
+        </body>
+        </html>
+        """
+        
+        try:
+            result = self._send_email([admin_email], subject, body_html)
+            if result:
+                print(f"[EMAIL] Error notification sent to {admin_email}")
+            return result
+        except Exception as e:
+            # Don't raise error when email fails - just log it
+            print(f"[EMAIL ERROR] Failed to send error notification: {e}")
+            return False
+
 # Global Instance
 email_service = EmailService()

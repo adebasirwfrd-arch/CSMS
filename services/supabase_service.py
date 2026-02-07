@@ -12,6 +12,18 @@ try:
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False
+
+# Import logger (delayed to avoid circular import)
+def _get_logger():
+    try:
+        from services.logger_service import log_supabase_operation, log_supabase_error, log_info, log_warning, log_error
+        return log_supabase_operation, log_supabase_error, log_info, log_warning, log_error
+    except ImportError:
+        # Fallback if logger not available
+        def noop(*args, **kwargs): pass
+        return noop, noop, noop, noop, noop
+
+if not SUPABASE_AVAILABLE:
     print("[WARN] supabase-py not installed. Run: pip install supabase")
 
 class SupabaseService:
@@ -20,25 +32,26 @@ class SupabaseService:
         self.key = os.getenv("SUPABASE_KEY", "")
         self.client: Optional[Client] = None
         self.enabled = False
+        self._log_op, self._log_err, self._log_info, self._log_warn, self._log_error = _get_logger()
         
-        print("[SUPABASE] Initializing Supabase Service...")
-        print(f"  [DEBUG] SUPABASE_URL: {self.url[:30] + '...' if self.url else 'NOT SET'}")
-        print(f"  [DEBUG] SUPABASE_KEY: {'SET' if self.key else 'NOT SET'}")
+        self._log_info("SUPABASE", "Initializing Supabase Service...")
+        self._log_info("SUPABASE", f"SUPABASE_URL: {self.url[:30] + '...' if self.url else 'NOT SET'}")
+        self._log_info("SUPABASE", f"SUPABASE_KEY: {'SET' if self.key else 'NOT SET'}")
         
         if not SUPABASE_AVAILABLE:
-            print("[ERROR] supabase-py package not installed")
+            self._log_error("SUPABASE", "supabase-py package not installed")
             return
             
         if not self.url or not self.key:
-            print("[ERROR] SUPABASE_URL or SUPABASE_KEY not set")
+            self._log_error("SUPABASE", "SUPABASE_URL or SUPABASE_KEY not set")
             return
         
         try:
             self.client = create_client(self.url, self.key)
             self.enabled = True
-            print("[OK] Supabase client initialized!")
+            self._log_info("SUPABASE", "Client initialized successfully!")
         except Exception as e:
-            print(f"[ERROR] Supabase initialization failed: {e}")
+            self._log_error("SUPABASE", f"Initialization failed: {e}", e)
             self.enabled = False
     
     # ==================== PROJECTS ====================
@@ -48,9 +61,10 @@ class SupabaseService:
             return []
         try:
             result = self.client.table('projects').select("*").execute()
+            self._log_op("SELECT", "projects", success=True)
             return result.data or []
         except Exception as e:
-            print(f"[ERROR] Error fetching projects: {e}")
+            self._log_err("SELECT", "projects", e)
             return []
     
     def get_project(self, project_id: str) -> Optional[Dict]:
@@ -58,31 +72,28 @@ class SupabaseService:
             return None
         try:
             result = self.client.table('projects').select("*").eq('id', project_id).execute()
+            self._log_op("SELECT", "projects", project_id, success=True)
             return result.data[0] if result.data else None
         except Exception as e:
-            print(f"[ERROR] Error fetching project {project_id}: {e}")
+            self._log_err("SELECT", "projects", e)
             return None
     
     def create_project(self, project_data: Dict) -> Dict:
-        print(f"[SUPABASE] create_project called, enabled={self.enabled}")
-        print(f"[SUPABASE] Project data: {project_data}")
+        self._log_info("SUPABASE", f"create_project called, enabled={self.enabled}")
         if not self.enabled:
-            print("[SUPABASE] Not enabled, returning data as-is")
+            self._log_warn("SUPABASE", "Not enabled, returning data as-is")
             return project_data
         try:
-            print("[SUPABASE] Inserting into projects table...")
+            self._log_info("SUPABASE", "Inserting into projects table...")
             result = self.client.table('projects').insert(project_data).execute()
-            print(f"[SUPABASE] Insert result: {result}")
             if result.data:
-                print(f"[SUPABASE] SUCCESS! Created project: {result.data[0]}")
+                self._log_op("INSERT", "projects", result.data[0].get('id'), success=True)
                 return result.data[0]
             else:
-                print(f"[SUPABASE] WARNING: No data returned, result={result}")
+                self._log_warn("SUPABASE", "No data returned from insert")
                 return project_data
         except Exception as e:
-            print(f"[ERROR] Error creating project: {e}")
-            import traceback
-            traceback.print_exc()
+            self._log_err("INSERT", "projects", e)
             return project_data
     
     def update_project(self, project_id: str, updates: Dict) -> Optional[Dict]:

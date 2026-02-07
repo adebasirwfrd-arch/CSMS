@@ -43,11 +43,14 @@ except ImportError:
     SUPABASE_AVAILABLE = False
 
 from routers.reports import router as reports_router
-
+from services.logger_service import (
+    app_logger, log_request, log_response, log_info, log_error, log_warning
+)
+import time
 
 app = FastAPI()
 
-print("[INFO] Starting CSMS Backend with Google Drive Fix v2 (Force Update)")
+log_info("MAIN", "Starting CSMS Backend with Google Drive Fix v2 (Force Update)")
 
 # CORS
 app.add_middleware(
@@ -68,6 +71,27 @@ if static_dir.exists():
 
 # Include Routers
 app.include_router(reports_router)
+
+# HTTP Request/Response Logging Middleware
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Middleware to log all HTTP requests and responses"""
+    start_time = time.time()
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Log request
+    log_request(request.method, str(request.url.path), client_ip)
+    
+    try:
+        response = await call_next(request)
+        duration_ms = (time.time() - start_time) * 1000
+        log_response(response.status_code, duration_ms)
+        return response
+    except Exception as e:
+        duration_ms = (time.time() - start_time) * 1000
+        request_info = f"{request.method} {request.url.path} from {client_ip}"
+        log_error("HTTP", f"Request failed after {duration_ms:.2f}ms", e, request_info=request_info)
+        raise
 
 # NOTE: All database functions (get_schedules, save_schedules, etc.) are now imported from database.py
 # which handles Supabase cloud storage with JSON file fallback

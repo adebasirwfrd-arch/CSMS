@@ -1,5 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Response
 from services.report_engine import ReportEngine
+from services.logger_service import log_report, log_error, log_info
 from typing import List, Optional
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -26,10 +27,10 @@ async def generate_report(
             template_filename = "report.csv"
 
         # Force CSV output if requested
-        print(f"[DEBUG] force_csv received: '{force_csv}'")
+        log_info("REPORT", f"force_csv received: '{force_csv}'")
         if force_csv == 'true':
             template_filename = "report.csv"  # Override to trigger CSV logic
-            print(f"[DEBUG] Forcing CSV output. template_filename = {template_filename}")
+            log_info("REPORT", f"Forcing CSV output. template_filename = {template_filename}")
 
         # Read Sources
         source_contents = []
@@ -69,9 +70,7 @@ async def generate_report(
         )
         
     except Exception as e:
-        print(f"[API ERROR] Report generation failed: {e}")
-        import traceback
-        traceback.print_exc()
+        log_error("REPORT", f"Report generation failed: {e}", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/preview")
@@ -99,5 +98,5 @@ async def preview_source_data(
         }
         
     except Exception as e:
-        print(f"[API ERROR] Preview failed: {e}")
+        log_error("REPORT", f"Preview failed: {e}", e)
         raise HTTPException(status_code=500, detail=str(e))

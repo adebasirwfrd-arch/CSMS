@@ -12,6 +12,7 @@ import os
 import json
 from pathlib import Path
 from dotenv import load_dotenv
+from services.logger_service import log_drive_operation, log_drive_error, log_info, log_warning, log_error
 
 load_dotenv()
 
@@ -28,14 +29,13 @@ class GoogleDriveService:
         self.folders_cache = {}
         self.auth_method = None  # Track which auth method was used
         
-        print("[INFO] Initializing Google Drive Service...")
-        print(f"  [DEBUG] GOOGLE_DRIVE_FOLDER_ID: {self.folder_id[:20] + '...' if self.folder_id else 'NOT SET'}")
-        print(f"  [DEBUG] GOOGLE_TOKEN_JSON length: {len(self.token_json)} chars")
-        print(f"  [DEBUG] SERVICE_ACCOUNT_JSON length: {len(self.service_account_json)} chars")
-        print(f"  [DEBUG] GOOGLE_CREDENTIALS_JSON length: {len(self.credentials_json)} chars")
+        log_info("DRIVE", "Initializing Google Drive Service...")
+        log_info("DRIVE", f"FOLDER_ID: {self.folder_id[:20] + '...' if self.folder_id else 'NOT SET'}")
+        log_info("DRIVE", f"TOKEN_JSON length: {len(self.token_json)} chars")
+        log_info("DRIVE", f"SERVICE_ACCOUNT_JSON length: {len(self.service_account_json)} chars")
         
         if not self.folder_id:
-            print("[ERROR] GOOGLE_DRIVE_FOLDER_ID not set - cannot initialize Drive service")
+            log_error("DRIVE", "GOOGLE_DRIVE_FOLDER_ID not set - cannot initialize Drive service")
             return
         
         # Try to initialize the service
@@ -43,11 +43,9 @@ class GoogleDriveService:
             self.service = self._get_drive_service()
             self.enabled = bool(self.service)
             if self.enabled:
-                print(f"[OK] Google Drive service initialized via {self.auth_method}!")
+                log_info("DRIVE", f"Service initialized via {self.auth_method}!")
         except Exception as e:
-            print(f"[ERROR] Google Drive initialization failed: {e}")
-            import traceback
-            traceback.print_exc()
+            log_drive_error("INIT", e)
             self.enabled = False
     
     def _get_drive_service(self):
@@ -56,7 +54,7 @@ class GoogleDriveService:
         # Method 1: Try OAuth2 token
         if self.token_json:
             try:
-                print("[INFO] Attempting OAuth2 token authentication...")
+                log_info("DRIVE", "Attempting OAuth2 token authentication...")
             # Parse token JSON from environment variable
                 token_info = json.loads(self.token_json)
                 
