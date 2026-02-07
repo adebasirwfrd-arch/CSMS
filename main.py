@@ -453,27 +453,40 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
 @app.post("/projects/{project_id}/sync-full-checklist")
 async def sync_full_checklist(project_id: str, background_tasks: BackgroundTasks):
     """Sync tasks from Google Drive template structure to DB for a project."""
+    import traceback
+    
     try:
+        log_info("SYNC", f"Starting sync_full_checklist for project_id: {project_id}")
+        
         from database import db
         # 1. Get project info to get the name
         project = db.get_project(project_id)
         if not project:
+            log_error("SYNC", f"Project not found: {project_id}", send_email=True)
             raise HTTPException(status_code=404, detail="Project not found")
+        
+        log_info("SYNC", f"Project found: {project.get('name', 'UNKNOWN')}")
 
         # 2. Trigger background folder/template check/resume
         background_tasks.add_task(project_setup_task, project['name'])
+        log_info("SYNC", "Background task triggered for folder setup")
         
         # 3. Get template structure from Drive
+        log_info("SYNC", "Fetching template structure from Google Drive...")
         template_tasks = await template_service.get_template_structure()
+        log_info("SYNC", f"Template tasks found: {len(template_tasks) if template_tasks else 0}")
         
         if not template_tasks:
-            raise HTTPException(status_code=404, detail="No template structure found in Drive")
+            error_msg = "No template structure found in Drive. Check if template folder ID is correct and Drive service is authenticated."
+            log_error("SYNC", error_msg, send_email=True)
+            raise HTTPException(status_code=404, detail=error_msg)
             
         # 4. Get existing tasks for this project to avoid duplicates
         existing_tasks = db.get_tasks_by_project(project_id)
         existing_codes = {t['code'] for t in existing_tasks}
+        log_info("SYNC", f"Existing tasks: {len(existing_tasks)}, existing codes: {len(existing_codes)}")
         
-        # 3. Filter only new tasks
+        # 5. Filter only new tasks
         tasks_to_add = []
         for t in template_tasks:
             if t['code'] not in existing_codes:
@@ -485,16 +498,24 @@ async def sync_full_checklist(project_id: str, background_tasks: BackgroundTasks
                     "status": "Upcoming"
                 })
         
-        # 4. Batch create if any
+        log_info("SYNC", f"Tasks to add: {len(tasks_to_add)}")
+        
+        # 6. Batch create if any
         if tasks_to_add:
             db.batch_create_tasks(tasks_to_add)
+            log_info("SYNC", f"Successfully added {len(tasks_to_add)} tasks")
             return {"status": "success", "added": len(tasks_to_add)}
         else:
             return {"status": "success", "added": 0, "message": "All tasks already exist"}
             
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
     except Exception as e:
-        log_error("API", f"Error syncing full checklist: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Get full traceback
+        tb = traceback.format_exc()
+        error_detail = f"Error syncing full checklist for project {project_id}:\n{str(e)}\n\nTraceback:\n{tb}"
+        log_error("SYNC", error_detail, send_email=True)
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
 
 @app.patch("/projects/{project_id}")
 def update_project(project_id: str, updates: dict):
