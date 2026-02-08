@@ -8,14 +8,23 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
+from googleapiclient.errors import HttpError
 import os
 import json
+import time
+import ssl
+import random
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 from dotenv import load_dotenv
 from services.logger_service import log_drive_operation, log_drive_error, log_info, log_warning, log_error
 
 load_dotenv()
+
+# Retry configuration for transient errors
+MAX_RETRIES = 5
+BASE_DELAY = 1  # seconds
+MAX_DELAY = 32  # seconds
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive']
 
@@ -49,6 +58,51 @@ class GoogleDriveService:
             log_drive_error("INIT", e)
             self.enabled = False
     
+    def _execute_with_retry(self, request, operation_name="API_CALL"):
+        """Execute a Google API request with exponential backoff retry for transient errors.
+        
+        Handles:
+        - SSL errors (record layer failure, handshake failures)
+        - Connection resets and timeouts
+        - HTTP 5xx errors (server errors)
+        - HTTP 429 (rate limiting)
+        """
+        last_exception = None
+        
+        for attempt in range(MAX_RETRIES):
+            try:
+                return request.execute()
+            except ssl.SSLError as e:
+                last_exception = e
+                log_warning("DRIVE", f"[{operation_name}] SSL error on attempt {attempt + 1}/{MAX_RETRIES}: {e}")
+            except ConnectionResetError as e:
+                last_exception = e
+                log_warning("DRIVE", f"[{operation_name}] Connection reset on attempt {attempt + 1}/{MAX_RETRIES}: {e}")
+            except HttpError as e:
+                if e.resp.status in [429, 500, 502, 503, 504]:
+                    last_exception = e
+                    log_warning("DRIVE", f"[{operation_name}] HTTP {e.resp.status} on attempt {attempt + 1}/{MAX_RETRIES}")
+                else:
+                    # Non-retryable HTTP error
+                    raise
+            except Exception as e:
+                error_str = str(e).lower()
+                if 'ssl' in error_str or 'connection' in error_str or 'timeout' in error_str:
+                    last_exception = e
+                    log_warning("DRIVE", f"[{operation_name}] Network error on attempt {attempt + 1}/{MAX_RETRIES}: {e}")
+                else:
+                    # Non-retryable error
+                    raise
+            
+            # Calculate delay with exponential backoff and jitter
+            if attempt < MAX_RETRIES - 1:
+                delay = min(BASE_DELAY * (2 ** attempt) + random.uniform(0, 1), MAX_DELAY)
+                log_info("DRIVE", f"[{operation_name}] Retrying in {delay:.1f}s...")
+                time.sleep(delay)
+        
+        # All retries exhausted
+        log_error("DRIVE", f"[{operation_name}] All {MAX_RETRIES} attempts failed. Last error: {last_exception}")
+        raise last_exception
     def _get_drive_service(self):
         """Get Google Drive service - try OAuth first, then Service Account fallback"""
         
@@ -138,8 +192,9 @@ class GoogleDriveService:
                 query = f"(name = '{folder_name}' or name contains '{folder_name} ') and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
             else:
                 query = f"name='{folder_name}' and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-                
-            results = self.service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+            
+            search_request = self.service.files().list(q=query, spaces='drive', fields='files(id, name)')
+            results = self._execute_with_retry(search_request, f"FIND_FOLDER_{folder_name[:15]}")
             files = results.get('files', [])
             
             if files:
@@ -164,7 +219,8 @@ class GoogleDriveService:
                 'mimeType': 'application/vnd.google-apps.folder',
                 'parents': [parent_id]
             }
-            file = self.service.files().create(body=file_metadata, fields='id').execute()
+            create_request = self.service.files().create(body=file_metadata, fields='id')
+            file = self._execute_with_retry(create_request, f"CREATE_FOLDER_{folder_name[:15]}")
             folder_id = file.get('id')
             self.folders_cache[cache_key] = folder_id
             print(f"[CREATED] New folder: {folder_name}")
@@ -483,24 +539,37 @@ class GoogleDriveService:
         if not self.enabled or not self.service:
             return None
         
-        try:
-            from googleapiclient.http import MediaIoBaseDownload
-            import io
-            
-            request = self.service.files().get_media(fileId=file_id)
-            buffer = io.BytesIO()
-            downloader = MediaIoBaseDownload(buffer, request)
-            
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-            
-            buffer.seek(0)
-            return buffer.read()
-            
-        except Exception as e:
-            print(f"[ERROR] Error downloading file: {e}")
-            return None
+        last_exception = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                from googleapiclient.http import MediaIoBaseDownload
+                import io
+                
+                request = self.service.files().get_media(fileId=file_id)
+                buffer = io.BytesIO()
+                downloader = MediaIoBaseDownload(buffer, request)
+                
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                
+                buffer.seek(0)
+                return buffer.read()
+                
+            except Exception as e:
+                error_str = str(e).lower()
+                if 'ssl' in error_str or 'connection' in error_str or 'timeout' in error_str:
+                    last_exception = e
+                    log_warning("DRIVE", f"[DOWNLOAD] Network error on attempt {attempt + 1}/{MAX_RETRIES}: {e}")
+                    if attempt < MAX_RETRIES - 1:
+                        delay = min(BASE_DELAY * (2 ** attempt) + random.uniform(0, 1), MAX_DELAY)
+                        time.sleep(delay)
+                else:
+                    print(f"[ERROR] Error downloading file: {e}")
+                    return None
+        
+        log_error("DRIVE", f"[DOWNLOAD] All {MAX_RETRIES} attempts failed for file {file_id}")
+        return None
     
     def get_files_in_project(self, project_name: str) -> list:
         """Get all files in a project folder"""
@@ -688,12 +757,13 @@ class GoogleDriveService:
             return []
         try:
             query = f"'{folder_id}' in parents and trashed = false"
-            results = self.service.files().list(
+            request = self.service.files().list(
                 q=query,
                 fields="files(id, name, mimeType)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True
-            ).execute()
+            )
+            results = self._execute_with_retry(request, f"FETCH_FOLDER_{folder_id[:10]}")
             return results.get('files', [])
         except Exception as e:
             log_error("DRIVE", f"Error fetching files in folder {folder_id}: {e}")
