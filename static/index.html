@@ -5031,9 +5031,22 @@
         document.getElementById('project-detail-modal').classList.remove('active');
     }
 
-    function showTaskDetail(taskId) {
-        const task = allTasks.find(t => t.id === taskId);
-        if (!task) return;
+    async function showTaskDetail(taskId) {
+        let task = allTasks.find(t => t.id === taskId);
+
+        // RELIABILITY FIX: If task not found in global cache, refresh data once
+        if (!task) {
+            console.log('[showTaskDetail] Task not found in cache, refreshing data...');
+            await loadData();
+            task = allTasks.find(t => t.id === taskId);
+        }
+
+        if (!task) {
+            console.error('[showTaskDetail] Task still not found after refresh:', taskId);
+            // Don't close the current modal if we can't find the task
+            showToast('Task data not found. Please refresh the page.', 'error');
+            return;
+        }
 
         currentTaskId = taskId;
         const project = getProjectForTask(task);
