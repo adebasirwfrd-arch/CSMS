@@ -1120,11 +1120,16 @@ async def initiate_task_upload(
         folder_id = drive_service.create_nested_task_folder(
             project['name'], task.get('code',''), task.get('title','')
         )
+        log_info("UPLOAD", f"Initiating task upload. Auth: {drive_service.auth_method}, Folder: {folder_id}, Task: {task_id}")
         
         upload_url, _ = drive_service.get_resumable_upload_session(filename, mime_type, parent_id=folder_id)
         if not upload_url: raise HTTPException(status_code=500, detail="Failed to initiate upload")
         
-        return {"upload_url": upload_url}
+        return {
+            "upload_url": upload_url,
+            "auth_method": drive_service.auth_method,
+            "folder_id": folder_id
+        }
     except Exception as e:
         log_error("UPLOAD", f"Error initiating task upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
