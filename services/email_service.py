@@ -12,7 +12,9 @@ class EmailService:
         self.api_url = "https://api.brevo.com/v3/smtp/email"
         
         if not self.api_key:
-            print("[WARN] BREVO_API_KEY not set in environment variables")
+            print("[WARN] BREVO_API_KEY not set. Check environment variables in production.")
+        else:
+            print(f"[INFO] Brevo successfully initialized. Key presence confirmed (length: {len(self.api_key)})")
 
     def _send_email(self, to_emails: List[str], subject: str, html_content: str, cc_emails: List[str] = None) -> bool:
         """Base method to send email using Brevo API"""

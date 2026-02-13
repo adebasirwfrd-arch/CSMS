@@ -290,12 +290,13 @@ def send_reminders(background_tasks: BackgroundTasks):
     sent_count = 0
     reminders_info = []
     
-    # Get Brevo API key
-    brevo_api_key = os.getenv('BREVO_API_KEY')
-    
-    if not brevo_api_key:
-        print("[EMAIL] BREVO_API_KEY not found in environment")
+    # Use email_service singleton
+    from services.email_service import email_service
+    if not email_service.api_key:
+        print("[EMAIL] Brevo API key not found in email_service configuration")
         return {"message": "Email not configured (Brevo API key missing)", "count": 0}
+    
+    brevo_api_key = email_service.api_key
     
     today = datetime.now().date()
     
@@ -1120,6 +1121,12 @@ async def initiate_task_upload(
         folder_id = drive_service.create_nested_task_folder(
             project['name'], task.get('code',''), task.get('title','')
         )
+        
+        # PERSISTENCE FIX: Save folder_id back to task for future reference
+        if folder_id and task.get('drive_folder_id') != folder_id:
+            db.update_task(task_id, {"drive_folder_id": folder_id})
+            log_info("UPLOAD", f"Saved folder_id {folder_id} to task {task_id}")
+
         log_info("UPLOAD", f"Initiating task upload. Auth: {drive_service.auth_method}, Folder: {folder_id}, Task: {task_id}")
         
         upload_url, _ = drive_service.get_resumable_upload_session(filename, mime_type, parent_id=folder_id)
