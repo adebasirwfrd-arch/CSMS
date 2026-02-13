@@ -157,6 +157,13 @@ class Database:
         tasks = self._read_json(TASKS_FILE)
         return [t for t in tasks if t.get('project_id') == project_id] if project_id else tasks
 
+    def get_task(self, task_id: str) -> Optional[Dict]:
+        """Get single task by ID"""
+        if SUPABASE_ENABLED:
+            return supabase_service.get_task(task_id)
+        tasks = self.get_tasks()
+        return next((t for t in tasks if t['id'] == task_id), None)
+
     def create_task(self, task_data: Dict) -> Dict:
         """Create task - SYNCHRONOUS write to Supabase"""
         new_task = {

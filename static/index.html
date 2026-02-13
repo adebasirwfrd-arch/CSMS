@@ -5034,16 +5034,31 @@
     async function showTaskDetail(taskId) {
         let task = allTasks.find(t => t.id === taskId);
 
-        // RELIABILITY FIX: If task not found in global cache, refresh data once
+        // RELIABILITY FIX: If task not found in global cache, fetch it specifically
         if (!task) {
-            console.log('[showTaskDetail] Task not found in cache, refreshing data...');
+            console.log('[showTaskDetail] Task not found in cache, fetching specifically from API:', taskId);
+            try {
+                const res = await fetch(`${API_BASE}/tasks/${taskId}?t=${Date.now()}`);
+                if (res.ok) {
+                    task = await res.json();
+                    // Add it to allTasks for future use
+                    allTasks.push(task);
+                    console.log('[showTaskDetail] Task fetched and added to cache.');
+                }
+            } catch (e) {
+                console.error('[showTaskDetail] Error fetching specific task:', e);
+            }
+        }
+
+        // Second fallback: refresh all data if still not found (legacy behavior)
+        if (!task) {
+            console.log('[showTaskDetail] Still not found, refreshing all data...');
             await loadData();
             task = allTasks.find(t => t.id === taskId);
         }
 
         if (!task) {
-            console.error('[showTaskDetail] Task still not found after refresh:', taskId);
-            // Don't close the current modal if we can't find the task
+            console.error('[showTaskDetail] Task still not found after all attempts:', taskId);
             showToast('Task data not found. Please refresh the page.', 'error');
             return;
         }

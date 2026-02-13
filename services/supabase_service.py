@@ -125,6 +125,8 @@ class SupabaseService:
             query = self.client.table('tasks').select("*")
             if project_id:
                 query = query.eq('project_id', project_id)
+            else:
+                query = query.limit(5000) # Increase limit for global list
             result = query.execute()
             tasks = result.data or []
             # Parse attachments JSON for each task
@@ -138,6 +140,23 @@ class SupabaseService:
         except Exception as e:
             print(f"[ERROR] Error fetching tasks: {e}")
             return []
+
+    def get_task(self, task_id: str) -> Optional[Dict]:
+        if not self.enabled:
+            return None
+        try:
+            result = self.client.table('tasks').select("*").eq('id', task_id).execute()
+            if not result.data: return None
+            task = result.data[0]
+            if 'attachments' in task and isinstance(task['attachments'], str):
+                try:
+                    task['attachments'] = json.loads(task['attachments'])
+                except:
+                    task['attachments'] = []
+            return task
+        except Exception as e:
+            print(f"[ERROR] Error fetching single task: {e}")
+            return None
     
     def create_task(self, task_data: Dict) -> Dict:
         print(f"[SUPABASE] create_task called, enabled={self.enabled}")

@@ -1011,6 +1011,14 @@ def list_tasks(status: Optional[str] = None):
         return [t for t in all_tasks if t.get('status') == status]
     return all_tasks
 
+@app.get("/tasks/{task_id}")
+def get_task(task_id: str):
+    """Get a single task by ID"""
+    task = db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
 
 @app.put("/tasks/{task_id}")
 def update_task(task_id: str, task_update: dict):

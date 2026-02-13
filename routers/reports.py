@@ -91,10 +91,13 @@ async def preview_source_data(
         else:
             raise HTTPException(status_code=400, detail="Unsupported source file type")
             
+        # Fix: handle PDF parser returning a dict {employee_name, records}
+        preview_data = data.get('records', []) if isinstance(data, dict) else data
+        
         return {
             "filename": source_file.filename,
-            "record_count": len(data),
-            "preview": data[:5] # Show first 5 records
+            "record_count": len(preview_data),
+            "preview": preview_data[:5] # Show first 5 records
         }
         
     except Exception as e:
