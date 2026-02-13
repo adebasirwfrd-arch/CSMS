@@ -1193,7 +1193,7 @@ async def upload_task_chunk(
                     from services.daftar_isi_service import regenerate_daftar_isi_for_project
                     background_tasks.add_task(regenerate_daftar_isi_for_project, project['drive_folder_id'], project['name'])
                 
-                return {"status": "complete", "file_id": file_id}
+                return {"status": "complete", "file_id": file_id, "folder_id": task.get('drive_folder_id', 'unknown')}
             
             return {"status": "uploading", "chunk": chunk_index}
         else:
@@ -1340,7 +1340,7 @@ async def upload_csms_pb_chunk(
                         pb['drive_file_id'] = file_id
                         update_csms_pb(pb_id, {"drive_file_id": file_id})
                     
-                    return {"status": "complete", "file_id": file_id}
+                    return {"status": "complete", "file_id": file_id, "folder_id": upload_url} # Fallback to URL for PB
                 except Exception as e:
                     log_error("CSMS_PB", f"Error finalizing upload: {e}")
                     raise HTTPException(status_code=500, detail=str(e))
