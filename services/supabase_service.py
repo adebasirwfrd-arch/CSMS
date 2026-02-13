@@ -126,7 +126,7 @@ class SupabaseService:
             if project_id:
                 query = query.eq('project_id', project_id)
             else:
-                query = query.limit(5000) # Increase limit for global list
+                query = query.order('id').limit(10000) # Ensure we get all tasks, ordered
             result = query.execute()
             tasks = result.data or []
             # Parse attachments JSON for each task

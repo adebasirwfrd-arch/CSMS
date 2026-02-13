@@ -5063,6 +5063,13 @@
             return;
         }
 
+        console.log('[showTaskDetail] Viewing Task:', {
+            id: task.id,
+            title: task.title,
+            attachments: task.attachments,
+            attachments_count: task.attachments ? task.attachments.length : 0
+        });
+
         currentTaskId = taskId;
         const project = getProjectForTask(task);
 
