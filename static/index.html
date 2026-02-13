@@ -5197,8 +5197,16 @@
                     method: 'POST',
                     body: initFormData
                 });
-                if (!initRes.ok) throw new Error('Failed to initiate upload');
-                const { upload_url } = await initRes.json();
+
+                if (!initRes.ok) {
+                    const errData = await initRes.json().catch(() => ({}));
+                    console.error('[UPLOAD] Initiate failed:', initRes.status, errData);
+                    throw new Error(`Failed to initiate upload: ${errData.detail || initRes.statusText}`);
+                }
+
+                const initData = await initRes.json();
+                console.log('[UPLOAD] Initiated:', initData);
+                const { upload_url } = initData;
 
                 const CHUNK_SIZE = 2 * 1024 * 1024;
                 const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
@@ -5222,9 +5230,18 @@
                     chunkFormData.append('chunk_file', chunk, filename);
 
                     const chunkRes = await fetch(`${API_BASE}/tasks/${currentTaskId}/upload-chunk`, { method: 'POST', body: chunkFormData });
-                    if (!chunkRes.ok) throw new Error(`Chunk ${i} failed`);
+
+                    if (!chunkRes.ok) {
+                        const errData = await chunkRes.json().catch(() => ({}));
+                        console.error(`[UPLOAD] Chunk ${i} failed:`, chunkRes.status, errData);
+                        throw new Error(`Chunk ${i} failed: ${errData.detail || chunkRes.statusText}`);
+                    }
+
                     const resData = await chunkRes.json();
-                    if (resData.status === 'complete') successCount++;
+                    if (resData.status === 'complete') {
+                        console.log('[UPLOAD] Success:', resData);
+                        successCount++;
+                    }
                 }
             } catch (error) {
                 console.error('Upload error:', error);
