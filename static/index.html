@@ -3774,6 +3774,11 @@
             const data = await response.json();
             alert(data.message || `✅ Berhasil sinkronisasi template.`);
 
+            // Refresh global data to ensure allTasks includes the new tasks
+            if (typeof loadData === 'function') {
+                await loadData();
+            }
+
             // Refresh project detail if currently open
             if (typeof showProjectDetail === 'function') {
                 showProjectDetail(projectId);
