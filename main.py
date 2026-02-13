@@ -1132,6 +1132,7 @@ async def initiate_task_upload(
 @app.post("/tasks/{task_id}/upload-chunk")
 async def upload_task_chunk(
     task_id: str,
+    background_tasks: BackgroundTasks,
     filename: str = Form(...),
     upload_url: str = Form(...),
     chunk_index: int = Form(...),
@@ -1157,31 +1158,47 @@ async def upload_task_chunk(
                 res_data = response.json()
                 file_id = res_data.get("id")
                 
+                if not file_id:
+                    log_error("UPLOAD", f"No file_id in Google response: {response.text}")
+                    raise HTTPException(status_code=500, detail="Upload failed: No file ID returned")
+
                 # Update task database
                 task = db.get_task(task_id)
-                attachments = task.get("attachments", [])
+                if not task: raise HTTPException(status_code=404, detail="Task not found during final chunk")
+                
+                # Robustly get existing attachments
+                attachments = task.get("attachments")
+                if not isinstance(attachments, list):
+                    attachments = []
+                
                 attachments.append({
                     "filename": filename,
                     "file_id": file_id,
                     "uploaded_at": datetime.now().isoformat()
                 })
-                db.update_task(task_id, {"attachments": attachments})
+                
+                update_result = db.update_task(task_id, {"attachments": attachments})
+                if not update_result:
+                    log_error("UPLOAD", f"Failed to update database for task {task_id} after successful Drive upload")
+                    raise HTTPException(status_code=500, detail="File uploaded to Drive, but failed to save to database.")
+                
+                # Trigger regeneration in background
+                project = db.get_project(task['project_id'])
+                if project and project.get('drive_folder_id'):
+                    from services.daftar_isi_service import regenerate_daftar_isi_for_project
+                    background_tasks.add_task(regenerate_daftar_isi_for_project, project['drive_folder_id'], project['name'])
+                
                 return {"status": "complete", "file_id": file_id}
+            
             return {"status": "uploading", "chunk": chunk_index}
         else:
+            log_error("UPLOAD", f"Google Drive rejected chunk: {response.status_code} - {response.text}")
             raise HTTPException(status_code=response.status_code, detail=response.text)
+    except HTTPException:
+        raise
     except Exception as e:
         log_error("UPLOAD", f"Error in task chunk upload: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
-    # 5. Trigger Daftar Isi PDF regeneration in background
-    project_folder_id = result.get('project_folder_id')
-    if project_folder_id:
-        from services.daftar_isi_service import regenerate_daftar_isi_for_project
-        background_tasks.add_task(regenerate_daftar_isi_for_project, project_folder_id, project['name'])
-        log_info("UPLOAD", f"Triggered Daftar Isi regeneration for project folder: {project_folder_id}")
-    
-    return {"status": "success", "filename": file.filename, "file_id": result.get('file_id')}
 
 
 # --- Schedules ---
