@@ -261,16 +261,14 @@ def force_sync_from_supabase():
         # Force sync projects
         cloud_projects = supabase_service.get_projects()
         if cloud_projects:
-            with open(PROJECTS_FILE, 'w') as f:
-                json.dump(cloud_projects, f, indent=2)
+            db._write_json(PROJECTS_FILE, cloud_projects)
             results["projects"] = len(cloud_projects)
             print(f"[FORCE SYNC] Restored {len(cloud_projects)} projects from Supabase")
         
         # Force sync tasks
         cloud_tasks = supabase_service.get_tasks()
         if cloud_tasks:
-            with open(TASKS_FILE, 'w') as f:
-                json.dump(cloud_tasks, f, indent=2)
+            db._write_json(TASKS_FILE, cloud_tasks)
             results["tasks"] = len(cloud_tasks)
             print(f"[FORCE SYNC] Restored {len(cloud_tasks)} tasks from Supabase")
         
@@ -504,9 +502,9 @@ async def sync_full_checklist(project_id: str, background_tasks: BackgroundTasks
         if tasks_to_add:
             db.batch_create_tasks(tasks_to_add)
             log_info("SYNC", f"Successfully added {len(tasks_to_add)} tasks")
-            return {"status": "success", "added": len(tasks_to_add)}
+            return {"status": "success", "added": len(tasks_to_add), "message": f"Added {len(tasks_to_add)} new tasks. Syncing Drive folders in background."}
         else:
-            return {"status": "success", "added": 0, "message": "All tasks already exist"}
+            return {"status": "success", "added": 0, "message": "All tasks are already synced. Ensuring Drive folder structure in background."}
             
     except HTTPException:
         raise  # Re-raise HTTP exceptions as-is
@@ -1035,11 +1033,11 @@ def delete_task(task_id: str):
     if not task_to_delete:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    remaining_tasks = [t for t in all_tasks if t.get('id') != task_id]
+    # Delete task using database abstraction
+    success = db.delete_task(task_id)
     
-    import os
-    tasks_file = os.path.join(os.path.dirname(__file__), "data", "tasks.json")
-    db._write_json(tasks_file, remaining_tasks)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete task from database")
     
     print(f"[DELETE_TASK] Deleted task: {task_to_delete.get('code', task_id)}")
     return {"status": "success", "deleted_task": task_id}

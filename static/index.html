@@ -3772,12 +3772,7 @@
             }
 
             const data = await response.json();
-
-            if (data.added > 0) {
-                alert(`✅ Berhasil! ${data.added} tugas baru telah ditambahkan.`);
-            } else {
-                alert(`ℹ️ Semua tugas dari template sudah ada di proyek ini.`);
-            }
+            alert(data.message || `✅ Berhasil sinkronisasi template.`);
 
             // Refresh project detail if currently open
             if (typeof showProjectDetail === 'function') {

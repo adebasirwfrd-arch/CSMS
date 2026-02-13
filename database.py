@@ -40,6 +40,17 @@ CSMS_PB_FILE = os.path.join(DATA_DIR, "csms_pb.json")
 RELATED_DOCS_FILE = os.path.join(DATA_DIR, "related_docs.json")
 
 
+def _write_json_robust(filepath, data):
+    """Write JSON with robust error handling for read-only systems"""
+    try:
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2)
+    except OSError as e:
+        log_db_error("WRITE_JSON", f"Failed to write to {filepath}: {e}")
+        if e.errno == 30: # Read-only file system
+            log_warning("DB", "REASON: Read-only file system (likely Vercel). Ensure Supabase is configured.")
+        raise
+
 class Database:
     """
     RELIABLE Database - Supabase as single source of truth
@@ -48,14 +59,20 @@ class Database:
     """
     
     def __init__(self):
-        os.makedirs(DATA_DIR, exist_ok=True)
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+        except OSError:
+            pass # Likely read-only
         self._ensure_file(PROJECTS_FILE)
         self._ensure_file(TASKS_FILE)
 
     def _ensure_file(self, filepath):
         if not os.path.exists(filepath):
-            with open(filepath, 'w') as f:
-                json.dump([], f)
+            try:
+                with open(filepath, 'w') as f:
+                    json.dump([], f)
+            except OSError:
+                log_warning("DB", f"Could not ensure file {filepath} (read-only environment)")
 
     def _read_json(self, filepath) -> List[Dict]:
         try:
@@ -65,8 +82,8 @@ class Database:
             return []
 
     def _write_json(self, filepath, data: List[Dict]):
-        with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2)
+        _write_json_robust(filepath, data)
+
 
     # ==================== PROJECTS ====================
     
@@ -228,20 +245,17 @@ def save_schedule(schedule: Dict):
         return supabase_service.save_schedule(schedule)
     schedules = get_schedules()
     schedules.append(schedule)
-    with open(SCHEDULES_FILE, 'w') as f:
-        json.dump(schedules, f, indent=2)
+    _write_json_robust(SCHEDULES_FILE, schedules)
 
 def delete_schedule(schedule_id: str):
     """Delete schedule - SYNCHRONOUS"""
     if SUPABASE_ENABLED:
         return supabase_service.delete_schedule(schedule_id)
     schedules = [s for s in get_schedules() if s.get('id') != schedule_id]
-    with open(SCHEDULES_FILE, 'w') as f:
-        json.dump(schedules, f, indent=2)
+    _write_json_robust(SCHEDULES_FILE, schedules)
 
 def save_schedules(schedules: List[Dict]):
-    with open(SCHEDULES_FILE, 'w') as f:
-        json.dump(schedules, f, indent=2)
+    _write_json_robust(SCHEDULES_FILE, schedules)
 
 def get_comments() -> List[Dict]:
     if SUPABASE_ENABLED:
@@ -252,10 +266,8 @@ def save_comment(comment: Dict):
     """Save single comment - SYNCHRONOUS"""
     if SUPABASE_ENABLED:
         return supabase_service.save_comment(comment)
-    comments = get_comments()
     comments.append(comment)
-    with open(COMMENTS_FILE, 'w') as f:
-        json.dump(comments, f, indent=2)
+    _write_json_robust(COMMENTS_FILE, comments)
 
 def update_comment(comment_id: str, updates: Dict):
     """Update comment - SYNCHRONOUS"""
@@ -265,20 +277,17 @@ def update_comment(comment_id: str, updates: Dict):
     for c in comments:
         if c.get('id') == comment_id:
             c.update(updates)
-    with open(COMMENTS_FILE, 'w') as f:
-        json.dump(comments, f, indent=2)
+    _write_json_robust(COMMENTS_FILE, comments)
 
 def delete_comment(comment_id: str):
     """Delete comment - SYNCHRONOUS"""
     if SUPABASE_ENABLED:
         return supabase_service.delete_comment(comment_id)
     comments = [c for c in get_comments() if c.get('id') != comment_id]
-    with open(COMMENTS_FILE, 'w') as f:
-        json.dump(comments, f, indent=2)
+    _write_json_robust(COMMENTS_FILE, comments)
 
 def save_comments(comments: List[Dict]):
-    with open(COMMENTS_FILE, 'w') as f:
-        json.dump(comments, f, indent=2)
+    _write_json_robust(COMMENTS_FILE, comments)
 
 def get_csms_pb_records() -> List[Dict]:
     if SUPABASE_ENABLED:
@@ -289,10 +298,8 @@ def save_csms_pb(pb: Dict):
     """Save single CSMS PB - SYNCHRONOUS"""
     if SUPABASE_ENABLED:
         return supabase_service.save_csms_pb(pb)
-    records = get_csms_pb_records()
     records.append(pb)
-    with open(CSMS_PB_FILE, 'w') as f:
-        json.dump(records, f, indent=2)
+    _write_json_robust(CSMS_PB_FILE, records)
 
 def update_csms_pb(pb_id: str, updates: Dict):
     """Update CSMS PB - SYNCHRONOUS"""
@@ -302,20 +309,17 @@ def update_csms_pb(pb_id: str, updates: Dict):
     for r in records:
         if r.get('id') == pb_id:
             r.update(updates)
-    with open(CSMS_PB_FILE, 'w') as f:
-        json.dump(records, f, indent=2)
+    _write_json_robust(CSMS_PB_FILE, records)
 
 def delete_csms_pb(pb_id: str):
     """Delete CSMS PB - SYNCHRONOUS"""
     if SUPABASE_ENABLED:
         return supabase_service.delete_csms_pb(pb_id)
     records = [r for r in get_csms_pb_records() if r.get('id') != pb_id]
-    with open(CSMS_PB_FILE, 'w') as f:
-        json.dump(records, f, indent=2)
+    _write_json_robust(CSMS_PB_FILE, records)
 
 def save_csms_pb_records(records: List[Dict]):
-    with open(CSMS_PB_FILE, 'w') as f:
-        json.dump(records, f, indent=2)
+    _write_json_robust(CSMS_PB_FILE, records)
 
 def get_related_docs() -> List[Dict]:
     if SUPABASE_ENABLED:
@@ -328,19 +332,16 @@ def save_related_doc(doc: Dict):
         return supabase_service.save_related_doc(doc)
     docs = get_related_docs()
     docs.append(doc)
-    with open(RELATED_DOCS_FILE, 'w') as f:
-        json.dump(docs, f, indent=2)
+    _write_json_robust(RELATED_DOCS_FILE, docs)
 
 def delete_related_doc(doc_id: str):
     """Delete related doc - SYNCHRONOUS"""
     if SUPABASE_ENABLED:
         return supabase_service.delete_related_doc(doc_id)
     docs = [d for d in get_related_docs() if d.get('id') != doc_id]
-    with open(RELATED_DOCS_FILE, 'w') as f:
-        json.dump(docs, f, indent=2)
+    _write_json_robust(RELATED_DOCS_FILE, docs)
 
 def save_related_docs(docs: List[Dict]):
-    with open(RELATED_DOCS_FILE, 'w') as f:
-        json.dump(docs, f, indent=2)
+    _write_json_robust(RELATED_DOCS_FILE, docs)
 
 

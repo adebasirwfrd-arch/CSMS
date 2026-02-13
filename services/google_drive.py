@@ -14,6 +14,7 @@ import json
 import time
 import ssl
 import random
+import socket
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 from dotenv import load_dotenv
@@ -50,6 +51,8 @@ class GoogleDriveService:
         
         # Try to initialize the service
         try:
+            # Set default timeout for all internal socket operations
+            socket.setdefaulttimeout(60) 
             self.service = self._get_drive_service()
             self.enabled = bool(self.service)
             if self.enabled:
@@ -193,7 +196,13 @@ class GoogleDriveService:
             else:
                 query = f"name='{folder_name}' and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
             
-            search_request = self.service.files().list(q=query, spaces='drive', fields='files(id, name)')
+            search_request = self.service.files().list(
+                q=query, 
+                spaces='drive', 
+                fields='files(id, name)',
+                pageSize=100,  # Should be enough for folders in one parent
+                supportsAllDrives=True
+            )
             results = self._execute_with_retry(search_request, f"FIND_FOLDER_{folder_name[:15]}")
             files = results.get('files', [])
             
@@ -219,7 +228,11 @@ class GoogleDriveService:
                 'mimeType': 'application/vnd.google-apps.folder',
                 'parents': [parent_id]
             }
-            create_request = self.service.files().create(body=file_metadata, fields='id')
+            create_request = self.service.files().create(
+                body=file_metadata, 
+                fields='id',
+                supportsAllDrives=True
+            )
             file = self._execute_with_retry(create_request, f"CREATE_FOLDER_{folder_name[:15]}")
             folder_id = file.get('id')
             self.folders_cache[cache_key] = folder_id
@@ -386,7 +399,8 @@ class GoogleDriveService:
             file = self.service.files().create(
                 body=file_metadata,
                 media_body=media,
-                fields='id'
+                fields='id',
+                supportsAllDrives=True
             ).execute()
             
             file_id = file.get('id')
@@ -510,7 +524,12 @@ class GoogleDriveService:
         try:
             # First search in current folder
             query = f"name='{filename}' and '{folder_id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'"
-            results = self.service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+            results = self.service.files().list(
+                q=query, 
+                spaces='drive', 
+                fields='files(id, name)',
+                supportsAllDrives=True
+            ).execute()
             files = results.get('files', [])
             
             if files:
@@ -519,7 +538,12 @@ class GoogleDriveService:
             
             # Get all subfolders
             folder_query = f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-            folder_results = self.service.files().list(q=folder_query, spaces='drive', fields='files(id, name)').execute()
+            folder_results = self.service.files().list(
+                q=folder_query, 
+                spaces='drive', 
+                fields='files(id, name)',
+                supportsAllDrives=True
+            ).execute()
             subfolders = folder_results.get('files', [])
             
             # Search in each subfolder
@@ -545,7 +569,10 @@ class GoogleDriveService:
                 from googleapiclient.http import MediaIoBaseDownload
                 import io
                 
-                request = self.service.files().get_media(fileId=file_id)
+                request = self.service.files().get_media(
+                    fileId=file_id,
+                    supportsAllDrives=True
+                )
                 buffer = io.BytesIO()
                 downloader = MediaIoBaseDownload(buffer, request)
                 
@@ -581,8 +608,12 @@ class GoogleDriveService:
             if not project_folder_id:
                 return []
             
-            query = f"'{project_folder_id}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'"
-            results = self.service.files().list(q=query, spaces='drive', fields='files(id, name, mimeType)').execute()
+            results = self.service.files().list(
+                q=query, 
+                spaces='drive', 
+                fields='files(id, name, mimeType)',
+                supportsAllDrives=True
+            ).execute()
             return results.get('files', [])
             
         except Exception as e:
@@ -622,7 +653,11 @@ class GoogleDriveService:
             return None
         
         try:
-            file = self.service.files().get(fileId=file_id, fields='id, name, mimeType').execute()
+            file = self.service.files().get(
+                fileId=file_id, 
+                fields='id, name, mimeType',
+                supportsAllDrives=True
+            ).execute()
             return file
         except Exception as e:
             print(f"[ERROR] Error getting file info: {e}")
@@ -665,7 +700,8 @@ class GoogleDriveService:
             }
             copied_file = self.service.files().copy(
                 fileId=file_id,
-                body=copy_metadata
+                body=copy_metadata,
+                supportsAllDrives=True
             ).execute()
             temp_file_id = copied_file.get('id')
             print(f"[INFO] Created temp Google file: {temp_file_id}")
@@ -676,7 +712,8 @@ class GoogleDriveService:
             
             request = self.service.files().export_media(
                 fileId=temp_file_id,
-                mimeType='application/pdf'
+                mimeType='application/pdf',
+                # supportsAllDrives=True # export_media might not support this, checking...
             )
             
             buffer = io.BytesIO()
@@ -715,7 +752,11 @@ class GoogleDriveService:
             if skip_if_exists and new_name:
                 # Basic check for existing file
                 check_query = f"name = '{new_name}' and '{parent_id}' in parents and trashed = false"
-                check_results = self.service.files().list(q=check_query, fields="files(id)").execute()
+                check_results = self.service.files().list(
+                    q=check_query, 
+                    fields="files(id)",
+                    supportsAllDrives=True
+                ).execute()
                 if check_results.get('files'):
                     # print(f"[SKIP] File already exists: {new_name}")
                     return check_results.get('files')[0]['id']
@@ -724,12 +765,13 @@ class GoogleDriveService:
             if new_name:
                 body['name'] = new_name
                 
-            copied_file = self.service.files().copy(
+            request = self.service.files().copy(
                 fileId=file_id,
                 body=body,
                 fields='id',
                 supportsAllDrives=True
-            ).execute()
+            )
+            copied_file = self._execute_with_retry(request, f"COPY_FILE_{new_name[:15] if new_name else file_id[:10]}")
             
             return copied_file.get('id')
         except Exception as e:
@@ -752,19 +794,33 @@ class GoogleDriveService:
             return None
 
     def fetch_files_in_folder(self, folder_id: str) -> List[Dict[str, Any]]:
-        """List ALL files and folders in a specific folder with name and mimeType."""
+        """List ALL files and folders in a specific folder with name and mimeType.
+        Handles pagination to ensure all items are fetched.
+        """
         if not self.enabled or not self.service:
             return []
         try:
             query = f"'{folder_id}' in parents and trashed = false"
-            request = self.service.files().list(
-                q=query,
-                fields="files(id, name, mimeType)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True
-            )
-            results = self._execute_with_retry(request, f"FETCH_FOLDER_{folder_id[:10]}")
-            return results.get('files', [])
+            all_files = []
+            page_token = None
+            
+            while True:
+                request = self.service.files().list(
+                    q=query,
+                    fields="nextPageToken, files(id, name, mimeType)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageToken=page_token,
+                    pageSize=200  # Reduced from 1000 to avoid read timeouts
+                )
+                results = self._execute_with_retry(request, f"FETCH_FOLDER_{folder_id[:10]}")
+                all_files.extend(results.get('files', []))
+                
+                page_token = results.get('nextPageToken')
+                if not page_token:
+                    break
+                    
+            return all_files
         except Exception as e:
             log_error("DRIVE", f"Error fetching files in folder {folder_id}: {e}")
             return []

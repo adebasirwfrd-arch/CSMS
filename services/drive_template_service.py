@@ -20,8 +20,11 @@ class DriveTemplateService:
         except Exception as e:
             log_error("TEMPLATE", f"Error during background template clone: {e}", send_email=True)
 
-    async def _clone_recursive(self, source_id: str, target_parent_id: str):
-        """Recursively copy folders and files from source to target."""
+    async def _clone_recursive(self, source_id: str, target_parent_id: str, semaphore: asyncio.Semaphore = None):
+        """Recursively copy folders and files from source to target in parallel."""
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(3)  # Limit to 3 concurrent folder recursions
+
         # 1. List all items in source folder
         log_info("TEMPLATE", f"Scanning source folder {source_id}...")
         source_items = drive_service.fetch_files_in_folder(source_id)
@@ -31,6 +34,9 @@ class DriveTemplateService:
         # 2. List all items in target folder to avoid duplicates (idempotency)
         target_items = drive_service.fetch_files_in_folder(target_parent_id)
         target_names = {item['name']: item['id'] for item in target_items}
+
+        # Sort source items alphabetically to ensure deterministic processing
+        source_items.sort(key=lambda x: x['name'])
 
         folders_to_recurse = []
         files_to_copy = []
@@ -44,17 +50,15 @@ class DriveTemplateService:
                 # Check if folder already exists in target
                 if item_name in target_names:
                     new_folder_id = target_names[item_name]
-                    log_info("TEMPLATE", f"Folder already exists, skipping creation: {item_name}")
                 else:
                     new_folder_id = drive_service.find_or_create_folder(item_name, target_parent_id)
                     log_info("TEMPLATE", f"Created folder: {item_name}")
                 
                 if new_folder_id:
-                    folders_to_recurse.append((item_id, new_folder_id))
+                    folders_to_recurse.append((item_name, item_id, new_folder_id))
             else:
                 # Check if file already exists
                 if item_name in target_names:
-                    # log_info("TEMPLATE", f"File already exists, skipping copy: {item_name}")
                     pass
                 else:
                     files_to_copy.append((item_id, target_parent_id, item_name))
@@ -67,12 +71,23 @@ class DriveTemplateService:
                 batch = files_to_copy[i:i + batch_size]
                 tasks = [drive_service.copy_file(fid, pid, name) for fid, pid, name in batch]
                 await asyncio.gather(*tasks)
-                # Small gap between batches
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
 
-        # 4. Recurse into folders (sequential recursion to avoid deep concurrency issues)
-        for s_id, t_id in folders_to_recurse:
-            await self._clone_recursive(s_id, t_id)
+        # 4. Recurse into folders in parallel (controlled by semaphore)
+        if folders_to_recurse:
+            async def limited_recurse(name, sid, tid):
+                async with semaphore:
+                    log_info("TEMPLATE", f"Recursing into: {name}")
+                    await self._clone_recursive(sid, tid, semaphore)
+
+            recurse_tasks = [limited_recurse(name, sid, tid) for name, sid, tid in folders_to_recurse]
+            results = await asyncio.gather(*recurse_tasks, return_exceptions=True)
+            
+            # Check for failures in subfolder recursions
+            for i, res in enumerate(results):
+                if isinstance(res, Exception):
+                    folder_name = folders_to_recurse[i][0]
+                    log_error("TEMPLATE", f"Recursion into {folder_name} failed: {res}")
 
 
     async def get_template_structure(self) -> List[Dict[str, str]]:
@@ -95,6 +110,9 @@ class DriveTemplateService:
         all_items = drive_service.fetch_files_in_folder(folder_id)
         folders = [item for item in all_items if item.get('mimeType') == 'application/vnd.google-apps.folder']
         
+        # Counter for synthetic codes (specifically for ELEMENT 0 or folders without codes)
+        folder_idx = 1
+        
         for folder in folders:
             name = folder['name']
             f_id = folder['id']
@@ -105,12 +123,21 @@ class DriveTemplateService:
             code = parts[0]
             title = parts[1] if len(parts) > 1 else ""
             
+            # SPECIAL CASE: Element 0 folders often don't have codes in name (e.g. "BRIDGING DOC")
+            # We assign them a code like "0.1", "0.2"...
+            is_element_0 = current_path.upper() == "ELEMENT 0"
+            if is_element_0 and not (any(c.isdigit() for c in code) and '.' in code):
+                code = f"0.{folder_idx}"
+                title = name # Use full name as title
+                folder_idx += 1
+
             # Check if it looks like a code (contains digits and dots)
             if any(c.isdigit() for c in code) and '.' in code:
                 # Determine category based on first part
                 category = "General"
                 element_num = code.split('.')[0]
                 category_map = {
+                    "0": "Core Documents",
                     "1": "Management",
                     "2": "Safety Signs",
                     "3": "HSE Facilities",
