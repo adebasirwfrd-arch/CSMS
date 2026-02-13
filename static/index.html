@@ -5171,69 +5171,89 @@
         let successCount = 0;
         let failCount = 0;
 
-        // Show uploading indicator
-        if (uploadArea) {
-            uploadArea.innerHTML = `
-                    <div style="color: var(--netflix-red);">
-                        <p>Uploading ${files.length} file(s)...</p>
-                        <p style="font-size: 11px;">Please wait</p>
-                    </div>
-                `;
-        }
+        // Save status for restoration
+        const activeChip = document.querySelector('#task-status-chips .status-chip.active');
+        const selectedStatus = activeChip ? activeChip.dataset.status : null;
 
-        // Upload each file
         for (const file of files) {
-            const formData = new FormData();
-            formData.append('file', file);
+            const filename = file.name;
+            const totalSize = file.size;
+            const sizeMB = (totalSize / (1024 * 1024)).toFixed(2);
 
             try {
-                const res = await fetch(`${API_BASE}/tasks/${currentTaskId}/upload`, {
-                    method: 'POST',
-                    body: formData
-                });
+                if (uploadArea) {
+                    uploadArea.innerHTML = `
+                        <div style="color: var(--netflix-red);">
+                            <p>Preparing upload: ${filename}</p>
+                            <p style="font-size: 11px;">Size: ${sizeMB} MB</p>
+                        </div>
+                    `;
+                }
 
-                if (res.ok) {
-                    successCount++;
-                } else {
-                    failCount++;
+                const initFormData = new FormData();
+                initFormData.append('filename', filename);
+                initFormData.append('mime_type', file.type || 'application/octet-stream');
+                const initRes = await fetch(`${API_BASE}/tasks/${currentTaskId}/initiate-upload`, {
+                    method: 'POST',
+                    body: initFormData
+                });
+                if (!initRes.ok) throw new Error('Failed to initiate upload');
+                const { upload_url } = await initRes.json();
+
+                const CHUNK_SIZE = 2 * 1024 * 1024;
+                const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+
+                for (let i = 0; i < totalChunks; i++) {
+                    const start = i * CHUNK_SIZE;
+                    const chunk = file.slice(start, Math.min(start + CHUNK_SIZE, totalSize));
+                    const progress = Math.round((start / totalSize) * 100);
+
+                    if (uploadArea) {
+                        uploadArea.innerHTML = `<div style="color: var(--netflix-red);"><p>Uploading: ${progress}%</p><p style="font-size: 11px;">Part ${i + 1}/${totalChunks}</p></div>`;
+                    }
+
+                    const chunkFormData = new FormData();
+                    chunkFormData.append('filename', filename);
+                    chunkFormData.append('upload_url', upload_url);
+                    chunkFormData.append('chunk_index', i);
+                    chunkFormData.append('total_chunks', totalChunks);
+                    chunkFormData.append('start_byte', start);
+                    chunkFormData.append('total_size', totalSize);
+                    chunkFormData.append('chunk_file', chunk, filename);
+
+                    const chunkRes = await fetch(`${API_BASE}/tasks/${currentTaskId}/upload-chunk`, { method: 'POST', body: chunkFormData });
+                    if (!chunkRes.ok) throw new Error(`Chunk ${i} failed`);
+                    const resData = await chunkRes.json();
+                    if (resData.status === 'complete') successCount++;
                 }
             } catch (error) {
+                console.error('Upload error:', error);
                 failCount++;
+                showToast(`Failed: ${filename}`, 'error');
             }
         }
 
-        // Reset file input
-        fileInput.value = '';
-
-        // Show result and refresh
         if (successCount > 0) {
-            showToast(`${successCount} file(s) uploaded successfully!${failCount > 0 ? ` (${failCount} failed)` : ''}`, 'success');
-        } else {
-            showToast('Error uploading files', 'error');
+            showToast(`Uploaded ${successCount} file(s)`, 'success');
+            await loadData();
+            await showTaskDetail(currentTaskId);
+
+            if (selectedStatus) {
+                setTimeout(() => {
+                    const chips = document.querySelectorAll('#task-status-chips .status-chip');
+                    chips.forEach(c => { if (c.dataset.status === selectedStatus) c.classList.add('active'); else c.classList.remove('active'); });
+                }, 100);
+            }
         }
 
-        // Save the currently selected status before refreshing
-        const activeChip = document.querySelector('#task-status-chips .status-chip.active');
-        const selectedStatus = activeChip ? activeChip.dataset.status : null;
-        console.log('[uploadFile] Preserving selected status:', selectedStatus);
-
-        // Refresh data and reopen task detail
-        await loadData();
-        showTaskDetail(currentTaskId);
-
-        // Restore the selected status after modal re-renders
-        if (selectedStatus) {
-            setTimeout(() => {
-                const chips = document.querySelectorAll('#task-status-chips .status-chip');
-                chips.forEach(c => {
-                    c.classList.remove('active');
-                    if (c.dataset.status === selectedStatus) {
-                        c.classList.add('active');
-                        console.log('[uploadFile] Restored status selection:', selectedStatus);
-                    }
-                });
-            }, 100);
+        if (uploadArea) {
+            uploadArea.innerHTML = `
+                <div style="font-size: 40px; margin-bottom: 12px;">☁️</div>
+                <p style="font-size: 14px; margin-bottom: 4px;">Click or drag to upload</p>
+                <p style="font-size: 12px; color: var(--text-muted);">PDF, Images, Excel (Max 50MB)</p>
+            `;
         }
+        fileInput.value = '';
     }
 
     // ===== MODERN DASHBOARD =====

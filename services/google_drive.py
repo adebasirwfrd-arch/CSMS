@@ -411,7 +411,7 @@ class GoogleDriveService:
             print(f"[ERROR] Error uploading file: {e}")
             return None
 
-    def get_resumable_upload_session(self, filename: str, mime_type: str, folder_name: str = "RelatedDocs") -> Tuple[str, str]:
+    def get_resumable_upload_session(self, filename: str, mime_type: str, folder_name: str = "RelatedDocs", parent_id: str = None) -> Tuple[str, str]:
         """
         Initiate a resumable upload session and return the Location URL.
         Returns: (upload_url, file_id)
@@ -421,11 +421,12 @@ class GoogleDriveService:
             return None, None
 
         try:
-            parent_id = self.find_or_create_folder(folder_name) or self.folder_id
+            if not parent_id:
+                parent_id = self.find_or_create_folder(folder_name) or self.folder_id
             
             # 1. Initiate resumable upload
-            import requests # Using requests for the raw HTTP call if needed, or google-api-client
-            # Actually, we can use the discovery service to get the metadata/session
+            import requests # Using requests for the raw HTTP call
+            from google.auth.transport.requests import Request
             
             file_metadata = {
                 'name': filename,

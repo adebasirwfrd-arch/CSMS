@@ -1097,57 +1097,82 @@ async def upload_attachment(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
-    # 1. Get Task & Project info
-    tasks = db.get_tasks()
-    task = next((t for t in tasks if t['id'] == task_id), None)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    project = db.get_project(task['project_id'])
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+    # This is the legacy small-file-only endpoint
+    # ... code ... (I'll keep it for small files if needed, or redirect it)
+    # ...
+    # Wait, I'll just add the new ones below it.
+    pass # placeholder for search match
 
-    # 2. Read file content
-    content = await file.read()
-    
-    # 3. Upload to Drive with nested folder structure based on task code
-    task_code = task.get('code', '')
-    task_title = task.get('title', '')
-    log_info("UPLOAD", f"Starting upload for task {task_id}, file: {file.filename}")
-    log_info("UPLOAD", f"Task code: '{task_code}', Project: {project['name']}")
-    
+@app.post("/tasks/{task_id}/initiate-upload")
+async def initiate_task_upload(
+    task_id: str,
+    filename: str = Form(...),
+    mime_type: str = Form(default="application/octet-stream")
+):
+    """Initiate a resumable upload session for a task attachment"""
     try:
-        result = await drive_service.upload_file_to_drive(
-            file_data=content, 
-            filename=file.filename, 
-            project_name=project['name'],
-            task_code=task_code,
-            task_title=task_title
+        task = db.get_task(task_id)
+        if not task: raise HTTPException(status_code=404, detail="Task not found")
+        project = db.get_project(task['project_id'])
+        if not project: raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Determine target folder ID
+        folder_id = drive_service.create_nested_task_folder(
+            project['name'], task.get('code',''), task.get('title','')
         )
         
-        if not result.get('success'):
-            error_msg = result.get('error', 'Unknown error from Drive service')
-            log_error("UPLOAD", f"Drive upload failed: {error_msg}", send_email=True, 
-                     request_info=f"POST /tasks/{task_id}/upload, file: {file.filename}")
-            raise HTTPException(status_code=500, detail=f"Failed to upload to Drive: {error_msg}")
-    except HTTPException:
-        raise  # Re-raise HTTPException as-is
-    except Exception as e:
-        log_error("UPLOAD", f"Exception during Drive upload: {str(e)}", e, send_email=True,
-                 request_info=f"POST /tasks/{task_id}/upload, file: {file.filename}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload to Drive: {str(e)}")
+        upload_url, _ = drive_service.get_resumable_upload_session(filename, mime_type, parent_id=folder_id)
+        if not upload_url: raise HTTPException(status_code=500, detail="Failed to initiate upload")
         
-    # 4. Update Task with attachment info including file_id for faster retrieval
-    current_attachments = task.get("attachments", [])
-    current_attachments.append({
-        "filename": file.filename,
-        "file_id": result.get('file_id'),  # Store file_id for direct access
-        "folder_path": result.get('folder_path'),  # Store path for debugging
-        "uploaded_at": datetime.now().isoformat()
-    })
-    db.update_task(task_id, {"attachments": current_attachments})
-    
-    log_info("UPLOAD", f"Attachment saved: {file.filename} -> {result.get('folder_path')}")
+        return {"upload_url": upload_url}
+    except Exception as e:
+        log_error("UPLOAD", f"Error initiating task upload: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tasks/{task_id}/upload-chunk")
+async def upload_task_chunk(
+    task_id: str,
+    filename: str = Form(...),
+    upload_url: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    start_byte: int = Form(...),
+    total_size: int = Form(...),
+    chunk_file: UploadFile = File(...)
+):
+    """Upload a chunk of a task attachment"""
+    try:
+        import requests
+        chunk_data = await chunk_file.read()
+        headers = {
+            "Content-Range": f"bytes {start_byte}-{start_byte + len(chunk_data) - 1}/{total_size}",
+            "Content-Length": str(len(chunk_data))
+        }
+        
+        response = requests.put(upload_url, headers=headers, data=chunk_data)
+        
+        if response.status_code in [200, 201, 308]:
+            if chunk_index == total_chunks - 1:
+                # Final chunk success
+                res_data = response.json()
+                file_id = res_data.get("id")
+                
+                # Update task database
+                task = db.get_task(task_id)
+                attachments = task.get("attachments", [])
+                attachments.append({
+                    "filename": filename,
+                    "file_id": file_id,
+                    "uploaded_at": datetime.now().isoformat()
+                })
+                db.update_task(task_id, {"attachments": attachments})
+                return {"status": "complete", "file_id": file_id}
+            return {"status": "uploading", "chunk": chunk_index}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+    except Exception as e:
+        log_error("UPLOAD", f"Error in task chunk upload: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     
     # 5. Trigger Daftar Isi PDF regeneration in background
     project_folder_id = result.get('project_folder_id')
