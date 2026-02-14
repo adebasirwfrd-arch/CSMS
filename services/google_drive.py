@@ -173,8 +173,8 @@ class GoogleDriveService:
     
     def find_or_create_folder(self, folder_name: str, parent_id: str = None, prefix_search: bool = False) -> str:
         """Find existing folder or create new one by name. 
-           If prefix_search=True, matches folder starting with folder_name (and space).
-           e.g. searching for "2.1" finds "2.1 HSE Committee Meeting"
+           If prefix_search=True, matches folder starting with folder_name followed by a boundary.
+           Uses case-insensitive search for Element and Project folders.
         """
         if not self.enabled or not self.service:
             print("[WARN] Drive not enabled")
@@ -189,40 +189,59 @@ class GoogleDriveService:
                 print(f"[CACHE] Using cached folder: {folder_name}")
                 return self.folders_cache[cache_key]
             
-            # Search Query
+            # 1. SEARCH: We use a broader query and then filter in Python for reliability
+            # Note:name contains '...' is case-insensitive in Drive API v3
             if prefix_search:
-                # Find folders starting with "Name " (with space) or exactly "Name" to avoid 2.1 matching 2.10
-                query = f"(name = '{folder_name}' or name contains '{folder_name} ') and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+                # Search for anything containing the folder_name to be safe
+                query = f"name contains '{folder_name}' and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
             else:
-                query = f"name='{folder_name}' and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+                # Exact search (case-insensitive in some Drive configurations, but we'll verify)
+                query = f"name = '{folder_name}' and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
             
             search_request = self.service.files().list(
                 q=query, 
                 spaces='drive', 
                 fields='files(id, name)',
-                pageSize=100,  # Should be enough for folders in one parent
+                pageSize=100,
                 supportsAllDrives=True
             )
             results = self._execute_with_retry(search_request, f"FIND_FOLDER_{folder_name[:15]}")
             files = results.get('files', [])
             
-            if files:
-                # If multiple matches, pick the best one (prefer exact match or shortest/first)
-                # Sort: exact match first, then others
-                files.sort(key=lambda x: (x['name'] != folder_name, x['name']))
-                folder_id = files[0]['id']
+            # 2. FILTER: Precise matching in Python (Case-Insensitive)
+            best_match = None
+            target_lower = folder_name.lower()
+            
+            for f in files:
+                name_lower = f['name'].lower()
                 
-                # Update cache only if exact match
-                if files[0]['name'] == folder_name:
+                if prefix_search:
+                    # Strict boundary check: "2.1" should match "2.1 HSE" but NOT "2.10"
+                    # Boundaries: space, dot, dash, or end of string
+                    if name_lower == target_lower:
+                        best_match = f
+                        break
+                    if name_lower.startswith(target_lower):
+                        remainder = f['name'][len(folder_name):]
+                        if not remainder or remainder[0] in " .-_":
+                            best_match = f
+                            # Keep looking for an exact match if this was just a prefix
+                else:
+                    if name_lower == target_lower:
+                        best_match = f
+                        break
+            
+            if best_match:
+                folder_id = best_match['id']
+                # Update cache only if exact case-insensitive match
+                if best_match['name'].lower() == folder_name.lower():
                     self.folders_cache[cache_key] = folder_id
                 
-                print(f"[FOUND] Existing folder: {files[0]['name']}")
+                print(f"[FOUND] Existing folder: {best_match['name']} (ID: {folder_id})")
                 return folder_id
             
-            # Create new folder (Only if not searching with prefix)
-            # If we are in prefix mode and didn't find it, we usually want to CREATE the base name
-            # e.g. if "2.1 HSE" exists, we found it. If not, create "2.1" (or whatever was passed)
-            
+            # 3. CREATE: New folder if not found
+            # If we were in prefix mode but didn't find anything, we create the literal name
             file_metadata = {
                 'name': folder_name,
                 'mimeType': 'application/vnd.google-apps.folder',
@@ -236,8 +255,12 @@ class GoogleDriveService:
             file = self._execute_with_retry(create_request, f"CREATE_FOLDER_{folder_name[:15]}")
             folder_id = file.get('id')
             self.folders_cache[cache_key] = folder_id
-            print(f"[CREATED] New folder: {folder_name}")
+            print(f"[CREATED] New folder: {folder_name} (ID: {folder_id})")
             return folder_id
+            
+        except Exception as e:
+            print(f"[ERROR] Error finding/creating folder: {e}")
+            return None
             
         except Exception as e:
             print(f"[ERROR] Error finding/creating folder: {e}")
@@ -298,12 +321,38 @@ class GoogleDriveService:
                     current_parent_id = self.find_or_create_folder(folder_name, current_parent_id)
                 else:
                     # Intermediate folder: use prefix search to find "4.3" or "4.3 SomeTitle"
-                    current_parent_id = self.find_or_create_folder(folder_code, current_parent_id, prefix_search=True)
+                    temp_parent_id = self.find_or_create_folder(folder_code, current_parent_id, prefix_search=True)
+                    
+                    # DEFENSIVE CHECK: Verify the found folder actually starts with folder_code
+                    # This prevents "2.1" matching "2.2" or other collisions
+                    if temp_parent_id:
+                        try:
+                            folder_info = self.service.files().get(fileId=temp_parent_id, fields='name').execute()
+                            found_name = folder_info.get('name', '').lower()
+                            expected_prefix = folder_code.lower()
+                            
+                            # Boundary check on found name
+                            valid = False
+                            if found_name == expected_prefix:
+                                valid = True
+                            elif found_name.startswith(expected_prefix):
+                                remainder = found_name[len(expected_prefix):]
+                                if not remainder or remainder[0] in " .-_":
+                                    valid = True
+                            
+                            if not valid:
+                                log_warning("DRIVE", f"Folder collision detected! Found '{found_name}' when searching for '{folder_code}'. Forcing new folder creation.")
+                                # Create a new folder with exactly the folder_code to avoid the mess
+                                temp_parent_id = self.find_or_create_folder(folder_code, current_parent_id, prefix_search=False)
+                        except Exception as e:
+                            log_warning("DRIVE", f"Could not verify folder name for {temp_parent_id}: {e}")
+                    
+                    current_parent_id = temp_parent_id
                 
                 if not current_parent_id:
-                    log_error("DRIVE", f"Could not create folder: {folder_code}", send_email=False)
+                    log_error("DRIVE", f"Could not resolve folder: {folder_code}", send_email=False)
                     return None
-                log_drive_operation("NESTED", f"Created/found: .../{folder_code}")
+                log_info("DRIVE", f"[NESTED] Resolved level {folder_code} -> ID: {current_parent_id}")
             
             return current_parent_id
             
