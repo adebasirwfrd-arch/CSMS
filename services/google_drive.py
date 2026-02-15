@@ -107,42 +107,73 @@ class GoogleDriveService:
         log_error("DRIVE", f"[{operation_name}] All {MAX_RETRIES} attempts failed. Last error: {last_exception}")
         raise last_exception
     def _get_drive_service(self):
-        """Get Google Drive service - try OAuth first, then Service Account fallback"""
+        """Get Google Drive service - try Supabase, then OAuth Env, then Service Account fallback"""
         
-        # Method 1: Try OAuth2 token (PREFERRED - has storage quota)
-        if self.token_json:
+        # Method 1: Try OAuth2 token (Persistent in Supabase preferred, then Environment)
+        token_info = None
+        source = "N/A"
+        
+        # A. Try Supabase first
+        try:
+            from services.supabase_service import supabase_service
+            if supabase_service.enabled:
+                token_info = supabase_service.get_config('google_drive_token')
+                if token_info:
+                    log_info("DRIVE", "Found OAuth token in Supabase storage")
+                    source = "Supabase"
+        except Exception as e:
+            log_warning("DRIVE", f"Failed to fetch token from Supabase: {e}")
+
+        # B. Fallback to Environment Variable
+        if not token_info and self.token_json:
             try:
-                log_info("DRIVE", "Attempting OAuth2 token authentication...")
-                # Parse token JSON from environment variable
                 token_info = json.loads(self.token_json)
-                
+                log_info("DRIVE", "Using OAuth token from Environment Variable")
+                source = "EnvVar"
+            except Exception as e:
+                log_error("DRIVE", "Failed to parse GOOGLE_TOKEN_JSON", e)
+
+        if token_info:
+            try:
                 # Create credentials object
                 creds = Credentials.from_authorized_user_info(token_info, SCOPES)
                 
                 # Check if token needs refresh
                 if creds and creds.expired and creds.refresh_token:
-                    log_info("DRIVE", "Refreshing expired OAuth token...")
+                    log_info("DRIVE", f"Refreshing expired OAuth token from {source}...")
                     try:
                         creds.refresh(Request())
                         log_info("DRIVE", "Token refreshed successfully")
-                        # Log reminder to update token in Vercel
-                        log_warning("DRIVE", "IMPORTANT: OAuth token was refreshed. For persistent access, update GOOGLE_TOKEN_JSON in Vercel with new token.")
+                        
+                        # Save THE NEW TOKEN back to Supabase for persistence
+                        try:
+                            new_token_info = {
+                                "token": creds.token,
+                                "refresh_token": creds.refresh_token,
+                                "token_uri": creds.token_uri,
+                                "client_id": creds.client_id,
+                                "client_secret": creds.client_secret,
+                                "scopes": creds.scopes
+                            }
+                            if supabase_service.enabled:
+                                supabase_service.set_config('google_drive_token', new_token_info)
+                                log_info("DRIVE", "Refreshed token persisted to Supabase")
+                        except Exception as save_err:
+                            log_warning("DRIVE", f"Refreshed token could not be saved to DB: {save_err}")
+                            
                     except Exception as refresh_err:
-                        log_error("DRIVE", f"Failed to refresh OAuth token: {refresh_err}. You may need to re-authenticate.", send_email=True)
-                        # Don't raise - try to use the token anyway, or fall through to Service Account
+                        log_error("DRIVE", f"Failed to refresh OAuth token: {refresh_err}. Source: {source}", send_email=True)
                         creds = None
                 
                 if creds and creds.valid:
-                    log_info("DRIVE", "OAuth credentials loaded and valid!")
-                    self.auth_method = "OAuth2"
+                    log_info("DRIVE", f"OAuth credentials loaded from {source} and valid!")
+                    self.auth_method = f"OAuth2 ({source})"
                     return build('drive', 'v3', credentials=creds)
                 elif creds and not creds.valid:
-                    log_warning("DRIVE", "OAuth token is invalid/expired. Falling back to Service Account.")
+                    log_warning("DRIVE", f"OAuth token from {source} is invalid/expired. Falling back.")
                     
-            except json.JSONDecodeError as e:
-                log_error("DRIVE", "Failed to parse GOOGLE_TOKEN_JSON", e, send_email=False)
             except Exception as e:
-                log_warning("DRIVE", f"OAuth2 authentication failed: {e}")
+                log_warning("DRIVE", f"OAuth2 authentication failed ({source}): {e}")
         else:
             log_info("DRIVE", "GOOGLE_TOKEN_JSON not set, skipping OAuth2")
         

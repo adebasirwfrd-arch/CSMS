@@ -402,5 +402,34 @@ class SupabaseService:
             print(f"[ERROR] Error deleting related doc: {e}")
             return False
 
+    # ==================== CONFIG / SETTINGS ====================
+    
+    def get_config(self, key: str) -> Optional[Dict]:
+        """Get application configuration from Supabase."""
+        if not self.enabled:
+            return None
+        try:
+            result = self.client.table('app_config').select("value").eq('key', key).execute()
+            return result.data[0]['value'] if result.data else None
+        except Exception as e:
+            print(f"[ERROR] Error fetching config '{key}': {e}")
+            return None
+
+    def set_config(self, key: str, value: Dict) -> bool:
+        """Set application configuration in Supabase (Upsert)."""
+        if not self.enabled:
+            return False
+        try:
+            data = {
+                "key": key,
+                "value": value,
+                "updated_at": datetime.now().isoformat()
+            }
+            self.client.table('app_config').upsert(data).execute()
+            return True
+        except Exception as e:
+            print(f"[ERROR] Error setting config '{key}': {e}")
+            return False
+
 # Global instance
 supabase_service = SupabaseService()
