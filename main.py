@@ -432,6 +432,24 @@ def diagnose_tasks():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+@app.get("/api/diagnose/drive")
+def diagnose_drive():
+    """Check Google Drive authentication and token source."""
+    from services.google_drive import drive_service
+    try:
+        if not drive_service.enabled:
+            return {"status": "error", "message": "Google Drive is disabled in configuration"}
+        
+        return {
+            "status": "success",
+            "auth_method": drive_service.auth_method,
+            "has_token_env": bool(os.getenv("GOOGLE_TOKEN_JSON")),
+            "has_sa_env": bool(os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")),
+            "usage": drive_service.get_storage_quota() if drive_service.service else "N/A"
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.get("/projects")
 def list_projects():
     return db.get_projects()
