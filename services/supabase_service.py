@@ -194,8 +194,8 @@ class SupabaseService:
             print(f"[ERROR] Error updating task: {e}")
             return None
     
-    def batch_create_tasks(self, tasks: List[Dict]) -> List[Dict]:
-        """Batch insert multiple tasks in a single API call - much faster!"""
+    def upsert_tasks(self, tasks: List[Dict]) -> List[Dict]:
+        """Upsert multiple tasks (insert if new, update if ID or project_id+code exists)."""
         if not self.enabled or not tasks:
             return tasks
         try:
@@ -204,11 +204,12 @@ class SupabaseService:
                 if 'attachments' in task and isinstance(task['attachments'], list):
                     task['attachments'] = json.dumps(task['attachments'])
             
-            print(f"[SUPABASE] Batch inserting {len(tasks)} tasks in ONE call...")
-            result = self.client.table('tasks').insert(tasks).execute()
-            print(f"[SUPABASE] Batch insert complete: {len(result.data) if result.data else 0} tasks created")
+            print(f"[SUPABASE] Batch upserting {len(tasks)} tasks...")
+            # Supabase upsert handles conflict based on primary key or unique constraints
+            result = self.client.table('tasks').upsert(tasks).execute()
+            print(f"[SUPABASE] Batch upsert complete: {len(result.data) if result.data else 0} tasks processed")
             
-            # Parse attachments back for each task
+            # Parse attachments back
             returned_tasks = result.data or tasks
             for task in returned_tasks:
                 if 'attachments' in task and isinstance(task['attachments'], str):
@@ -218,9 +219,11 @@ class SupabaseService:
                         task['attachments'] = []
             return returned_tasks
         except Exception as e:
-            print(f"[ERROR] Batch task insert failed: {e}")
+            print(f"[ERROR] Batch task upsert failed: {e}")
+            import traceback
+            traceback.print_exc()
             return tasks
-    
+
     def delete_task(self, task_id: str) -> bool:
         if not self.enabled:
             return False

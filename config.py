@@ -5,7 +5,7 @@ STANDARD_TASKS = [
     {"code": "1.3.1", "title": "HSE COMMITTEE MEETING", "category": "Management"},
     
     # 2. Safety Signs & Photos
-    {"code": "2.1.2.4", "title": "FOTO RAMBU K3 (RAMBU TITIK JEPIT, CHEMICAL, NO SMOKING, ELECTRICITY)", "category": "Safety Signs"},
+    {"code": "2.1.2.4", "title": "REVIEW KEBIJAKAN", "category": "Safety Signs"},
     {"code": "2.1.2.5", "title": "FOTO PEMASANGAN POSTER LIVE SAVING RULES", "category": "Safety Signs"},
     {"code": "2.2.5.1", "title": "FOTO HSE MEETING DILOKASI (HSE WEEKLY, PJSM, TAILGATE)", "category": "Safety Signs"},
     {"code": "2.2.5.2", "title": "FOTO SAAT MENYAMPAIKAN SAFETY MOMENT DILOKASI", "category": "Safety Signs"},

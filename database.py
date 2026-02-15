@@ -185,29 +185,46 @@ class Database:
             self._write_json(TASKS_FILE, tasks)
             return new_task
     
-    def batch_create_tasks(self, tasks_data: List[Dict]) -> List[Dict]:
-        """Create multiple tasks - SYNCHRONOUS batch write to Supabase"""
-        new_tasks = [
-            {
-                "id": str(uuid.uuid4()),
-                "status": "Upcoming",
-                "created_at": datetime.now().isoformat(),
-                "attachments": [],
-                **t
-            } 
-            for t in tasks_data
-        ]
+    def upsert_tasks(self, tasks_data: List[Dict]) -> List[Dict]:
+        """Upsert multiple tasks - SYNCHRONOUS batch write to Supabase
+        If 'id' is present in task data, it will update; otherwise it will create new.
+        """
+        processed_tasks = []
+        for t in tasks_data:
+            task = {**t}
+            if 'id' not in task:
+                task["id"] = str(uuid.uuid4())
+            if 'status' not in task:
+                task["status"] = "Upcoming"
+            if 'created_at' not in task:
+                task["created_at"] = datetime.now().isoformat()
+            if 'attachments' not in task:
+                task["attachments"] = []
+            processed_tasks.append(task)
         
         if SUPABASE_ENABLED:
-            # SYNCHRONOUS batch insert - will raise exception if fails
-            result = supabase_service.batch_create_tasks(new_tasks)
-            print(f"[DB] {len(result)} tasks created in Supabase (batch)")
+            # result = supabase_service.upsert_tasks(processed_tasks) # renamed in supabase_service
+            # Wait, I renamed it in supabase_service.py, let's use the new name
+            result = supabase_service.upsert_tasks(processed_tasks)
+            print(f"[DB] {len(result)} tasks upserted in Supabase")
             return result
         else:
+            # Local fallback (simplified upsert)
             tasks = self.get_tasks()
-            tasks.extend(new_tasks)
+            task_map = {t['id']: i for i, t in enumerate(tasks)}
+            
+            for nt in processed_tasks:
+                if nt['id'] in task_map:
+                    tasks[task_map[nt['id']]].update(nt)
+                else:
+                    tasks.append(nt)
+            
             self._write_json(TASKS_FILE, tasks)
-            return new_tasks
+            return processed_tasks
+
+    def batch_create_tasks(self, tasks_data: List[Dict]) -> List[Dict]:
+        """Legacy method - now uses upsert_tasks"""
+        return self.upsert_tasks(tasks_data)
 
     def update_task(self, task_id: str, updates: Dict) -> Optional[Dict]:
         """Update task - SYNCHRONOUS write to Supabase"""

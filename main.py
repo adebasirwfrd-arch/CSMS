@@ -510,32 +510,56 @@ async def sync_full_checklist(project_id: str, background_tasks: BackgroundTasks
             log_error("SYNC", error_msg, send_email=True)
             raise HTTPException(status_code=404, detail=error_msg)
             
-        # 4. Get existing tasks for this project to avoid duplicates
+        # 4. Get existing tasks for this project
         existing_tasks = db.get_tasks(project_id)
-        existing_codes = {t['code'] for t in existing_tasks if t.get('code')}
-        log_info("SYNC", f"Existing tasks: {len(existing_tasks)}, existing codes: {len(existing_codes)}")
+        existing_tasks_by_code = {t['code']: t for t in existing_tasks if t.get('code')}
+        log_info("SYNC", f"Existing tasks found in DB: {len(existing_tasks)}")
         
-        # 5. Filter only new tasks
-        tasks_to_add = []
+        # 5. Prepare tasks for upsert (new tasks + updates for existing)
+        tasks_to_upsert = []
+        updates_count = 0
+        new_count = 0
+        
         for t in template_tasks:
-            if t['code'] not in existing_codes:
-                tasks_to_add.append({
+            code = t['code']
+            if code in existing_tasks_by_code:
+                existing = existing_tasks_by_code[code]
+                # If title or category changed, add to upsert list
+                if existing.get('title') != t['title'] or existing.get('category') != t['category']:
+                    tasks_to_upsert.append({
+                        "id": existing['id'], # Primary key for update
+                        "project_id": project_id,
+                        "code": code,
+                        "title": t['title'],
+                        "category": t['category']
+                        # Preserve other fields like status, attachments in DB
+                    })
+                    updates_count += 1
+            else:
+                # New task from template
+                tasks_to_upsert.append({
                     "title": t['title'],
                     "project_id": project_id,
-                    "code": t['code'],
+                    "code": code,
                     "category": t['category'],
                     "status": "Upcoming"
                 })
+                new_count += 1
         
-        log_info("SYNC", f"Tasks to add: {len(tasks_to_add)}")
+        log_info("SYNC", f"Tasks to process: {len(tasks_to_upsert)} ({new_count} new, {updates_count} updates)")
         
-        # 6. Batch create if any
-        if tasks_to_add:
-            db.batch_create_tasks(tasks_to_add)
-            log_info("SYNC", f"Successfully added {len(tasks_to_add)} tasks")
-            return {"status": "success", "added": len(tasks_to_add), "message": f"Added {len(tasks_to_add)} new tasks. Syncing Drive folders in background."}
+        # 6. Batch upsert if any
+        if tasks_to_upsert:
+            db.upsert_tasks(tasks_to_upsert)
+            log_info("SYNC", f"Successfully processed {len(tasks_to_upsert)} tasks")
+            return {
+                "status": "success", 
+                "added": new_count, 
+                "updated": updates_count,
+                "message": f"Added {new_count} tasks and updated {updates_count} tasks. Syncing Drive folders in background."
+            }
         else:
-            return {"status": "success", "added": 0, "message": "All tasks are already synced. Ensuring Drive folder structure in background."}
+            return {"status": "success", "added": 0, "updated": 0, "message": "All tasks are already in sync with template. Ensuring Drive folder structure in background."}
             
     except HTTPException:
         raise  # Re-raise HTTP exceptions as-is
