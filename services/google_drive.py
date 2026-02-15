@@ -202,6 +202,32 @@ class GoogleDriveService:
         log_error("DRIVE", "All authentication methods failed! Google Drive will be disabled.", send_email=True)
         return None
     
+    def get_storage_quota(self) -> Dict:
+        """Get Google Drive storage quota info."""
+        if not self.service:
+            return {"limit": "N/A", "usage": "N/A", "percent": "0%"}
+        
+        try:
+            # Note: about().get() requires exactly one field or '*'
+            about = self._execute_with_retry(self.service.about().get(fields="storageQuota"), "GET_QUOTA")
+            quota = about.get('storageQuota', {})
+            limit = int(quota.get('limit', 0))
+            usage = int(quota.get('usage', 0))
+            
+            # Convert to GB for readability
+            usage_gb = usage / (1024**3)
+            limit_gb = limit / (1024**3)
+            percent = (usage / limit * 100) if limit > 0 else 0
+            
+            return {
+                "limit": f"{limit_gb:.2f} GB",
+                "usage": f"{usage_gb:.2f} GB",
+                "percent": f"{percent:.1f}%"
+            }
+        except Exception as e:
+            log_warning("DRIVE", f"Failed to fetch storage quota: {e}")
+            return {"error": str(e)}
+    
     def find_or_create_folder(self, folder_name: str, parent_id: str = None, prefix_search: bool = False) -> str:
         """Find existing folder or create new one by name. 
            If prefix_search=True, matches folder starting with folder_name followed by a boundary.
