@@ -402,6 +402,36 @@ async def project_setup_task(project_name: str):
 
 # --- Projects ---
 
+@app.get("/api/diagnose/tasks")
+def diagnose_tasks():
+    """Diagnostic endpoint to check for potential duplicate tasks or IDs."""
+    from collections import Counter
+    try:
+        # Fetch all tasks from DB
+        tasks = db.get_tasks() # Fetch all if project_id is None
+        
+        report = {
+            "total_tasks": len(tasks),
+            "id_duplicates": {},
+            "logical_duplicates": {},
+            "status": "success"
+        }
+        
+        # 1. Check for duplicate Database IDs (UUIDs)
+        ids = [t['id'] for t in tasks if t.get('id')]
+        id_counts = Counter(ids)
+        report["id_duplicates"] = {id: count for id, count in id_counts.items() if count > 1}
+        
+        # 2. Check for Logical Duplicates (Project + Code)
+        # These appear identical to users but have different UUIDs
+        logical_keys = [f"Project:{t.get('project_id')} | Code:{t.get('code')}" for t in tasks if t.get('project_id') and t.get('code')]
+        logical_counts = Counter(logical_keys)
+        report["logical_duplicates"] = {key: count for key, count in logical_counts.items() if count > 1}
+        
+        return report
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.get("/projects")
 def list_projects():
     return db.get_projects()
