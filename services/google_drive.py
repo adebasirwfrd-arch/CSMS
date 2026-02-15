@@ -215,21 +215,37 @@ class GoogleDriveService:
             for f in files:
                 name_lower = f['name'].lower()
                 
-                if prefix_search:
-                    # Strict boundary check: "2.1" should match "2.1 HSE" but NOT "2.10"
-                    # Boundaries: space, dot, dash, or end of string
-                    if name_lower == target_lower:
-                        best_match = f
-                        break
+                # A. EXACT MATCH
+                if name_lower == target_lower:
+                    best_match = f
+                    break
+                
+                # B. CODE-AWARE MATCH (e.g., "2.1" matches "2.1 KEBIJAKAN HSE")
+                # Detect codes like "4.3.2" or "0.1" at the start of name
+                target_parts = target_lower.split(' ', 1)
+                existing_parts = name_lower.split(' ', 1)
+                
+                target_code = target_parts[0]
+                existing_code = existing_parts[0]
+                
+                # Check if both look like codes (digits and dots)
+                is_target_code = any(c.isdigit() for c in target_code) and ('.' in target_code or target_code.isdigit())
+                is_existing_code = any(c.isdigit() for c in existing_code) and ('.' in existing_code or existing_code.isdigit())
+                
+                if is_target_code and is_existing_code and target_code == existing_code:
+                    print(f"[DRIVE] Code match found: '{f['name']}' matches target code '{target_code}'")
+                    best_match = f
+                    # If this is an exact code match, it's very likely what we want
+                    if prefix_search:
+                        break 
+
+                # C. PREFIX MATCH (Fallback for non-coded folders)
+                if prefix_search and not best_match:
                     if name_lower.startswith(target_lower):
                         remainder = f['name'][len(folder_name):]
                         if not remainder or remainder[0] in " .-_":
                             best_match = f
-                            # Keep looking for an exact match if this was just a prefix
-                else:
-                    if name_lower == target_lower:
-                        best_match = f
-                        break
+                            # Keep looking for an exact match or code match
             
             if best_match:
                 folder_id = best_match['id']
