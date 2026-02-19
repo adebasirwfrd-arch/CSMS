@@ -827,4 +827,78 @@ class GoogleDriveService:
             return []
 
 # Singleton instance for consistent authentication and caching across services
+    async def copy_file(self, file_id: str, parent_id: str, new_name: str = None) -> str:
+        """Copy a file to a new parent folder (Wrapper for batch compatibility)."""
+        if not self.enabled or not self.service:
+            return None
+        
+        # This is a single copy, but we use the batch logic under the hood if needed
+        # For now, just a standard single execution to keep it simple when called individually
+        try:
+            body = {'parents': [parent_id]}
+            if new_name:
+                body['name'] = new_name
+            
+            request = self.service.files().copy(
+                fileId=file_id,
+                body=body,
+                fields='id',
+                supportsAllDrives=True
+            )
+            result = self._execute_with_retry(request, f"COPY_{file_id}")
+            return result.get('id')
+        except Exception as e:
+            log_error("DRIVE", f"Error copying file {file_id}: {e}")
+            return None
+
+    def batch_copy_files(self, file_list: List[Tuple[str, str, str]]) -> int:
+        """
+        Execute copy commands in batches of 100 using Google Drive Batch API.
+        file_list: list of (file_id, parent_id, new_name)
+        Returns: number of successfully copied files
+        """
+        if not self.enabled or not self.service or not file_list:
+            return 0
+        
+        success_count = [0] # Mutable to hold count in callback
+        
+        def callback(request_id, response, exception):
+            if exception:
+                # log_error("DRIVE", f"Batch copy failed for {request_id}: {exception}")
+                pass
+            else:
+                success_count[0] += 1
+        
+        # Process in chunks of 50 to be safe (Limit is 100)
+        chunk_size = 50 
+        total_processed = 0
+        
+        for i in range(0, len(file_list), chunk_size):
+            chunk = file_list[i:i + chunk_size]
+            batch = self.service.new_batch_http_request(callback=callback)
+            
+            for file_id, parent_id, new_name in chunk:
+                body = {'parents': [parent_id]}
+                if new_name:
+                    body['name'] = new_name
+                
+                request = self.service.files().copy(
+                    fileId=file_id,
+                    body=body,
+                    fields='id',
+                    supportsAllDrives=True
+                )
+                batch.add(request)
+            
+            try:
+                batch.execute()
+                total_processed += len(chunk)
+                log_info("DRIVE", f"Batch executed: {success_count[0]} files copied so far...")
+            except Exception as e:
+                log_error("DRIVE", f"Batch execution failed: {e}")
+                
+        return success_count[0]
+
+# Singleton instance for consistent authentication and caching across services
 drive_service = GoogleDriveService()
+

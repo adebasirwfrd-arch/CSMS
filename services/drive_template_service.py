@@ -64,14 +64,16 @@ class DriveTemplateService:
                     files_to_copy.append((item_id, target_parent_id, item_name))
 
         # 3. Copy files in parallel (batches of 5 to avoid rate limits)
+        # 3. Copy files using BATCH API (100x Faster)
         if files_to_copy:
-            log_info("TEMPLATE", f"Copying {len(files_to_copy)} files to {target_parent_id}...")
-            batch_size = 5
-            for i in range(0, len(files_to_copy), batch_size):
-                batch = files_to_copy[i:i + batch_size]
-                tasks = [drive_service.copy_file(fid, pid, name) for fid, pid, name in batch]
-                await asyncio.gather(*tasks)
-                await asyncio.sleep(0.1)
+            log_info("TEMPLATE", f"Batch copying {len(files_to_copy)} files to {target_parent_id}...")
+            # We pass the whole list to batch_copy_files, it handles chunking internally
+            files_list_for_batch = [(fid, pid, name) for fid, pid, name in files_to_copy]
+            
+            # Run in executor to avoid blocking the event loop during HTTP request
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: drive_service.batch_copy_files(files_list_for_batch))
+
 
         # 4. Recurse into folders in parallel (controlled by semaphore)
         if folders_to_recurse:
