@@ -8,87 +8,43 @@ class DriveTemplateService:
         self.master_template_id = "1lWxdLWnw3VBcpEsQJmzVPXzC4WbeS_3o"
 
     async def clone_template_to_project(self, project_folder_id: str):
-        """Clone the entire master template to a new project folder in the background."""
-        if not drive_service.enabled or not drive_service.service:
-            log_warning("TEMPLATE", "Drive service not enabled, skipping template clone")
-            return
-
-        log_info("TEMPLATE", f"Starting background clone of master template to project folder: {project_folder_id}")
+        """
+        Trigger Google Apps Script to clone template in the background.
+        This is a Fire-and-Forget operation to prevent Vercel timeouts.
+        """
+        GAS_URL = "https://script.google.com/macros/s/AKfycbyccjuBvzQkR9QR47C1pO-utppV4XL-0J8FYSIQL9hGXtHf7kHp9th7JotTVo0uDmbq7Q/exec"
+        
+        log_info("TEMPLATE", f"Triggering GAS WebHook for folder: {project_folder_id}")
+        
         try:
-            await self._clone_recursive(self.master_template_id, project_folder_id)
-            log_info("TEMPLATE", "Background template clone completed successfully")
-        except Exception as e:
-            log_error("TEMPLATE", f"Error during background template clone: {e}", send_email=True)
-
-    async def _clone_recursive(self, source_id: str, target_parent_id: str, semaphore: asyncio.Semaphore = None):
-        """Recursively copy folders and files from source to target in parallel."""
-        if semaphore is None:
-            semaphore = asyncio.Semaphore(3)  # Limit to 3 concurrent folder recursions
-
-        # 1. List all items in source folder
-        log_info("TEMPLATE", f"Scanning source folder {source_id}...")
-        source_items = drive_service.fetch_files_in_folder(source_id)
-        if not source_items:
-            return
-
-        # 2. List all items in target folder to avoid duplicates (idempotency)
-        target_items = drive_service.fetch_files_in_folder(target_parent_id)
-        target_names = {item['name']: item['id'] for item in target_items}
-
-        # Sort source items alphabetically to ensure deterministic processing
-        source_items.sort(key=lambda x: x['name'])
-
-        folders_to_recurse = []
-        files_to_copy = []
-
-        for item in source_items:
-            item_id = item['id']
-            item_name = item['name']
-            item_mime = item['mimeType']
+            # We use a thread to send the request so it's non-blocking for asyncio
+            # Although standard requests.post is blocking, the GAS script returns immediately
+            # so it's very fast (<1s).
             
-            if item_mime == 'application/vnd.google-apps.folder':
-                # Check if folder already exists in target
-                if item_name in target_names:
-                    new_folder_id = target_names[item_name]
-                else:
-                    new_folder_id = drive_service.find_or_create_folder(item_name, target_parent_id)
-                    log_info("TEMPLATE", f"Created folder: {item_name}")
-                
-                if new_folder_id:
-                    folders_to_recurse.append((item_name, item_id, new_folder_id))
-            else:
-                # Check if file already exists
-                if item_name in target_names:
-                    pass
-                else:
-                    files_to_copy.append((item_id, target_parent_id, item_name))
-
-        # 3. Copy files using BATCH API (100x Faster)
-        if files_to_copy:
-            log_info("TEMPLATE", f"Batch copying {len(files_to_copy)} files to {target_parent_id}...")
-            # We pass the whole list to batch_copy_files, it handles chunking internally
-            files_list_for_batch = [(fid, pid, name) for fid, pid, name in files_to_copy]
+            payload = {
+                "sourceId": self.master_template_id,
+                "destinationId": project_folder_id,
+                "projectTitle": "New Project" # Optional metadata
+            }
             
-            # Run in executor to avoid blocking the event loop during HTTP request
+            def send_webhook():
+                import requests
+                response = requests.post(GAS_URL, json=payload, timeout=10)
+                return response
+            
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, lambda: drive_service.batch_copy_files(files_list_for_batch))
-
-        # 4. Recurse into folders in parallel (controlled by semaphore)
-        if folders_to_recurse:
-            async def limited_recurse(name, sid, tid):
-                async with semaphore:
-                    log_info("TEMPLATE", f"Recursing into: {name}")
-                    await self._clone_recursive(sid, tid, semaphore)
-
-            recurse_tasks = [limited_recurse(name, sid, tid) for name, sid, tid in folders_to_recurse]
-            results = await asyncio.gather(*recurse_tasks, return_exceptions=True)
+            resp = await loop.run_in_executor(None, send_webhook)
             
-            # Check for failures in subfolder recursions
-            for i, res in enumerate(results):
-                if isinstance(res, Exception):
-                    folder_name = folders_to_recurse[i][0]
-                    log_error("TEMPLATE", f"Recursion into {folder_name} failed: {res}")
+            if resp.status_code == 200:
+                log_info("TEMPLATE", f"GAS WebHook triggered successfully: {resp.text}")
+            else:
+                log_error("TEMPLATE", f"GAS WebHook failed: {resp.status_code} - {resp.text}")
 
+        except Exception as e:
+            log_error("TEMPLATE", f"Error triggering GAS WebHook: {e}", send_email=True)
+
+    # _clone_recursive and other helper methods are no longer needed
+    # but we keep get_template_structure for reading task lists (which is fast/read-only)
 
     async def get_template_structure(self) -> List[Dict[str, str]]:
         """Scan the master template and return a flat list of folder hierarchy for task creation."""
@@ -99,6 +55,8 @@ class DriveTemplateService:
         tasks = []
         await self._scan_recursive(self.master_template_id, tasks)
         return tasks
+
+
 
     async def _scan_recursive(self, folder_id: str, tasks_list: List[Dict[str, str]], current_path: str = ""):
         """Scan folder names to extract codes and titles for task metadata."""
