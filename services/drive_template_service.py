@@ -12,7 +12,7 @@ class DriveTemplateService:
         Trigger Google Apps Script to clone template in the background.
         This is a Fire-and-Forget operation to prevent Vercel timeouts.
         """
-        GAS_URL = "https://script.google.com/macros/s/AKfycbyccjuBvzQkR9QR47C1pO-utppV4XL-0J8FYSIQL9hGXtHf7kHp9th7JotTVo0uDmbq7Q/exec"
+        GAS_URL = "https://script.google.com/macros/s/AKfycbywzZs9ADxmgr9l3EFhzdbsmPjROj-Xh8APm04ecSYqIL4rUsaDUEh4CGarLDiV_j8MDA/exec"
         
         log_info("TEMPLATE", f"Triggering GAS WebHook for folder: {project_folder_id}")
         
