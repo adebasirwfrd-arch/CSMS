@@ -9,39 +9,61 @@ class DriveTemplateService:
 
     async def clone_template_to_project(self, project_folder_id: str):
         """
-        Trigger Google Apps Script to clone template in the background.
-        This is a Fire-and-Forget operation to prevent Vercel timeouts.
+        Trigger PARALLEL Google Apps Script executions.
+        Instead of 1 big clone, we split it by top-level folders (Element 0, 1, 2...).
+        This runs ~10 scripts in parallel on Google Side -> 10x Speed.
         """
         GAS_URL = "https://script.google.com/macros/s/AKfycbywzZs9ADxmgr9l3EFhzdbsmPjROj-Xh8APm04ecSYqIL4rUsaDUEh4CGarLDiV_j8MDA/exec"
         
-        log_info("TEMPLATE", f"Triggering GAS WebHook for folder: {project_folder_id}")
+        log_info("TEMPLATE", f"Starting Parallel GAS Clone for project: {project_folder_id}")
         
         try:
-            # We use a thread to send the request so it's non-blocking for asyncio
-            # Although standard requests.post is blocking, the GAS script returns immediately
-            # so it's very fast (<1s).
+            # 1. Get Top-Level Elements from Master Template
+            elements = drive_service.fetch_files_in_folder(self.master_template_id)
+            if not elements:
+                log_error("TEMPLATE", "Master template is empty!")
+                return
             
-            payload = {
-                "sourceId": self.master_template_id,
-                "destinationId": project_folder_id,
-                "projectTitle": "New Project" # Optional metadata
-            }
+            # Filter for folders only
+            element_folders = [e for e in elements if e['mimeType'] == 'application/vnd.google-apps.folder']
+            log_info("TEMPLATE", f"Found {len(element_folders)} elements to clone in parallel.")
             
-            def send_webhook():
+            # 2. Function to trigger GAS for a single element
+            def trigger_gas(source_id, target_id, name):
                 import requests
-                response = requests.post(GAS_URL, json=payload, timeout=10)
-                return response
+                payload = {
+                    "sourceId": source_id,
+                    "destinationId": target_id,
+                    "projectTitle": name
+                }
+                requests.post(GAS_URL, json=payload, timeout=5) # 5s timeout is enough for fire-and-forget
             
+            # 3. Process each element
             loop = asyncio.get_running_loop()
-            resp = await loop.run_in_executor(None, send_webhook)
+            tasks = []
             
-            if resp.status_code == 200:
-                log_info("TEMPLATE", f"GAS WebHook triggered successfully: {resp.text}")
-            else:
-                log_error("TEMPLATE", f"GAS WebHook failed: {resp.status_code} - {resp.text}")
+            for element in element_folders:
+                elem_name = element['name']
+                elem_id = element['id']
+                
+                # A. Create destination element folder immediately (Fast)
+                #    This ensures the 'container' exists, so GAS just populates it.
+                #    We use find_or_create to handle "Merge" logic locally for the root folders.
+                dest_elem_id = await loop.run_in_executor(None, lambda: drive_service.find_or_create_folder(elem_name, project_folder_id))
+                
+                if dest_elem_id:
+                    log_info("TEMPLATE", f"Triggering GAS for: {elem_name}...")
+                    # B. Fire Webhook for this specific pair
+                    tasks.append(
+                        loop.run_in_executor(None, lambda s=elem_id, t=dest_elem_id, n=elem_name: trigger_gas(s, t, n))
+                    )
+            
+            # 4. Wait for all webhooks to be sent (not for cloning to finish)
+            await asyncio.gather(*tasks)
+            log_info("TEMPLATE", f"Successfully triggered {len(tasks)} parallel cloning jobs!")
 
         except Exception as e:
-            log_error("TEMPLATE", f"Error triggering GAS WebHook: {e}", send_email=True)
+            log_error("TEMPLATE", f"Error during parallel clone trigger: {e}", send_email=True)
 
     # _clone_recursive and other helper methods are no longer needed
     # but we keep get_template_structure for reading task lists (which is fast/read-only)
