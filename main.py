@@ -397,6 +397,10 @@ async def project_setup_task(project_name: str):
         if folder_id:
             # 2. Clone template recursive
             await template_service.clone_template_to_project(folder_id)
+            
+            # 3. Trigger TOC regeneration (Initial)
+            from services.daftar_isi_service import regenerate_daftar_isi_for_project
+            asyncio.create_task(regenerate_daftar_isi_for_project(folder_id, project_name))
     except Exception as e:
         log_error("SYSTEM", f"Background setup failed for {project_name}: {e}")
 
@@ -545,26 +549,28 @@ def get_project_details(project_id: str):
     print(f"[GET_PROJECT_DETAILS] Found {len(tasks)} tasks for project {project_id}")
     return {"project": project, "tasks": tasks}
 
-@app.delete("/projects/{project_id}")
-def delete_project(project_id: str):
-    """Delete a project and all its tasks (Admin only)"""
-    print(f"[DELETE_PROJECT] Deleting project: {project_id}")
-    
-    # Get project to verify it exists
+    print(f"[DELETE_PROJECT] Deleted project: {project['name']}")
+    return {"status": "success", "deleted_project": project_id}
+
+@app.post("/projects/{project_id}/regenerate-toc")
+async def manual_regenerate_toc(project_id: str, background_tasks: BackgroundTasks):
+    """Manually trigger Table of Contents PDF regeneration"""
     project = db.get_project(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    # Delete all tasks for this project first
-    project_tasks = db.get_tasks(project_id)
-    for task in project_tasks:
-        db.delete_task(task['id'])
+    # Try to find folder_id
+    folder_id = project.get('drive_folder_id')
+    if not folder_id:
+        folder_id = drive_service.find_or_create_folder(project['name'])
     
-    # Delete the project using database method (works with Supabase)
-    db.delete_project(project_id)
+    if not folder_id:
+        raise HTTPException(status_code=500, detail="Could not find or create Google Drive folder for this project")
     
-    print(f"[DELETE_PROJECT] Deleted project: {project['name']}")
-    return {"status": "success", "deleted_project": project_id}
+    from services.daftar_isi_service import regenerate_daftar_isi_for_project
+    background_tasks.add_task(regenerate_daftar_isi_for_project, folder_id, project['name'])
+    
+    return {"status": "submitted", "message": "Table of Contents regeneration started in background"}
 
 def compress_image_for_pdf(pil_image, max_width=1200, max_height=1600, quality=75):
     """Compress an image for PDF embedding to reduce file size.
@@ -1346,6 +1352,15 @@ async def upload_csms_pb_chunk(
                     if pb:
                         pb['drive_file_id'] = file_id
                         update_csms_pb(pb_id, {"drive_file_id": file_id})
+                        
+                        # Trigger TOC regeneration in background
+                        project_id = pb.get('project_id')
+                        project = db.get_project(project_id) if project_id else None
+                        if project:
+                            folder_id = project.get('drive_folder_id') or drive_service.find_or_create_folder(project['name'])
+                            if folder_id:
+                                from services.daftar_isi_service import regenerate_daftar_isi_for_project
+                                background_tasks.add_task(regenerate_daftar_isi_for_project, folder_id, project['name'])
                     
                     return {"status": "complete", "file_id": file_id, "folder_id": upload_url} # Fallback to URL for PB
                 except Exception as e:
@@ -1541,6 +1556,14 @@ async def create_related_doc(
         # SYNCHRONOUS save - will fail loudly if Supabase fails
         save_related_doc(new_doc)
         log_info("RELATED_DOC", f"Created successfully: {new_doc['id']}")
+        
+        # Trigger TOC regeneration in background
+        project = db.get_project(project_id)
+        if project:
+            folder_id = project.get('drive_folder_id') or drive_service.find_or_create_folder(project['name'])
+            if folder_id:
+                from services.daftar_isi_service import regenerate_daftar_isi_for_project
+                background_tasks.add_task(regenerate_daftar_isi_for_project, folder_id, project['name'])
         
         return new_doc
     except Exception as e:

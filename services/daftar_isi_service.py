@@ -98,54 +98,38 @@ class DaftarIsiService:
             log_error("DAFTAR_ISI", f"Error generating Daftar Isi: {e}")
             return False
 
-    async def _scan_folder_structure(self, folder_id: str) -> List[Dict[str, Any]]:
+    async def _scan_folder_structure(self, folder_id: str, depth: int = 0, max_depth: int = 3) -> List[Dict[str, Any]]:
         """Scan folder structure recursively and return structured data."""
+        if depth >= max_depth:
+            return []
+            
         structure = []
-        
-        # Get all items in folder
-        items = drive_service.fetch_files_in_folder(folder_id)
-        folders = [item for item in items if item.get('mimeType') == 'application/vnd.google-apps.folder']
-        
-        # Sort folders by name
-        folders.sort(key=lambda x: x.get('name', ''))
-        
-        for folder in folders:
-            folder_data = {
-                'id': folder['id'],
-                'name': folder['name'],
-                'url': f"https://drive.google.com/drive/folders/{folder['id']}",
-                'children': []
-            }
+        try:
+            # Get all items in folder
+            items = drive_service.fetch_files_in_folder(folder_id)
+            folders = [item for item in items if item.get('mimeType') == 'application/vnd.google-apps.folder']
             
-            # Scan subfolders (only 2 levels deep to avoid too much recursion)
-            sub_items = drive_service.fetch_files_in_folder(folder['id'])
-            sub_folders = [item for item in sub_items if item.get('mimeType') == 'application/vnd.google-apps.folder']
-            sub_folders.sort(key=lambda x: x.get('name', ''))
+            # Sort folders by name (numeric-aware sorting if possible)
+            def folder_sort_key(f):
+                name = f.get('name', '')
+                parts = name.split(' ', 1)
+                if parts[0].replace('.', '').isdigit():
+                    return [float(p) if p.replace('.', '').isdigit() else 999 for p in parts[0].split('.')]
+                return [999, name]
+
+            folders.sort(key=folder_sort_key)
             
-            for sub in sub_folders:
-                sub_data = {
-                    'id': sub['id'],
-                    'name': sub['name'],
-                    'url': f"https://drive.google.com/drive/folders/{sub['id']}",
-                    'children': []
+            for folder in folders:
+                folder_data = {
+                    'id': folder['id'],
+                    'name': folder['name'],
+                    'url': f"https://drive.google.com/drive/folders/{folder['id']}",
+                    'children': await self._scan_folder_structure(folder['id'], depth + 1, max_depth)
                 }
-                
-                # Third level
-                sub_sub_items = drive_service.fetch_files_in_folder(sub['id'])
-                sub_sub_folders = [item for item in sub_sub_items if item.get('mimeType') == 'application/vnd.google-apps.folder']
-                sub_sub_folders.sort(key=lambda x: x.get('name', ''))
-                
-                for sub_sub in sub_sub_folders:
-                    sub_data['children'].append({
-                        'id': sub_sub['id'],
-                        'name': sub_sub['name'],
-                        'url': f"https://drive.google.com/drive/folders/{sub_sub['id']}"
-                    })
-                
-                folder_data['children'].append(sub_data)
+                structure.append(folder_data)
+        except Exception as e:
+            log_error("DAFTAR_ISI", f"Error scanning folder {folder_id}: {e}")
             
-            structure.append(folder_data)
-        
         return structure
 
     def _generate_pdf(self, project_name: str, structure: List[Dict[str, Any]]) -> bytes:
@@ -168,20 +152,23 @@ class DaftarIsiService:
         story.append(Spacer(1, 20))
         
         # Folder structure
-        for folder in structure:
-            # Element level (e.g., "ELEMENT 1 MANAJEMEN")
-            link = f'<a href="{folder["url"]}" color="blue">📁 {folder["name"]}</a>'
-            story.append(Paragraph(link, self.element_style))
-            
-            for child in folder.get('children', []):
-                # Sub-element level (e.g., "1.1 MANAJEMEN VISIT")
-                child_link = f'<a href="{child["url"]}" color="#4b5563">└── 📂 {child["name"]}</a>'
-                story.append(Paragraph(child_link, self.folder_style))
-                
-                for sub_child in child.get('children', []):
-                    # Sub-sub level (e.g., "1.1.1 MWT REPORT")
-                    sub_link = f'<a href="{sub_child["url"]}" color="#6b7280">      └── 📄 {sub_child["name"]}</a>'
+        def add_items_to_story(items, level=0):
+            for item in items:
+                if level == 0:
+                    link = f'<a href="{item["url"]}" color="blue">📁 {item["name"]}</a>'
+                    story.append(Paragraph(link, self.element_style))
+                elif level == 1:
+                    child_link = f'<a href="{item["url"]}" color="#4b5563">└── 📂 {item["name"]}</a>'
+                    story.append(Paragraph(child_link, self.folder_style))
+                else:
+                    indent = "      " * (level - 1)
+                    sub_link = f'<a href="{item["url"]}" color="#6b7280">{indent}└── 📄 {item["name"]}</a>'
                     story.append(Paragraph(sub_link, self.subfolder_style))
+                
+                if item.get('children'):
+                    add_items_to_story(item['children'], level + 1)
+
+        add_items_to_story(structure)
         
         # Footer
         story.append(Spacer(1, 30))
