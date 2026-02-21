@@ -1918,9 +1918,7 @@ def get_statistics():
         "project_completion": project_completion
     }
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
 @app.get("/api/ll-indicators/{project_id}")
 def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: Optional[int] = None):
     """Get LL indicators for a project. Auto-populates defaults if empty."""
@@ -2330,3 +2328,7 @@ def save_ll_indicator_route(project_id: str, data: dict):
     """Save/Update LL indicator data for a project"""
     success = save_ll_indicator(project_id, data)
     return {"status": "success" if success else "failed"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -384,9 +384,14 @@ def get_ll_indicators(project_id: str = None, year: int = None, month: int = Non
         return list(grouped.values())
 
     all_data = json.load(open(LL_INDICATOR_FILE)) if os.path.exists(LL_INDICATOR_FILE) else []
+    filtered = all_data
     if project_id:
-        return [r for r in all_data if r.get('project_id') == project_id]
-    return all_data
+        filtered = [r for r in filtered if r.get('project_id') == project_id]
+    if year:
+        filtered = [r for r in filtered if r.get('year') == int(year)]
+    if month:
+        filtered = [r for r in filtered if r.get('month') == int(month)]
+    return filtered
 
 def save_ll_indicator(project_id: str, data: Dict):
     """Save/Update LL indicator data for a project - SYNCHRONOUS"""

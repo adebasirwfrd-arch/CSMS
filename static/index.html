@@ -5333,6 +5333,11 @@
 
             console.log(`[LL] Fetching: ${url}`);
             const res = await fetch(url);
+            if (!res.ok) {
+                console.error(`[LL] Fetch failed: ${res.status} ${res.statusText}`);
+                content.innerHTML = `<div class="ll-empty">Gagal memuat data (Error ${res.status}).</div>`;
+                return;
+            }
             const results = await res.json();
 
             // Backend returns a list of grouped objects (transformed from flat Supabase)
@@ -5436,10 +5441,11 @@
     }
 
     function updateLLStats(data) {
-        const totalLagging = data.lagging.length;
-        const totalLeading = data.leading.length;
+        if (!data) return;
+        const totalLagging = (data.lagging || []).length;
+        const totalLeading = (data.leading || []).length;
 
-        const all = [...data.lagging, ...data.leading];
+        const all = [...(data.lagging || []), ...(data.leading || [])];
         const achieved = all.filter(ind => calculateIndicatorStatus(ind.target, ind.actual) === 'achieved').length;
         const ontrack = all.filter(ind => calculateIndicatorStatus(ind.target, ind.actual) === 'on-track').length;
 
