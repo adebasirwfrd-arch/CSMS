@@ -1257,11 +1257,7 @@
 <!-- Header -->
 <header class="header">
     <button class="menu-btn" onclick="toggleDrawer()">☰</button>
-    <div class="project-select-wrapper">
-        <select id="global-project-dropdown" class="project-select" onchange="handleProjectChange()">
-            <option value="all">All Projects</option>
-        </select>
-    </div>
+    <!-- Global project dropdown removed from header -->
     <div style="font-weight: 600; font-size: 14px;" id="header-user-badge">User</div>
 
 </header>
@@ -2700,6 +2696,24 @@
                 </div>
             </div>
             <div class="ll-controls">
+                <select id="ll-project-select" class="ll-select" onchange="renderLLScreen()">
+                    <option value="all">Pilih Proyek...</option>
+                </select>
+                <select id="ll-month-select" class="ll-select" onchange="renderLLScreen()">
+                    <option value="">Full Year</option>
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6">June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                </select>
                 <select id="ll-year-select" class="ll-select" onchange="renderLLScreen()">
                     <option value="2024">2024</option>
                     <option value="2025" selected>2025</option>
@@ -5086,7 +5100,7 @@
                 loadSchedules(); // Load schedules for calendar
                 renderCalendar(); // Render home calendar
                 loadComments(); // Load status updates/comments
-                populateProjectDropdown();
+                populateAllProjectDropdowns();
             } else {
                 console.error('[loadData] Failed to fetch:', projectsRes.status, tasksRes.status);
             }
@@ -5129,40 +5143,29 @@
         if (barEl) barEl.style.width = completionRate + '%';
     }
 
-    function populateProjectDropdown() {
-        const dropdown = document.getElementById('global-project-dropdown');
-        const currentValue = dropdown.value;
-
-        // Clear and keep "All Projects"
-        dropdown.innerHTML = '<option value="all">All Projects</option>';
-
-        allProjects.forEach(p => {
-            const option = document.createElement('option');
-            option.value = p.id;
-            option.textContent = p.name;
-            dropdown.appendChild(option);
+    function populateAllProjectDropdowns() {
+        const ids = ['ll-project-select', 'schedule-project-select'];
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const current = el.value;
+            const firstOpt = el.options[0] ? el.options[0].textContent : 'Pilih Proyek...';
+            el.innerHTML = `<option value="all">${firstOpt}</option>`;
+            allProjects.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name;
+                el.appendChild(opt);
+            });
+            if (current) el.value = current;
         });
-
-        // Restore value
-        dropdown.value = currentValue;
     }
 
     let selectedProjectId = 'all';
 
     function handleProjectChange() {
-        selectedProjectId = document.getElementById('global-project-dropdown').value;
-        console.log('[handleProjectChange] Selected:', selectedProjectId);
-
-        // Refresh current screen if it depends on project selection
-        const activeScreen = document.querySelector('.screen.active');
-        if (activeScreen) {
-            const screenId = activeScreen.id.replace('screen-', '');
-            if (['otp', 'matrix', 'll-indicator', 'tasks'].includes(screenId)) {
-                navigateTo(screenId);
-            }
-            if (screenId === 'projects') renderProjects();
-            if (screenId === 'home') updateHomeStats();
-        }
+        // Now handled locally per screen or ignored as header dropdown is removed
+        console.log('[handleProjectChange] Header dropdown removed - transition to local filters');
     }
 
     // ===== OTP SCREEN =====
@@ -5263,9 +5266,11 @@
     async function renderLLScreen() {
         const content = document.getElementById('ll-indicator-content');
         const year = document.getElementById('ll-year-select').value;
+        const month = document.getElementById('ll-month-select').value;
+        const localProjectId = document.getElementById('ll-project-select').value;
         const displayYear = document.getElementById('ll-display-year');
 
-        if (selectedProjectId === 'all') {
+        if (localProjectId === 'all' || !localProjectId) {
             content.innerHTML = '<div class="ll-empty">Pilih proyek di atas untuk melihat indikator.</div>';
             return;
         }
@@ -5274,7 +5279,11 @@
         content.innerHTML = '<div class="ll-empty">Memuat data...</div>';
 
         try {
-            const res = await fetch(`${API_BASE}/api/ll-indicators/${selectedProjectId}?year=${year}&t=${Date.now()}`);
+            let url = `${API_BASE}/api/ll-indicators/${localProjectId}?year=${year}&t=${Date.now()}`;
+            if (month) url += `&month=${month}`;
+
+            console.log(`[LL] Fetching: ${url}`);
+            const res = await fetch(url);
             const results = await res.json();
 
             // Backend returns a list of grouped objects (transformed from flat Supabase)
@@ -5408,9 +5417,15 @@
         const target = prompt('Target (misal: 0 atau 100%):', '100%');
         const icon = prompt('Icon Emoji:', '📊');
         const year = document.getElementById('ll-year-select').value;
+        const localProjectId = document.getElementById('ll-project-select').value;
+
+        if (!localProjectId || localProjectId === 'all') {
+            showToast('Pilih proyek terlebih dahulu', 'error');
+            return;
+        }
 
         const newInd = {
-            project_id: selectedProjectId,
+            project_id: localProjectId,
             category: category,
             name: name,
             target: target || '0',
@@ -5420,7 +5435,7 @@
         };
 
         try {
-            const res = await fetch(`${API_BASE}/api/ll-indicators/${selectedProjectId}`, {
+            const res = await fetch(`${API_BASE}/api/ll-indicators/${localProjectId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newInd)
@@ -5446,9 +5461,14 @@
     }
 
     function exportLLData() {
+        const localProjectId = document.getElementById('ll-project-select').value;
+        if (!localProjectId || localProjectId === 'all') {
+            showToast('Pilih proyek terlebih dahulu', 'error');
+            return;
+        }
         // Simple CSV export placeholder
         showToast('Menyiapkan CSV...', 'info');
-        window.open(`${API_BASE}/api/ll-indicators/${selectedProjectId}?format=csv`, '_blank');
+        window.open(`${API_BASE}/api/ll-indicators/${localProjectId}?format=csv`, '_blank');
     }
 
     function editIndicatorValue(id, name, currentActual) {
@@ -5459,9 +5479,15 @@
     }
 
     async function saveIndicatorValue(indicatorId, newValue) {
+        const localProjectId = document.getElementById('ll-project-select').value;
+        if (!localProjectId || localProjectId === 'all') {
+            showToast('Pilih proyek terlebih dahulu', 'error');
+            return;
+        }
+
         try {
             showToast('Menyimpan...', 'info');
-            const res = await fetch(`${API_BASE}/api/ll-indicators/${selectedProjectId}`, {
+            const res = await fetch(`${API_BASE}/api/ll-indicators/${localProjectId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: indicatorId, actual: newValue })
