@@ -5478,7 +5478,7 @@
                     <thead>
                         <tr>
                             <th style="width:40px; position:sticky;left:0;z-index:2;background:var(--card-bg);">#</th>
-                            <th style="min-width:200px; position:sticky;left:40px;z-index:2;background:var(--card-bg);">Indicator</th>
+                            <th style="min-width:200px; position:sticky;left:40px;z-index:2;background:var(--card-bg);box-shadow:4px 0 8px rgba(0,0,0,0.15);">Indicator</th>
                             <th style="width:80px;">Category</th>
                             <th style="width:70px;">Target</th>
                             ${OTP_MONTH_LABELS.map(m => `<th style="width:70px; text-align:center;">${m}</th>`).join('')}
@@ -5494,7 +5494,7 @@
                     : '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(52,152,219,0.15);color:#3498db;">Leading</span>';
                 html += `<tr>
                     <td style="position:sticky;left:0;background:var(--card-bg);z-index:1;text-align:center;font-weight:600;">${idx + 1}</td>
-                    <td style="position:sticky;left:40px;background:var(--card-bg);z-index:1;">
+                    <td style="position:sticky;left:40px;background:var(--card-bg);z-index:1;box-shadow:4px 0 8px rgba(0,0,0,0.15);">
                         <div style="display:flex;align-items:center;gap:6px;">
                             <span style="font-size:16px;">${prog.icon || '📊'}</span>
                             <div style="font-weight:500; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${(prog.name || '').replace(/"/g, '&quot;')}">${prog.name || '-'}</div>
