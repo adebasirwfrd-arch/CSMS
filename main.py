@@ -2439,40 +2439,26 @@ def save_ll_indicator_route(project_id: str, data: dict):
     return {"status": "success" if success else "failed"}
 
 
-# ===== OTP PROGRAM ROUTES =====
+# ===== OTP ROUTES (uses ll_indicators + otp_month_data) =====
 
 @app.get("/api/otp-programs/{project_id}")
 def get_otp_programs_route(project_id: str, year: Optional[int] = 2025):
-    """Get all OTP programs with month data for a project/year."""
+    """Get LL indicators as OTP programs with month data."""
     try:
         if supabase_service and supabase_service.enabled:
             programs = supabase_service.get_otp_programs(project_id, year)
             return {"programs": programs}
         return {"programs": []}
     except Exception as e:
-        import traceback
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-@app.post("/api/otp-programs/{project_id}")
-def create_otp_program_route(project_id: str, data: dict):
-    """Create a new OTP program."""
+@app.put("/api/otp-programs/{project_id}/{indicator_id}/month/{month}")
+def update_otp_month_route(project_id: str, indicator_id: str, month: int, data: dict):
+    """Update monthly data for an OTP indicator."""
     try:
         if supabase_service and supabase_service.enabled:
-            result = supabase_service.save_otp_program(project_id, data)
-            return {"status": "success", "program": result}
-        return {"status": "failed", "message": "Supabase not enabled"}
-    except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
-@app.put("/api/otp-programs/{project_id}/{program_id}/month/{month}")
-def update_otp_month_route(project_id: str, program_id: str, month: int, data: dict):
-    """Update monthly data for an OTP program."""
-    try:
-        if supabase_service and supabase_service.enabled:
-            success = supabase_service.save_otp_month_data(program_id, month, data)
+            success = supabase_service.save_otp_month_data(indicator_id, month, data)
 
             # Send email reminder if requested
             if data.get('send_email') and data.get('pic_email') and data.get('plan_date'):
@@ -2482,19 +2468,6 @@ def update_otp_month_route(project_id: str, program_id: str, month: int, data: d
                 program_name = data.get('program_name', 'OTP Program')
                 email_service.send_otp_reminder(program_name, month_name, data)
 
-            return {"status": "success" if success else "failed"}
-        return {"status": "failed", "message": "Supabase not enabled"}
-    except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-
-@app.delete("/api/otp-programs/{program_id}")
-def delete_otp_program_route(program_id: str):
-    """Delete an OTP program and its month data."""
-    try:
-        if supabase_service and supabase_service.enabled:
-            success = supabase_service.delete_otp_program(program_id)
             return {"status": "success" if success else "failed"}
         return {"status": "failed", "message": "Supabase not enabled"}
     except Exception as e:

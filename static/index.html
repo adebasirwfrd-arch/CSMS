@@ -2686,8 +2686,8 @@
                     <option value="2025" selected>2025</option>
                     <option value="2026">2026</option>
                 </select>
-                <button class="ll-btn-add" onclick="openOTPAddProgram()" style="background:#9b59b6;">+ Add
-                    Program</button>
+                <button class="ll-btn-add" onclick="navigateTo('ll-indicator')" style="background:#9b59b6;"
+                    title="Tambah/kelola indicator di halaman LL Indicator">📊 Kelola Indicator</button>
                 <button class="ll-btn-export" onclick="exportOTPCSV()">
                     <span>📥</span> Export CSV
                 </button>
@@ -5478,24 +5478,30 @@
                     <thead>
                         <tr>
                             <th style="width:40px; position:sticky;left:0;z-index:2;background:var(--card-bg);">#</th>
-                            <th style="min-width:200px; position:sticky;left:40px;z-index:2;background:var(--card-bg);">Program</th>
-                            <th style="width:90px;">Plan Type</th>
+                            <th style="min-width:200px; position:sticky;left:40px;z-index:2;background:var(--card-bg);">Indicator</th>
+                            <th style="width:80px;">Category</th>
+                            <th style="width:70px;">Target</th>
                             ${OTP_MONTH_LABELS.map(m => `<th style="width:70px; text-align:center;">${m}</th>`).join('')}
-                            <th style="width:100px; text-align:center;">%</th>
-                            <th style="width:50px; text-align:center;">Action</th>
+                            <th style="width:100px; text-align:center;">Progress</th>
                         </tr>
                     </thead>
                     <tbody>`;
 
             programs.forEach((prog, idx) => {
                 const progColor = (prog.progress || 0) >= 100 ? '#27ae60' : (prog.progress || 0) >= 50 ? '#f39c12' : '#e74c3c';
+                const catBadge = prog.category === 'Lagging'
+                    ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(231,76,60,0.15);color:#e74c3c;">Lagging</span>'
+                    : '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(52,152,219,0.15);color:#3498db;">Leading</span>';
                 html += `<tr>
                     <td style="position:sticky;left:0;background:var(--card-bg);z-index:1;text-align:center;font-weight:600;">${idx + 1}</td>
                     <td style="position:sticky;left:40px;background:var(--card-bg);z-index:1;">
-                        <div style="font-weight:500; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${(prog.name || '').replace(/"/g, '&quot;')}">${prog.name || '-'}</div>
-                        <div style="font-size:10px; color:var(--text-muted); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${prog.guidance || ''}</div>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span style="font-size:16px;">${prog.icon || '📊'}</span>
+                            <div style="font-weight:500; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${(prog.name || '').replace(/"/g, '&quot;')}">${prog.name || '-'}</div>
+                        </div>
                     </td>
-                    <td style="text-align:center; font-size:10px; color:var(--text-muted);">${prog.plan_type || '-'}</td>`;
+                    <td style="text-align:center;">${catBadge}</td>
+                    <td style="text-align:center; font-weight:500; font-size:12px;">${prog.target || '-'}</td>`;
 
                 // Monthly cells
                 for (let m = 1; m <= 12; m++) {
@@ -5525,11 +5531,6 @@
                         </div>
                         <span style="font-size:10px; font-weight:600; width:32px; text-align:right;">${prog.progress || 0}%</span>
                     </div>
-                </td>`;
-
-                // Action column
-                html += `<td style="text-align:center;">
-                    <button class="ll-action-btn" onclick="deleteOTPProgram('${prog.id}', '${(prog.name || '').replace(/'/g, "\\'")}')" title="Hapus">🗑️</button>
                 </td></tr>`;
             });
 
