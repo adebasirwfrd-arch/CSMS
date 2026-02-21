@@ -412,6 +412,7 @@ class SupabaseService:
                 query = query.eq('year', year)
             if month:
                 query = query.eq('month', month)
+            query = query.order('sort_order', desc=False)
             result = query.execute()
             return result.data or []
         except Exception as e:
@@ -430,7 +431,7 @@ class SupabaseService:
             if 'lagging' in data or 'leading' in data:
                 all_to_upsert = []
                 for cat in ['lagging', 'leading']:
-                    for ind in data.get(cat, []):
+                    for idx, ind in enumerate(data.get(cat, [])):
                         # Ensure fields match table
                         item = {
                             "project_id": project_id,
@@ -442,6 +443,7 @@ class SupabaseService:
                             "intent": ind.get('intent'),
                             "year": data.get('year', ind.get('year', 2025)),
                             "month": data.get('month', ind.get('month')),
+                            "sort_order": ind.get('sort_order', idx + 1),
                             "updated_at": datetime.now().isoformat()
                         }
                         # If the indicator has an ID, include it for correct upserting

@@ -2006,7 +2006,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "11 Hari/Sumur",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 1
                 },
                 {
                     "category": "Lagging",
@@ -2014,7 +2015,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "2",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 2
                 },
                 {
                     "category": "Lagging",
@@ -2022,7 +2024,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "Actual",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 3
                 },
                 {
                     "category": "Lagging",
@@ -2030,7 +2033,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "Actual",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 4
                 },
                 {
                     "category": "Lagging",
@@ -2038,7 +2042,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 5
                 },
                 {
                     "category": "Lagging",
@@ -2046,7 +2051,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 6
                 },
                 {
                     "category": "Lagging",
@@ -2054,7 +2060,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 7
                 },
                 {
                     "category": "Lagging",
@@ -2062,7 +2069,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 8
                 },
                 {
                     "category": "Lagging",
@@ -2070,7 +2078,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 9
                 },
                 {
                     "category": "Lagging",
@@ -2078,7 +2087,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 10
                 },
                 {
                     "category": "Lagging",
@@ -2086,7 +2096,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 11
                 },
                 {
                     "category": "Lagging",
@@ -2094,7 +2105,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 12
                 },
                 {
                     "category": "Lagging",
@@ -2102,7 +2114,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 13
                 },
                 {
                     "category": "Lagging",
@@ -2110,7 +2123,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 14
                 },
                 {
                     "category": "Lagging",
@@ -2118,7 +2132,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 15
                 },
                 {
                     "category": "Lagging",
@@ -2126,7 +2141,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 16
                 },
                 {
                     "category": "Lagging",
@@ -2134,7 +2150,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "negative"
+                    "intent": "negative",
+                    "sort_order": 17
                 }
             ],
             "leading": [
@@ -2144,7 +2161,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "4",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 1
                 },
                 {
                     "category": "Leading",
@@ -2152,7 +2170,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "4",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 2
                 },
                 {
                     "category": "Leading",
@@ -2160,7 +2179,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "1",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 3
                 },
                 {
                     "category": "Leading",
@@ -2168,7 +2188,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 4
                 },
                 {
                     "category": "Leading",
@@ -2176,7 +2197,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "1",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 5
                 },
                 {
                     "category": "Leading",
@@ -2184,7 +2206,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "22",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 6
                 },
                 {
                     "category": "Leading",
@@ -2192,7 +2215,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "48",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 7
                 },
                 {
                     "category": "Leading",
@@ -2200,7 +2224,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 8
                 },
                 {
                     "category": "Leading",
@@ -2208,7 +2233,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "8",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 9
                 },
                 {
                     "category": "Leading",
@@ -2216,7 +2242,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "11",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 10
                 },
                 {
                     "category": "Leading",
@@ -2224,7 +2251,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 11
                 },
                 {
                     "category": "Leading",
@@ -2232,7 +2260,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "2",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 12
                 },
                 {
                     "category": "Leading",
@@ -2240,7 +2269,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 13
                 },
                 {
                     "category": "Leading",
@@ -2248,7 +2278,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 14
                 },
                 {
                     "category": "Leading",
@@ -2256,7 +2287,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 15
                 },
                 {
                     "category": "Leading",
@@ -2264,7 +2296,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 16
                 },
                 {
                     "category": "Leading",
@@ -2272,7 +2305,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 17
                 },
                 {
                     "category": "Leading",
@@ -2280,7 +2314,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 18
                 },
                 {
                     "category": "Leading",
@@ -2288,7 +2323,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 19
                 },
                 {
                     "category": "Leading",
@@ -2296,7 +2332,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 20
                 },
                 {
                     "category": "Leading",
@@ -2304,7 +2341,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 21
                 },
                 {
                     "category": "Leading",
@@ -2312,7 +2350,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "1",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 22
                 },
                 {
                     "category": "Leading",
@@ -2320,7 +2359,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "0",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 23
                 },
                 {
                     "category": "Leading",
@@ -2328,7 +2368,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "12",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 24
                 },
                 {
                     "category": "Leading",
@@ -2336,7 +2377,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "1",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 25
                 },
                 {
                     "category": "Leading",
@@ -2344,7 +2386,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "1",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 26
                 },
                 {
                     "category": "Leading",
@@ -2352,7 +2395,8 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "target": "1",
                     "actual": "0",
                     "icon": "📊",
-                    "intent": "positive"
+                    "intent": "positive",
+                    "sort_order": 27
                 }
             ]
         }
