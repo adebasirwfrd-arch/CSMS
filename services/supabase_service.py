@@ -453,7 +453,7 @@ class SupabaseService:
                 if all_to_upsert:
                     print(f"[SUPABASE] Batch upserting {len(all_to_upsert)} LL indicators for project {project_id}")
                     # Using upsert with on_conflict logic (assumes unique constraint on project_id, name, cat, year, month or matching ID)
-                    self.client.table('ll_indicators').upsert(all_to_upsert).execute()
+                    self.client.table('ll_indicators').upsert(all_to_upsert, on_conflict="project_id,category,name,year,month").execute()
                 return True
             else:
                 # Flat single item update

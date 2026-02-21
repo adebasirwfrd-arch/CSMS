@@ -1922,406 +1922,406 @@ def get_statistics():
 @app.get("/api/ll-indicators/{project_id}")
 def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: Optional[int] = None):
     """Get LL indicators for a project. Auto-populates defaults if empty."""
-    import time
-    
     # 1. Fetch from DB
-    print(f"[LL_INDICATOR] Fetching for project {project_id}, year {year}, month {month}")
     try:
+        print(f"[LL_INDICATOR] GET request for project {project_id}, year={year}, month={month}")
         indicators = get_ll_indicators(project_id, year, month)
-    except Exception as e:
-        print(f"[LL_INDICATOR] Error in get_ll_indicators: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Database fetch error: {str(e)}")
-    
-    # 2. If indicators exist, return the first grouped result
-    if indicators and len(indicators) > 0:
-        return indicators[0]
         
-    # 3. If missing, we generate default data matching the SQL
-    print(f"[LL_INDICATOR] Missing data for project {project_id} (year {year}, month {month}). Populating defaults...")
-    
-    target_year = year if year else 2025
-    target_month = month if month else 1 # Default to Jan if no month provided (though UI usually sends both now)
+        # 2. If indicators exist, return the first grouped result
+        if indicators and len(indicators) > 0:
+            return indicators[0]
+            
+        # 3. If missing, we generate default data matching the SQL
+        print(f"[LL_INDICATOR] No data found. Populating defaults...")
+        
+        target_year = int(year) if year else 2025
+        target_month = int(month) if month else 1
 
-    default_data = {
-        "project_id": project_id,
-        "year": target_year,
-        "month": target_month,
-        "lagging": [
-            {
-                "category": "Lagging",
-                "name": "Jangka waktu Pekerjaan",
-                "target": "11 Hari/Sumur",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Jumlah  Pekerja",
-                "target": "2",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Jam kerja selamat",
-                "target": "Actual",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "KM driven",
-                "target": "Actual",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Number of Accidents (NoA) 1.\tFatality  2.\tProperty damage Kerugian> USD 1 Juta 3.\tTumpahan Minyak > 15 Bbls",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "TRIR",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Lost Time Incident (LTI)",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Restricted Work Case (RWC)",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Medical Treatment Case (MTC)",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "First Aid Case (FAC)",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Near miss",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Property damage loss < USD 1 Juta",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Property damage loss > USD 1 Juta",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Tumpahan minyak \u22651 - <15 bbls",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Gangguan Keamanan",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Motor Vehicle Accident Case (MVAC)",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            },
-            {
-                "category": "Lagging",
-                "name": "Illness Medivac",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "negative"
-            }
-        ],
-        "leading": [
-            {
-                "category": "Leading",
-                "name": "MWT",
-                "target": "4",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "HSSE Committee Meeting dipimpin oleh pimpinan perusahaan",
-                "target": "4",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Sosialisasi Kebijakan HSSE",
-                "target": "1",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Pre job HSSE meeting",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "HSE Meeting",
-                "target": "1",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Pengamatan keselamatan (PEKA)",
-                "target": "22",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "RADAR",
-                "target": "48",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Pelaporan Kinerja HSSE",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Medical Check-up",
-                "target": "8",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Fit To Task",
-                "target": "11",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "HSSE Induction",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Pelatihan HSSE (minimal Basic HSSE Training)",
-                "target": "2",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Emergency drill :  -Fire Drill -Muster Point Drill -Medevac Drill (MERP Lv 1 & 2) -Medevac Drill (MERP Lv III) - Kick Drill",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Inspeksi HSE",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "A.\u00a0\u00a0\u00a0\u00a0 Housekeeping",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "B.\u00a0\u00a0\u00a0\u00a0 fire extinguisher",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "C.\u00a0\u00a0\u00a0\u00a0 APD Umum dan Khusu",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "D.\u00a0\u00a0\u00a0\u00a0 Peralatan Kerja",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "F.\u00a0\u00a0\u00a0\u00a0 Kendaraan",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Pemeriksaan kualitas lingkungan kerja a.\tKebisingan b.\tPencahayaan c.\tTemperatur",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Promosi HSSE: a.\tCLSR (Corporate Live Saving Rules) b.\tSI TEPAT (HFIF, Safe Zone Position, KARIB)  c.\tHSSE Marshall d.\tIllness Fatality Prevention Programs e. Hand and Finger Safety",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Audit Internal/Eksternal HSSE",
-                "target": "1",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Desinfeksi Area Kerja",
-                "target": "0",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Laporan hasil verifikasi MCU & f/u MCU kategori (P4-P7)",
-                "target": "12",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Sosialisasi HSE Plan ke seluruh personel yang dikirim kelokasi sumur Pemboran",
-                "target": "1",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Memastikan SKCK, MCU, dan BST Seluruh personnel aktif & Valid (Tidak melakukan pemalsuan dokumen). Tidak melakukan unsafe action dengan sengaja",
-                "target": "1",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            },
-            {
-                "category": "Leading",
-                "name": "Melakukan Assesement safety Behaviour & Technical Competency (BST) Internal Perusahaan",
-                "target": "1",
-                "actual": "0",
-                "icon": "\ud83d\udcca",
-                "intent": "positive"
-            }
-        ]
-    }
+        default_data = {
+            "project_id": project_id,
+            "year": target_year,
+            "month": target_month,
+            "lagging": [
+                {
+                    "category": "Lagging",
+                    "name": "Jangka waktu Pekerjaan",
+                    "target": "11 Hari/Sumur",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Jumlah  Pekerja",
+                    "target": "2",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Jam kerja selamat",
+                    "target": "Actual",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "KM driven",
+                    "target": "Actual",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Number of Accidents (NoA) 1.\tFatality  2.\tProperty damage Kerugian> USD 1 Juta 3.\tTumpahan Minyak > 15 Bbls",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "TRIR",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Lost Time Incident (LTI)",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Restricted Work Case (RWC)",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Medical Treatment Case (MTC)",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "First Aid Case (FAC)",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Near miss",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Property damage loss < USD 1 Juta",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Property damage loss > USD 1 Juta",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Tumpahan minyak \u22651 - <15 bbls",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Gangguan Keamanan",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Motor Vehicle Accident Case (MVAC)",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                },
+                {
+                    "category": "Lagging",
+                    "name": "Illness Medivac",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "negative"
+                }
+            ],
+            "leading": [
+                {
+                    "category": "Leading",
+                    "name": "MWT",
+                    "target": "4",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "HSSE Committee Meeting dipimpin oleh pimpinan perusahaan",
+                    "target": "4",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Sosialisasi Kebijakan HSSE",
+                    "target": "1",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Pre job HSSE meeting",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "HSE Meeting",
+                    "target": "1",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Pengamatan keselamatan (PEKA)",
+                    "target": "22",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "RADAR",
+                    "target": "48",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Pelaporan Kinerja HSSE",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Medical Check-up",
+                    "target": "8",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Fit To Task",
+                    "target": "11",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "HSSE Induction",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Pelatihan HSSE (minimal Basic HSSE Training)",
+                    "target": "2",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Emergency drill :  -Fire Drill -Muster Point Drill -Medevac Drill (MERP Lv 1 & 2) -Medevac Drill (MERP Lv III) - Kick Drill",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Inspeksi HSE",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "A.\u00a0\u00a0\u00a0\u00a0 Housekeeping",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "B.\u00a0\u00a0\u00a0\u00a0 fire extinguisher",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "C.\u00a0\u00a0\u00a0\u00a0 APD Umum dan Khusu",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "D.\u00a0\u00a0\u00a0\u00a0 Peralatan Kerja",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "F.\u00a0\u00a0\u00a0\u00a0 Kendaraan",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Pemeriksaan kualitas lingkungan kerja a.\tKebisingan b.\tPencahayaan c.\tTemperatur",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Promosi HSSE: a.\tCLSR (Corporate Live Saving Rules) b.\tSI TEPAT (HFIF, Safe Zone Position, KARIB)  c.\tHSSE Marshall d.\tIllness Fatality Prevention Programs e. Hand and Finger Safety",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Audit Internal/Eksternal HSSE",
+                    "target": "1",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Desinfeksi Area Kerja",
+                    "target": "0",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Laporan hasil verifikasi MCU & f/u MCU kategori (P4-P7)",
+                    "target": "12",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Sosialisasi HSE Plan ke seluruh personel yang dikirim kelokasi sumur Pemboran",
+                    "target": "1",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Memastikan SKCK, MCU, dan BST Seluruh personnel aktif & Valid (Tidak melakukan pemalsuan dokumen). Tidak melakukan unsafe action dengan sengaja",
+                    "target": "1",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                },
+                {
+                    "category": "Leading",
+                    "name": "Melakukan Assesement safety Behaviour & Technical Competency (BST) Internal Perusahaan",
+                    "target": "1",
+                    "actual": "0",
+                    "icon": "\ud83d\udcca",
+                    "intent": "positive"
+                }
+            ]
+        }
     
-    # 4. Save to DB
-    success = save_ll_indicator(project_id, default_data)
-    if not success:
-        print("[LL_INDICATOR] Auto-populate failed.")
+        # 4. Save to DB
+        success = save_ll_indicator(project_id, default_data)
+        if not success:
+            print("[LL_INDICATOR] Auto-populate failed.")
+            return {"project_id": project_id, "lagging": default_data['lagging'], "leading": default_data['leading']}
+        
+        # Wait briefly for DB consistency
+        time.sleep(0.5)
+    
+        # 5. Re-fetch from DB to get generated UUIDs
+        print(f"[LL_INDICATOR] Re-fetching after population...")
+        indicators = get_ll_indicators(project_id, target_year, target_month)
+        if indicators and len(indicators) > 0:
+            return indicators[0]
+            
+        # Fallback if refetch fails (e.g. Supabase lag)
         return {"project_id": project_id, "lagging": default_data['lagging'], "leading": default_data['leading']}
-        
-    # Wait briefly for DB consistency
-    time.sleep(0.5)
-    
-    # 5. Re-fetch from DB to get generated UUIDs
-    indicators = get_ll_indicators(project_id, target_year, target_month)
-    if indicators and len(indicators) > 0:
-        return indicators[0]
-        
-    # Fallback if refetch fails (e.g. Supabase lag)
-    return {"project_id": project_id, "lagging": default_data['lagging'], "leading": default_data['leading']}
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[LL_INDICATOR] CRITICAL ERROR: {str(e)}\n{tb}")
+        # Return the error details to the frontend for debugging
+        raise HTTPException(status_code=500, detail=f"LL Route Error: {str(e)} | TB: {tb[:200]}...")
 
 @app.delete("/api/ll-indicators/delete/{indicator_id}")
 def delete_ll_indicator(indicator_id: str):
