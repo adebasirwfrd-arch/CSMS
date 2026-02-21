@@ -38,6 +38,7 @@ SCHEDULES_FILE = os.path.join(DATA_DIR, "schedules.json")
 COMMENTS_FILE = os.path.join(DATA_DIR, "comments.json")
 CSMS_PB_FILE = os.path.join(DATA_DIR, "csms_pb.json")
 RELATED_DOCS_FILE = os.path.join(DATA_DIR, "related_docs.json")
+LL_INDICATOR_FILE = os.path.join(DATA_DIR, "ll_indicator.json")
 
 
 def _write_json_robust(filepath, data):
@@ -350,5 +351,34 @@ def delete_related_doc(doc_id: str):
 
 def save_related_docs(docs: List[Dict]):
     _write_json_robust(RELATED_DOCS_FILE, docs)
+
+def get_ll_indicators(project_id: str = None) -> List[Dict]:
+    """Get LL indicators from Supabase (or local fallback)"""
+    if SUPABASE_ENABLED:
+        return supabase_service.get_ll_indicators(project_id)
+    all_data = json.load(open(LL_INDICATOR_FILE)) if os.path.exists(LL_INDICATOR_FILE) else []
+    if project_id:
+        return [r for r in all_data if r.get('project_id') == project_id]
+    return all_data
+
+def save_ll_indicator(project_id: str, data: Dict):
+    """Save/Update LL indicator data for a project - SYNCHRONOUS"""
+    if SUPABASE_ENABLED:
+        return supabase_service.save_ll_indicator(project_id, data)
+    
+    all_data = get_ll_indicators()
+    # Find existing or append
+    found = False
+    for i, item in enumerate(all_data):
+        if item.get('project_id') == project_id:
+            all_data[i] = {**data, "project_id": project_id, "updated_at": datetime.now().isoformat()}
+            found = True
+            break
+    
+    if not found:
+        all_data.append({**data, "project_id": project_id, "created_at": datetime.now().isoformat()})
+    
+    _write_json_robust(LL_INDICATOR_FILE, all_data)
+    return True
 
 

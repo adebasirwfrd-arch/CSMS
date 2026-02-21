@@ -28,7 +28,8 @@ from database import (
     get_schedules, save_schedules, save_schedule, delete_schedule,
     get_comments, save_comments, save_comment, update_comment, delete_comment,
     get_csms_pb_records, save_csms_pb_records, save_csms_pb, update_csms_pb, delete_csms_pb,
-    get_related_docs, save_related_docs, save_related_doc, delete_related_doc
+    get_related_docs, save_related_docs, save_related_doc, delete_related_doc,
+    get_ll_indicators, save_ll_indicator
 )
 # Import Supabase service for direct operations
 try:
@@ -1920,3 +1921,17 @@ def get_statistics():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/api/ll-indicators/{project_id}")
+def get_ll_indicators_route(project_id: str):
+    """Get LL indicators for a project"""
+    indicators = get_ll_indicators(project_id)
+    if not indicators:
+        # Return default structure if not found
+        return {"project_id": project_id, "lagging": [], "leading": []}
+    return indicators[0]
+
+@app.post("/api/ll-indicators/{project_id}")
+def save_ll_indicator_route(project_id: str, data: dict):
+    """Save/Update LL indicator data for a project"""
+    success = save_ll_indicator(project_id, data)
+    return {"status": "success" if success else "failed"}

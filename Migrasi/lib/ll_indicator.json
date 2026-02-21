@@ -1,0 +1,183 @@
+{
+    "year": 2025,
+    "lagging": [
+        {
+            "id": 1,
+            "name": "Fatality",
+            "icon": "💀",
+            "target": "0",
+            "actual": "0",
+            "intent": ""
+        },
+        {
+            "id": 2,
+            "name": "Days Away From Work (DAFW)",
+            "icon": "🏥",
+            "target": "0",
+            "actual": "0",
+            "intent": "Ensure free from any unplanned occurrence that results or had the potential to result, in an injury, property damage, spill or release, major business interruption or process loss"
+        },
+        {
+            "id": 3,
+            "name": "Total Recordable Injury Rate (TRIR)",
+            "icon": "🩹",
+            "target": "0.44",
+            "actual": "0",
+            "intent": ""
+        },
+        {
+            "id": 4,
+            "name": "Motor Vehicle Crash (MVC)",
+            "icon": "🚗",
+            "target": "0",
+            "actual": "0",
+            "intent": ""
+        },
+        {
+            "id": 5,
+            "name": "Environment Incidents / Oil Spill",
+            "icon": "🌿",
+            "target": "0",
+            "actual": "0",
+            "intent": "No environment incident/spill in the workplace"
+        },
+        {
+            "id": 6,
+            "name": "Fire Case",
+            "icon": "🔥",
+            "target": "0",
+            "actual": "0",
+            "intent": "No fire case in workplace"
+        },
+        {
+            "id": 7,
+            "name": "First Aid Case",
+            "icon": "🩺",
+            "target": "0",
+            "actual": "0",
+            "intent": "No first aid case in workplace"
+        },
+        {
+            "id": 8,
+            "name": "Occupational Health Incident",
+            "icon": "⚕️",
+            "target": "0",
+            "actual": "0",
+            "intent": "Free from occupational disease in workplace"
+        },
+        {
+            "id": 9,
+            "name": "Property Damage",
+            "icon": "🏠",
+            "target": "0",
+            "actual": "0",
+            "intent": "No Property Damage case"
+        },
+        {
+            "id": 10,
+            "name": "Illness Case",
+            "icon": "🤒",
+            "target": "0",
+            "actual": "0",
+            "intent": "No Illness case"
+        },
+        {
+            "id": 11,
+            "name": "Near Miss Case",
+            "icon": "⚠️",
+            "target": "0",
+            "actual": "0",
+            "intent": "All near miss case are reported and Investigated in CPAR"
+        }
+    ],
+    "leading": [
+        {
+            "id": 1,
+            "name": "BBS / RADAR Card Observation",
+            "icon": "📋",
+            "target": "24 RADAR cards per people per year",
+            "actual": "0",
+            "intent": "To continue improvement our safety culture"
+        },
+        {
+            "id": 2,
+            "name": "Minimum Management Field Visit",
+            "icon": "👔",
+            "target": "Quarterly",
+            "actual": "0/4",
+            "intent": "Its combination for Manager and Supv/Coord Level"
+        },
+        {
+            "id": 3,
+            "name": "Leadership Safety Engagement by Country Ops Manager",
+            "icon": "👨‍💼",
+            "target": "Quarterly",
+            "actual": "0/4",
+            "intent": "Engagement to the Employee at the Project site"
+        },
+        {
+            "id": 4,
+            "name": "Management Review Meeting",
+            "icon": "📅",
+            "target": "Yearly",
+            "actual": "0/1",
+            "intent": "To build communication between employee"
+        },
+        {
+            "id": 5,
+            "name": "Equipment Certification / Calibration",
+            "icon": "🔧",
+            "target": "100% valid certification",
+            "actual": "0%",
+            "intent": "It could be internal or 3rd party"
+        },
+        {
+            "id": 6,
+            "name": "Mandatory HSE Minimum Employee Training",
+            "icon": "📚",
+            "target": "100% comply",
+            "actual": "0%",
+            "intent": "Mandatory training by Client and Weatherford"
+        },
+        {
+            "id": 7,
+            "name": "Valid Med-Check Annually",
+            "icon": "💉",
+            "target": "100% valid certification",
+            "actual": "0%",
+            "intent": "Annual Med-Check"
+        },
+        {
+            "id": 8,
+            "name": "Communication Action Item from Audit, Investigation, and Inspection",
+            "icon": "📝",
+            "target": "100% all findings close",
+            "actual": "0%",
+            "intent": "Ensure all action item are followed up and closed to avoid future incident"
+        },
+        {
+            "id": 9,
+            "name": "Internal Audit",
+            "icon": "🔍",
+            "target": "100% all findings close",
+            "actual": "0%",
+            "intent": "Ensure all audit findings are followed up and closed"
+        },
+        {
+            "id": 10,
+            "name": "HSE Campaign",
+            "icon": "📢",
+            "target": "4 times in a year",
+            "actual": "0/4",
+            "intent": "Follow HSE campaign program in 2024"
+        },
+        {
+            "id": 11,
+            "name": "HSE Monthly Meeting",
+            "icon": "🗓️",
+            "target": "Minimum 12 times / year / base",
+            "actual": "0/12",
+            "intent": "Follow HSE Meeting Agenda 2024"
+        }
+    ]
+}
