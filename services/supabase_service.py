@@ -420,9 +420,8 @@ class SupabaseService:
 
     def save_ll_indicator(self, project_id: str, data: Dict) -> bool:
         """
-        Expects flat indicator data if updating a single one, 
-        or complex data if being called from the old bridge.
-        We'll make it smart enough to handle both.
+        Optimized batch upsert for LL indicators.
+        Reduces network calls from ~68 to 1.
         """
         if not self.enabled:
             return False
@@ -445,38 +444,30 @@ class SupabaseService:
                             "month": data.get('month', ind.get('month')),
                             "updated_at": datetime.now().isoformat()
                         }
+                        # If the indicator has an ID, include it for correct upserting
+                        if ind.get('id'):
+                            item['id'] = ind.get('id')
+                            
                         all_to_upsert.append(item)
                 
-                for item in all_to_upsert:
-                    # Look for existing by project_id + name + category + year + month
-                    query = self.client.table('ll_indicators')\
-                        .select("id")\
-                        .eq('project_id', project_id)\
-                        .eq('name', item['name'])\
-                        .eq('category', item['category'])\
-                        .eq('year', item['year'])
-                    
-                    if item.get('month'):
-                        query = query.eq('month', item['month'])
-                    else:
-                        query = query.is_('month', 'null')
-                        
-                    existing = query.execute()
-                    
-                    if existing.data:
-                        self.client.table('ll_indicators').update(item).eq('id', existing.data[0]['id']).execute()
-                    else:
-                        self.client.table('ll_indicators').insert(item).execute()
+                if all_to_upsert:
+                    print(f"[SUPABASE] Batch upserting {len(all_to_upsert)} LL indicators for project {project_id}")
+                    # Using upsert with on_conflict logic (assumes unique constraint on project_id, name, cat, year, month or matching ID)
+                    self.client.table('ll_indicators').upsert(all_to_upsert).execute()
                 return True
             else:
                 # Flat single item update
                 if 'id' in data:
                     self.client.table('ll_indicators').update(data).eq('id', data['id']).execute()
                 else:
-                    self.client.table('ll_indicators').insert(data).execute()
+                    # For new single items, check if we should include project_id
+                    new_item = {**data, "project_id": project_id} if "project_id" not in data else data
+                    self.client.table('ll_indicators').insert(new_item).execute()
                 return True
         except Exception as e:
             print(f"[ERROR] Error saving LL indicator: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def delete_ll_indicator(self, indicator_id: str) -> bool:

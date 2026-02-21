@@ -1925,7 +1925,14 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
     import time
     
     # 1. Fetch from DB
-    indicators = get_ll_indicators(project_id, year, month)
+    print(f"[LL_INDICATOR] Fetching for project {project_id}, year {year}, month {month}")
+    try:
+        indicators = get_ll_indicators(project_id, year, month)
+    except Exception as e:
+        print(f"[LL_INDICATOR] Error in get_ll_indicators: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database fetch error: {str(e)}")
     
     # 2. If indicators exist, return the first grouped result
     if indicators and len(indicators) > 0:
@@ -2332,3 +2339,5 @@ def save_ll_indicator_route(project_id: str, data: dict):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+

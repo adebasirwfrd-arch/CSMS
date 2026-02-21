@@ -362,7 +362,10 @@ def get_ll_indicators(project_id: str = None, year: int = None, month: int = Non
         # Group by project_id
         grouped = {}
         for item in flat_data:
-            pid = item['project_id']
+            if not item: continue
+            pid = item.get('project_id')
+            if not pid: continue
+            
             if pid not in grouped:
                 grouped[pid] = {"project_id": pid, "lagging": [], "leading": []}
             
@@ -375,10 +378,10 @@ def get_ll_indicators(project_id: str = None, year: int = None, month: int = Non
                 "intent": item.get('intent')
             }
             
-            category = item.get('category', '').lower()
-            if category == 'lagging':
+            category = str(item.get('category') or '').lower()
+            if 'lagging' in category:
                 grouped[pid]['lagging'].append(indicator)
-            elif category == 'leading':
+            elif 'leading' in category:
                 grouped[pid]['leading'].append(indicator)
         
         return list(grouped.values())
