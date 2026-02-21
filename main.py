@@ -1919,6 +1919,64 @@ def get_statistics():
     }
 
 
+@app.get("/api/ll-debug/{project_id}")
+def debug_ll_indicators(project_id: str, year: Optional[int] = None, month: Optional[int] = None):
+    """Debug endpoint to diagnose LL indicator issues."""
+    import traceback
+    debug_info = {
+        "project_id": project_id,
+        "year": year,
+        "month": month,
+        "supabase_enabled": SUPABASE_ENABLED if 'SUPABASE_ENABLED' in dir() else 'unknown',
+    }
+    
+    try:
+        from database import SUPABASE_ENABLED as db_supa
+        debug_info["db_supabase_enabled"] = db_supa
+    except:
+        debug_info["db_supabase_enabled"] = "import_failed"
+    
+    # Test 1: Direct Supabase query
+    try:
+        if supabase_service and supabase_service.enabled:
+            result = supabase_service.client.table('ll_indicators').select("id, project_id, year, month").limit(3).execute()
+            debug_info["supabase_direct_query"] = {
+                "success": True,
+                "count": len(result.data) if result.data else 0,
+                "sample": result.data[:3] if result.data else []
+            }
+        else:
+            debug_info["supabase_direct_query"] = "supabase not enabled"
+    except Exception as e:
+        debug_info["supabase_direct_query"] = {"error": str(e), "traceback": traceback.format_exc()[:300]}
+    
+    # Test 2: Query with project_id filter
+    try:
+        if supabase_service and supabase_service.enabled:
+            result = supabase_service.client.table('ll_indicators').select("id, project_id, year, month").eq('project_id', project_id).limit(3).execute()
+            debug_info["query_by_project_id"] = {
+                "success": True,
+                "count": len(result.data) if result.data else 0,
+                "sample": result.data[:3] if result.data else []
+            }
+        else:
+            debug_info["query_by_project_id"] = "supabase not enabled"
+    except Exception as e:
+        debug_info["query_by_project_id"] = {"error": str(e), "traceback": traceback.format_exc()[:300]}
+    
+    # Test 3: get_ll_indicators function
+    try:
+        indicators = get_ll_indicators(project_id, year, month)
+        debug_info["get_ll_indicators"] = {
+            "success": True,
+            "count": len(indicators) if indicators else 0,
+            "has_data": bool(indicators)
+        }
+    except Exception as e:
+        debug_info["get_ll_indicators"] = {"error": str(e), "traceback": traceback.format_exc()[:300]}
+    
+    return debug_info
+
 @app.get("/api/ll-indicators/{project_id}")
 def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: Optional[int] = None):
     """Get LL indicators for a project. Auto-populates defaults if empty."""

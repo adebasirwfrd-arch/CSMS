@@ -5334,8 +5334,10 @@
             console.log(`[LL] Fetching: ${url}`);
             const res = await fetch(url);
             if (!res.ok) {
-                console.error(`[LL] Fetch failed: ${res.status} ${res.statusText}`);
-                content.innerHTML = `<div class="ll-empty">Gagal memuat data (Error ${res.status}).</div>`;
+                let errDetail = res.statusText;
+                try { const errJson = await res.json(); errDetail = errJson.detail || errDetail; } catch (e) { }
+                console.error(`[LL] Fetch failed: ${res.status} ${errDetail}`);
+                content.innerHTML = `<div class="ll-empty">Gagal memuat data (Error ${res.status}): ${errDetail}</div>`;
                 return;
             }
             const results = await res.json();
