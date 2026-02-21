@@ -5417,6 +5417,7 @@
         const target = prompt('Target (misal: 0 atau 100%):', '100%');
         const icon = prompt('Icon Emoji:', '📊');
         const year = document.getElementById('ll-year-select').value;
+        const month = document.getElementById('ll-month-select').value;
         const localProjectId = document.getElementById('ll-project-select').value;
 
         if (!localProjectId || localProjectId === 'all') {
@@ -5431,7 +5432,8 @@
             target: target || '0',
             actual: '0',
             icon: icon || '📊',
-            year: parseInt(year)
+            year: parseInt(year),
+            month: month ? parseInt(month) : null
         };
 
         try {

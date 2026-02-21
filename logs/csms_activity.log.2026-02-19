@@ -1,0 +1,46 @@
+[2026-02-19 22:19:24] [INFO] [SYSTEM] ==================================================
+[2026-02-19 22:19:24] [INFO] [SYSTEM] CSMS Logger Service Initialized
+[2026-02-19 22:19:24] [INFO] [SYSTEM] Serverless mode: False
+[2026-02-19 22:19:24] [INFO] [SYSTEM] File logging: True
+[2026-02-19 22:19:24] [INFO] [SYSTEM] ==================================================
+[2026-02-19 22:19:24] [INFO] [DRIVE] Initializing Google Drive Service...
+[2026-02-19 22:19:24] [INFO] [DRIVE] FOLDER_ID: NOT SET
+[2026-02-19 22:19:24] [INFO] [DRIVE] TOKEN_JSON length: 0 chars
+[2026-02-19 22:19:24] [INFO] [DRIVE] SERVICE_ACCOUNT_JSON length: 0 chars
+[2026-02-19 22:19:24] [ERROR] [DRIVE] GOOGLE_DRIVE_FOLDER_ID not set - cannot initialize Drive service
+[2026-02-19 22:52:22] [INFO] [SYSTEM] ==================================================
+[2026-02-19 22:52:22] [INFO] [SYSTEM] CSMS Logger Service Initialized
+[2026-02-19 22:52:22] [INFO] [SYSTEM] Serverless mode: False
+[2026-02-19 22:52:22] [INFO] [SYSTEM] File logging: True
+[2026-02-19 22:52:22] [INFO] [SYSTEM] ==================================================
+[2026-02-19 22:52:22] [INFO] [DRIVE] Initializing Google Drive Service...
+[2026-02-19 22:52:22] [INFO] [DRIVE] FOLDER_ID: NOT SET
+[2026-02-19 22:52:22] [INFO] [DRIVE] TOKEN_JSON length: 0 chars
+[2026-02-19 22:52:22] [INFO] [DRIVE] SERVICE_ACCOUNT_JSON length: 0 chars
+[2026-02-19 22:52:22] [ERROR] [DRIVE] GOOGLE_DRIVE_FOLDER_ID not set - cannot initialize Drive service
+[2026-02-19 22:57:05] [INFO] [SYSTEM] ==================================================
+[2026-02-19 22:57:05] [INFO] [SYSTEM] CSMS Logger Service Initialized
+[2026-02-19 22:57:05] [INFO] [SYSTEM] Serverless mode: False
+[2026-02-19 22:57:05] [INFO] [SYSTEM] File logging: True
+[2026-02-19 22:57:05] [INFO] [SYSTEM] ==================================================
+[2026-02-19 22:57:05] [INFO] [DRIVE] Initializing Google Drive Service...
+[2026-02-19 22:57:05] [INFO] [DRIVE] FOLDER_ID: NOT SET
+[2026-02-19 22:57:05] [INFO] [DRIVE] TOKEN_JSON length: 0 chars
+[2026-02-19 22:57:05] [INFO] [DRIVE] SERVICE_ACCOUNT_JSON length: 0 chars
+[2026-02-19 22:57:05] [ERROR] [DRIVE] GOOGLE_DRIVE_FOLDER_ID not set - cannot initialize Drive service
+[2026-02-19 22:57:06] [INFO] [SUPABASE] Initializing Supabase Service...
+[2026-02-19 22:57:06] [INFO] [SUPABASE] SUPABASE_URL: NOT SET
+[2026-02-19 22:57:06] [INFO] [SUPABASE] SUPABASE_KEY: NOT SET
+[2026-02-19 22:57:06] [ERROR] [SUPABASE] SUPABASE_URL or SUPABASE_KEY not set
+[2026-02-19 22:57:06] [INFO] [DRIVE] GOOGLE_TOKEN_JSON not set, skipping OAuth2
+[2026-02-19 22:57:06] [INFO] [DRIVE] SERVICE_ACCOUNT_JSON not set, skipping Service Account
+[2026-02-19 22:57:06] [ERROR] [DRIVE] All authentication methods failed! Google Drive will be disabled.
+[2026-02-19 23:37:42] [INFO] [SYSTEM] ==================================================
+[2026-02-19 23:37:42] [INFO] [SYSTEM] CSMS Logger Service Initialized
+[2026-02-19 23:37:42] [INFO] [SYSTEM] Serverless mode: False
+[2026-02-19 23:37:42] [INFO] [SYSTEM] File logging: True
+[2026-02-19 23:37:42] [INFO] [SYSTEM] ==================================================
+[2026-02-19 23:37:42] [INFO] [SUPABASE] Initializing Supabase Service...
+[2026-02-19 23:37:42] [INFO] [SUPABASE] SUPABASE_URL: NOT SET
+[2026-02-19 23:37:42] [INFO] [SUPABASE] SUPABASE_KEY: NOT SET
+[2026-02-19 23:37:42] [ERROR] [SUPABASE] SUPABASE_URL or SUPABASE_KEY not set

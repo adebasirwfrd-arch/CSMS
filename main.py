@@ -1923,12 +1923,61 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 @app.get("/api/ll-indicators/{project_id}")
 def get_ll_indicators(project_id: str, year: Optional[int] = None, month: Optional[int] = None):
-    """Get LL indicators for a project"""
+    """Get LL indicators for a project. Auto-populates defaults if empty."""
+    import time
+    
+    # 1. Fetch from DB
     indicators = db.get_ll_indicators(project_id, year, month)
-    if not indicators:
-        # Return default structure if not found
-        return {"project_id": project_id, "lagging": [], "leading": []}
-    return indicators[0]
+    
+    # 2. If indicators exist, return the first grouped result
+    if indicators and len(indicators) > 0:
+        return indicators[0]
+        
+    # 3. If missing, we generate default data matching the SQL
+    print(f"[LL_INDICATOR] Missing data for project {project_id} (year {year}, month {month}). Populating defaults...")
+    
+    target_year = year if year else 2025
+    target_month = month if month else 1 # Default to Jan if no month provided (though UI usually sends both now)
+
+    default_data = {
+        "project_id": project_id,
+        "year": target_year,
+        "month": target_month,
+        "lagging": [
+            {"category": "Lagging", "name": "Fatality", "target": "0", "actual": "0", "icon": "☠️", "intent": "negative"},
+            {"category": "Lagging", "name": "LTI (Lost Time Injury)", "target": "0", "actual": "0", "icon": "🤕", "intent": "negative"},
+            {"category": "Lagging", "name": "RWC (Restricted Work Case)", "target": "0", "actual": "0", "icon": "🏥", "intent": "negative"},
+            {"category": "Lagging", "name": "MTC (Medical Treatment Case)", "target": "0", "actual": "0", "icon": "🩺", "intent": "negative"},
+            {"category": "Lagging", "name": "FAC (First Aid Case)", "target": "0", "actual": "0", "icon": "🩹", "intent": "negative"},
+            {"category": "Lagging", "name": "Property Damage", "target": "0", "actual": "0", "icon": "💥", "intent": "negative"},
+            {"category": "Lagging", "name": "Environmental Spill", "target": "0", "actual": "0", "icon": "🛢️", "intent": "negative"},
+            {"category": "Lagging", "name": "Near Miss", "target": "0", "actual": "0", "icon": "⚠️", "intent": "negative"}
+        ],
+        "leading": [
+            {"category": "Leading", "name": "HSE Meeting", "target": "100%", "actual": "0%", "icon": "🤝", "intent": "positive"},
+            {"category": "Leading", "name": "Management Walkthrough", "target": "100%", "actual": "0%", "icon": "🚶‍♂️", "intent": "positive"},
+            {"category": "Leading", "name": "HSE Inspection / Audit", "target": "100%", "actual": "0%", "icon": "🔍", "intent": "positive"},
+            {"category": "Leading", "name": "Safety Stand Down", "target": "As Needed", "actual": "0", "icon": "🛑", "intent": "positive"},
+            {"category": "Leading", "name": "Emergency Drill", "target": "100%", "actual": "0%", "icon": "🚨", "intent": "positive"}
+        ]
+    }
+    
+    # 4. Save to DB
+    success = db.save_ll_indicator(project_id, default_data)
+    if not success:
+        print("[LL_INDICATOR] Auto-populate failed.")
+        return {"project_id": project_id, "lagging": default_data['lagging'], "leading": default_data['leading']}
+        
+    # Wait briefly for DB consistency
+    time.sleep(0.5)
+    
+    # 5. Re-fetch from DB to get generated UUIDs
+    indicators = db.get_ll_indicators(project_id, target_year, target_month)
+    if indicators and len(indicators) > 0:
+        return indicators[0]
+        
+    # Fallback if refetch fails (e.g. Supabase lag)
+    return {"project_id": project_id, "lagging": default_data['lagging'], "leading": default_data['leading']}
 
 @app.delete("/api/ll-indicators/delete/{indicator_id}")
 def delete_ll_indicator(indicator_id: str):

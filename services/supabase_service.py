@@ -470,7 +470,10 @@ class SupabaseService:
                 return True
             else:
                 # Flat single item update
-                result = self.client.table('ll_indicators').upsert(data).execute()
+                if 'id' in data:
+                    self.client.table('ll_indicators').update(data).eq('id', data['id']).execute()
+                else:
+                    self.client.table('ll_indicators').insert(data).execute()
                 return True
         except Exception as e:
             print(f"[ERROR] Error saving LL indicator: {e}")
