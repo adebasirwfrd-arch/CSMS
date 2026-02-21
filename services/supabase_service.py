@@ -399,5 +399,71 @@ class SupabaseService:
             print(f"[ERROR] Error deleting related doc: {e}")
             return False
 
+    # ==================== LL INDICATORS ====================
+
+    def get_ll_indicators(self, project_id: str = None) -> List[Dict]:
+        if not self.enabled:
+            return []
+        try:
+            query = self.client.table('ll_indicators').select("*")
+            if project_id:
+                query = query.eq('project_id', project_id)
+            result = query.execute()
+            return result.data or []
+        except Exception as e:
+            print(f"[ERROR] Error fetching LL indicators: {e}")
+            return []
+
+    def save_ll_indicator(self, project_id: str, data: Dict) -> bool:
+        """
+        Expects flat indicator data if updating a single one, 
+        or complex data if being called from the old bridge.
+        We'll make it smart enough to handle both.
+        """
+        if not self.enabled:
+            return False
+        try:
+            # If data has 'lagging' and 'leading' (old structure), we upsert multiple
+            if 'lagging' in data or 'leading' in data:
+                all_to_upsert = []
+                for cat in ['lagging', 'leading']:
+                    for ind in data.get(cat, []):
+                        # Ensure fields match table
+                        item = {
+                            "project_id": project_id,
+                            "category": cat.capitalize(),
+                            "name": ind.get('name'),
+                            "target": ind.get('target'),
+                            "actual": ind.get('actual', '0'),
+                            "icon": ind.get('icon'),
+                            "intent": ind.get('intent'),
+                            "updated_at": datetime.now().isoformat()
+                        }
+                        all_to_upsert.append(item)
+                
+                # Supabase upsert using project_id + name if possible, 
+                # but better to just insert/update individually if no unique constraint
+                for item in all_to_upsert:
+                    # Look for existing by project_id + name + category
+                    existing = self.client.table('ll_indicators')\
+                        .select("id")\
+                        .eq('project_id', project_id)\
+                        .eq('name', item['name'])\
+                        .eq('category', item['category'])\
+                        .execute()
+                    
+                    if existing.data:
+                        self.client.table('ll_indicators').update(item).eq('id', existing.data[0]['id']).execute()
+                    else:
+                        self.client.table('ll_indicators').insert(item).execute()
+                return True
+            else:
+                # Flat single item update
+                result = self.client.table('ll_indicators').upsert(data).execute()
+                return True
+        except Exception as e:
+            print(f"[ERROR] Error saving LL indicator: {e}")
+            return False
+
 # Global instance
 supabase_service = SupabaseService()

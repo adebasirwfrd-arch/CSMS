@@ -5054,14 +5054,47 @@
                         <div class="indicator-stat-label">Target</div>
                         <div class="indicator-stat-value">${ind.target}</div>
                     </div>
-                    <div class="indicator-stat-box">
-                        <div class="indicator-stat-label">Actual</div>
+                    <div class="indicator-stat-box" onclick="editIndicatorValue('${ind.id}', '${ind.name.replace(/'/g, "\\'")}', '${ind.actual}')" style="cursor: pointer; border: 1px dashed var(--border);">
+                        <div class="indicator-stat-label">Actual (Click to Edit)</div>
                         <div class="indicator-stat-value">${ind.actual}</div>
                     </div>
                 </div>
                 ${ind.intent ? `<div style="font-size: 11px; color: var(--text-secondary); font-style: italic;">Intent: ${ind.intent}</div>` : ''}
             </div>
         `;
+    }
+
+    function editIndicatorValue(id, name, currentActual) {
+        const newValue = prompt(`Enter new actual value for ${name}:`, currentActual);
+        if (newValue !== null && newValue !== currentActual) {
+            saveIndicatorValue(id, newValue);
+        }
+    }
+
+    async function saveIndicatorValue(indicatorId, newValue) {
+        try {
+            showToast('Saving indicator...', 'info');
+            const res = await fetch(`${API_BASE}/api/ll-indicators/${selectedProjectId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: indicatorId,
+                    actual: newValue
+                })
+            });
+
+            if (res.ok) {
+                showToast('Indicator updated!', 'success');
+                renderLLScreen(); // Refresh screen
+            } else {
+                showToast('Failed to update indicator', 'error');
+            }
+        } catch (e) {
+            console.error('Error saving indicator:', e);
+            showToast('Network error', 'error');
+        }
     }
 
     function calculateIndicatorStatus(target, actual) {

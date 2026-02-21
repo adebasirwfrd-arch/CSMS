@@ -355,7 +355,34 @@ def save_related_docs(docs: List[Dict]):
 def get_ll_indicators(project_id: str = None) -> List[Dict]:
     """Get LL indicators from Supabase (or local fallback)"""
     if SUPABASE_ENABLED:
-        return supabase_service.get_ll_indicators(project_id)
+        flat_data = supabase_service.get_ll_indicators(project_id)
+        if not flat_data:
+            return []
+        
+        # Group by project_id
+        grouped = {}
+        for item in flat_data:
+            pid = item['project_id']
+            if pid not in grouped:
+                grouped[pid] = {"project_id": pid, "lagging": [], "leading": []}
+            
+            indicator = {
+                "id": item.get('id'),
+                "name": item.get('name'),
+                "target": item.get('target'),
+                "actual": item.get('actual'),
+                "icon": item.get('icon'),
+                "intent": item.get('intent')
+            }
+            
+            category = item.get('category', '').lower()
+            if category == 'lagging':
+                grouped[pid]['lagging'].append(indicator)
+            elif category == 'leading':
+                grouped[pid]['leading'].append(indicator)
+        
+        return list(grouped.values())
+
     all_data = json.load(open(LL_INDICATOR_FILE)) if os.path.exists(LL_INDICATOR_FILE) else []
     if project_id:
         return [r for r in all_data if r.get('project_id') == project_id]
