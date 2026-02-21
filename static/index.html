@@ -3079,20 +3079,43 @@
 <div class="modal-overlay" id="ll-edit-modal">
     <div class="modal-header">
         <button class="modal-back" onclick="closeLLEditModal()">←</button>
-        <span class="modal-title">Edit Indicator Actual</span>
+        <span class="modal-title">Edit Indicator</span>
     </div>
     <div class="modal-body">
         <form id="ll-edit-form">
             <input type="hidden" id="ll-edit-id">
+            <input type="hidden" id="ll-edit-category">
+            <input type="hidden" id="ll-edit-sort-order">
             <div class="form-group">
-                <label class="form-label" id="ll-edit-name-label">Indicator Name</label>
-                <input type="text" class="form-input" id="ll-edit-actual" placeholder="Enter actual value" required>
+                <label class="form-label">Nama Indicator</label>
+                <input type="text" class="form-input" id="ll-edit-name" placeholder="Nama indicator" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Icon</label>
+                <input type="text" class="form-input" id="ll-edit-icon" placeholder="Emoji icon"
+                    style="font-size: 1.2em;">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label class="form-label">Target</label>
+                    <input type="text" class="form-input" id="ll-edit-target" placeholder="Target value">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Actual</label>
+                    <input type="text" class="form-input" id="ll-edit-actual" placeholder="Actual value">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Intent</label>
+                <select class="form-input" id="ll-edit-intent">
+                    <option value="negative">Negative (Lagging)</option>
+                    <option value="positive">Positive (Leading)</option>
+                </select>
             </div>
         </form>
         <button class="btn btn-save" style="width: 100%; margin-top: 16px;" onclick="submitLLEditIndicator()">Save
             Changes</button>
-        <button class="btn btn-cancel" style="width: 100%; margin-top: 8px;"
-            onclick="closeLLEditModal()">Cancel</button>
+        <button class="btn btn-cancel" style="width: 100%; margin-top: 8px;" onclick="closeLLEditModal()">Batal</button>
     </div>
 </div>
 
@@ -5422,21 +5445,20 @@
         const checkClass = status === 'achieved' ? 'check-ok' : (status === 'on-track' ? 'check-warn' : 'check-err');
         const checkIcon = status === 'achieved' ? '✓' : (status === 'on-track' ? '~' : '!');
 
+        const indJson = JSON.stringify(ind).replace(/'/g, "&#39;").replace(/"/g, '&quot;');
         return `
-            <tr>
+            <tr style="cursor: pointer;" onclick="editIndicatorFull(this)" data-indicator="${indJson}">
                 <td class="ll-row-num">${num}</td>
                 <td class="ll-row-icon">${ind.icon || '📊'}</td>
                 <td class="ll-row-indicator">${ind.name}</td>
                 <td class="ll-row-target">${ind.target}</td>
-                <td class="ll-row-actual" onclick="editIndicatorValue('${ind.id}', '${ind.name.replace(/'/g, "\\'")}', '${ind.actual}')" style="cursor: pointer; text-decoration: underline dotted;">
-                    ${ind.actual}
-                </td>
+                <td class="ll-row-actual">${ind.actual}</td>
                 <td class="ll-row-status">
                     <div class="ll-status-check ${checkClass}">${checkIcon}</div>
                 </td>
                 <td class="ll-row-intent">${ind.intent || '-'}</td>
                 <td class="ll-row-actions">
-                    <button class="ll-action-btn" onclick="deleteIndicator('${ind.id}')" title="Hapus">🗑️</button>
+                    <button class="ll-action-btn" onclick="event.stopPropagation(); deleteIndicator('${ind.id}')" title="Hapus">🗑️</button>
                 </td>
             </tr>
         `;
@@ -5552,10 +5574,16 @@
         window.open(`${API_BASE}/api/ll-indicators/${localProjectId}?format=csv`, '_blank');
     }
 
-    function editIndicatorValue(id, name, currentActual) {
-        document.getElementById('ll-edit-id').value = id;
-        document.getElementById('ll-edit-name-label').textContent = name;
-        document.getElementById('ll-edit-actual').value = currentActual;
+    function editIndicatorFull(rowEl) {
+        const ind = JSON.parse(rowEl.dataset.indicator);
+        document.getElementById('ll-edit-id').value = ind.id || '';
+        document.getElementById('ll-edit-name').value = ind.name || '';
+        document.getElementById('ll-edit-icon').value = ind.icon || '📊';
+        document.getElementById('ll-edit-target').value = ind.target || '';
+        document.getElementById('ll-edit-actual').value = ind.actual || '';
+        document.getElementById('ll-edit-intent').value = ind.intent || 'negative';
+        document.getElementById('ll-edit-category').value = ind.category || '';
+        document.getElementById('ll-edit-sort-order').value = ind.sort_order || 0;
         document.getElementById('ll-edit-modal').classList.add('active');
     }
 
@@ -5564,32 +5592,36 @@
     }
 
     async function submitLLEditIndicator() {
-        const id = document.getElementById('ll-edit-id').value;
-        const newValue = document.getElementById('ll-edit-actual').value;
-
-        if (newValue !== null && newValue !== undefined) {
-            await saveIndicatorValue(id, newValue);
-            closeLLEditModal();
-        }
-    }
-
-    async function saveIndicatorValue(indicatorId, newValue) {
         const localProjectId = document.getElementById('ll-project-select').value;
         if (!localProjectId || localProjectId === 'all') {
             showToast('Pilih proyek terlebih dahulu', 'error');
             return;
         }
 
+        const payload = {
+            id: document.getElementById('ll-edit-id').value,
+            name: document.getElementById('ll-edit-name').value,
+            icon: document.getElementById('ll-edit-icon').value,
+            target: document.getElementById('ll-edit-target').value,
+            actual: document.getElementById('ll-edit-actual').value,
+            intent: document.getElementById('ll-edit-intent').value,
+            category: document.getElementById('ll-edit-category').value,
+            sort_order: parseInt(document.getElementById('ll-edit-sort-order').value) || 0
+        };
+
         try {
             showToast('Menyimpan...', 'info');
             const res = await fetch(`${API_BASE}/api/ll-indicators/${localProjectId}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: indicatorId, actual: newValue })
+                body: JSON.stringify(payload)
             });
             if (res.ok) {
                 showToast('Tersimpan', 'success');
+                closeLLEditModal();
                 renderLLScreen();
+            } else {
+                showToast('Gagal simpan', 'error');
             }
         } catch (e) { showToast('Gagal simpan', 'error'); }
     }

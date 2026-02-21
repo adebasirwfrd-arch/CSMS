@@ -459,11 +459,14 @@ class SupabaseService:
                 return True
             else:
                 # Flat single item update
-                if 'id' in data:
-                    self.client.table('ll_indicators').update(data).eq('id', data['id']).execute()
+                if 'id' in data and data['id']:
+                    update_data = {k: v for k, v in data.items() if k != 'id' and v is not None}
+                    update_data['updated_at'] = datetime.now().isoformat()
+                    update_data['project_id'] = project_id
+                    self.client.table('ll_indicators').update(update_data).eq('id', data['id']).execute()
                 else:
-                    # For new single items, check if we should include project_id
-                    new_item = {**data, "project_id": project_id} if "project_id" not in data else data
+                    # For new single items
+                    new_item = {**data, "project_id": project_id, "updated_at": datetime.now().isoformat()}
                     self.client.table('ll_indicators').insert(new_item).execute()
                 return True
         except Exception as e:
