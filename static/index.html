@@ -5281,6 +5281,7 @@
             // But we might get multiple projects if we don't filter in database.py correctly
             // Let's assume database.py returns a list [ {project_id, lagging, leading} ]
             const pData = results || { lagging: [], leading: [] };
+            console.log('[LL] Rendering pData:', pData);
 
             updateLLStats(pData);
 
@@ -5473,20 +5474,45 @@
     }
 
     function calculateIndicatorStatus(target, actual) {
-        if (target === "0") return actual === "0" ? "achieved" : "not-achieved";
-        if (target.includes("%") && actual.includes("%")) {
-            const t = parseFloat(target);
-            const a = parseFloat(actual);
+        // Handle null/missing values
+        if (target == null || actual == null) return "not-achieved";
+
+        const tStr = String(target);
+        const aStr = String(actual);
+
+        if (tStr === "0") return aStr === "0" ? "achieved" : "not-achieved";
+
+        if (tStr.includes("%") && aStr.includes("%")) {
+            const t = parseFloat(tStr);
+            const a = parseFloat(aStr);
+            if (isNaN(t) || isNaN(a)) return "not-achieved";
             if (a >= t) return "achieved";
             if (a >= t * 0.8) return "on-track";
             return "not-achieved";
         }
-        if (actual.includes("/")) {
-            const [done, total] = actual.split("/").map(Number);
-            if (done >= total) return "achieved";
-            if (done > 0) return "on-track";
+
+        if (aStr.includes("/")) {
+            const parts = aStr.split("/");
+            if (parts.length === 2) {
+                const done = Number(parts[0]);
+                const total = Number(parts[1]);
+                if (!isNaN(done) && !isNaN(total) && total > 0) {
+                    if (done >= total) return "achieved";
+                    if (done > 0) return "on-track";
+                }
+            }
             return "not-achieved";
         }
+
+        // Generic numeric comparison if both are numbers
+        const tNum = parseFloat(tStr);
+        const aNum = parseFloat(aStr);
+        if (!isNaN(tNum) && !isNaN(aNum)) {
+            if (aNum >= tNum) return "achieved";
+            if (aNum > 0) return "on-track";
+            return "not-achieved";
+        }
+
         return "on-track";
     }
 
