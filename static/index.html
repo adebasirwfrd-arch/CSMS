@@ -5380,7 +5380,7 @@
                 <div class="ll-section-card">
                     <div class="ll-section-header">
                         <span>Lagging Indicators (${pData.lagging.length})</span>
-                        <button class="ll-btn-add" onclick="openAddIndicatorModal('Lagging')">+ Add</button>
+                        <button class="ll-btn-add" onclick="openLLAddModal('Lagging')">+ Add</button>
                     </div>
                     <div class="ll-table-wrapper">
                         <table class="ll-table">
@@ -5409,7 +5409,7 @@
                 <div class="ll-section-card">
                     <div class="ll-section-header leading">
                         <span>Leading Indicators (${pData.leading.length})</span>
-                        <button class="ll-btn-add" onclick="openAddIndicatorModal('Leading')">+ Add</button>
+                        <button class="ll-btn-add" onclick="openLLAddModal('Leading')">+ Add</button>
                     </div>
                     <div class="ll-table-wrapper">
                         <table class="ll-table">
@@ -5531,6 +5531,7 @@
             target: target || '0',
             actual: '0',
             icon: icon || '📊',
+            intent: category === 'Lagging' ? 'negative' : 'positive',
             year: parseInt(year),
             month: month ? parseInt(month) : null
         };
@@ -5569,9 +5570,48 @@
             showToast('Pilih proyek terlebih dahulu', 'error');
             return;
         }
-        // Simple CSV export placeholder
-        showToast('Menyiapkan CSV...', 'info');
-        window.open(`${API_BASE}/api/ll-indicators/${localProjectId}?format=csv`, '_blank');
+
+        // Get current data from the page
+        const year = document.getElementById('ll-year-select').value;
+        const month = document.getElementById('ll-month-select').value;
+        const projectName = document.getElementById('ll-project-select').selectedOptions[0]?.text || localProjectId;
+
+        // Collect all indicator rows from the rendered tables
+        const rows = [];
+        rows.push(['No', 'Category', 'Indicator', 'Target', 'Actual', 'Status', 'Intent'].join(','));
+
+        document.querySelectorAll('#ll-content tr[data-indicator]').forEach((tr, idx) => {
+            try {
+                const ind = JSON.parse(tr.dataset.indicator);
+                const status = calculateIndicatorStatus(ind.target, ind.actual);
+                const escapeName = (ind.name || '').replace(/"/g, '""');
+                rows.push([
+                    idx + 1,
+                    ind.category || '',
+                    `"${escapeName}"`,
+                    `"${ind.target || ''}"`,
+                    `"${ind.actual || ''}"`,
+                    status,
+                    ind.intent || ''
+                ].join(','));
+            } catch (e) { }
+        });
+
+        if (rows.length <= 1) {
+            showToast('Tidak ada data untuk diekspor', 'error');
+            return;
+        }
+
+        // Generate and download CSV
+        const csvContent = '\uFEFF' + rows.join('\n'); // BOM for Excel compatibility
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `LL_Indicators_${projectName}_${year}_${month || 'all'}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('CSV berhasil diunduh', 'success');
     }
 
     function editIndicatorFull(rowEl) {
