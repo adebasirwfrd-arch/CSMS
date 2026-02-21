@@ -2005,7 +2005,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Jangka waktu Pekerjaan",
                     "target": "11 Hari/Sumur",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2013,7 +2013,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Jumlah  Pekerja",
                     "target": "2",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2021,7 +2021,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Jam kerja selamat",
                     "target": "Actual",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2029,7 +2029,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "KM driven",
                     "target": "Actual",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2037,7 +2037,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Number of Accidents (NoA) 1.\tFatality  2.\tProperty damage Kerugian> USD 1 Juta 3.\tTumpahan Minyak > 15 Bbls",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2045,7 +2045,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "TRIR",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2053,7 +2053,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Lost Time Incident (LTI)",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2061,7 +2061,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Restricted Work Case (RWC)",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2069,7 +2069,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Medical Treatment Case (MTC)",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2077,7 +2077,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "First Aid Case (FAC)",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2085,7 +2085,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Near miss",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2093,7 +2093,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Property damage loss < USD 1 Juta",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2101,7 +2101,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Property damage loss > USD 1 Juta",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2109,7 +2109,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Tumpahan minyak \u22651 - <15 bbls",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2117,7 +2117,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Gangguan Keamanan",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2125,7 +2125,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Motor Vehicle Accident Case (MVAC)",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 },
                 {
@@ -2133,7 +2133,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Illness Medivac",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "negative"
                 }
             ],
@@ -2143,7 +2143,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "MWT",
                     "target": "4",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2151,7 +2151,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "HSSE Committee Meeting dipimpin oleh pimpinan perusahaan",
                     "target": "4",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2159,7 +2159,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Sosialisasi Kebijakan HSSE",
                     "target": "1",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2167,7 +2167,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Pre job HSSE meeting",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2175,7 +2175,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "HSE Meeting",
                     "target": "1",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2183,7 +2183,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Pengamatan keselamatan (PEKA)",
                     "target": "22",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2191,7 +2191,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "RADAR",
                     "target": "48",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2199,7 +2199,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Pelaporan Kinerja HSSE",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2207,7 +2207,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Medical Check-up",
                     "target": "8",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2215,7 +2215,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Fit To Task",
                     "target": "11",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2223,7 +2223,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "HSSE Induction",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2231,7 +2231,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Pelatihan HSSE (minimal Basic HSSE Training)",
                     "target": "2",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2239,7 +2239,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Emergency drill :  -Fire Drill -Muster Point Drill -Medevac Drill (MERP Lv 1 & 2) -Medevac Drill (MERP Lv III) - Kick Drill",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2247,7 +2247,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Inspeksi HSE",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2255,7 +2255,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "A.\u00a0\u00a0\u00a0\u00a0 Housekeeping",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2263,7 +2263,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "B.\u00a0\u00a0\u00a0\u00a0 fire extinguisher",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2271,7 +2271,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "C.\u00a0\u00a0\u00a0\u00a0 APD Umum dan Khusu",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2279,7 +2279,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "D.\u00a0\u00a0\u00a0\u00a0 Peralatan Kerja",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2287,7 +2287,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "F.\u00a0\u00a0\u00a0\u00a0 Kendaraan",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2295,7 +2295,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Pemeriksaan kualitas lingkungan kerja a.\tKebisingan b.\tPencahayaan c.\tTemperatur",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2303,7 +2303,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Promosi HSSE: a.\tCLSR (Corporate Live Saving Rules) b.\tSI TEPAT (HFIF, Safe Zone Position, KARIB)  c.\tHSSE Marshall d.\tIllness Fatality Prevention Programs e. Hand and Finger Safety",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2311,7 +2311,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Audit Internal/Eksternal HSSE",
                     "target": "1",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2319,7 +2319,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Desinfeksi Area Kerja",
                     "target": "0",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2327,7 +2327,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Laporan hasil verifikasi MCU & f/u MCU kategori (P4-P7)",
                     "target": "12",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2335,7 +2335,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Sosialisasi HSE Plan ke seluruh personel yang dikirim kelokasi sumur Pemboran",
                     "target": "1",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2343,7 +2343,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Memastikan SKCK, MCU, dan BST Seluruh personnel aktif & Valid (Tidak melakukan pemalsuan dokumen). Tidak melakukan unsafe action dengan sengaja",
                     "target": "1",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 },
                 {
@@ -2351,7 +2351,7 @@ def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: 
                     "name": "Melakukan Assesement safety Behaviour & Technical Competency (BST) Internal Perusahaan",
                     "target": "1",
                     "actual": "0",
-                    "icon": "\ud83d\udcca",
+                    "icon": "📊",
                     "intent": "positive"
                 }
             ]
