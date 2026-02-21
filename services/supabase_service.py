@@ -401,13 +401,17 @@ class SupabaseService:
 
     # ==================== LL INDICATORS ====================
 
-    def get_ll_indicators(self, project_id: str = None) -> List[Dict]:
+    def get_ll_indicators(self, project_id: str = None, year: int = None, month: int = None) -> List[Dict]:
         if not self.enabled:
             return []
         try:
             query = self.client.table('ll_indicators').select("*")
             if project_id:
                 query = query.eq('project_id', project_id)
+            if year:
+                query = query.eq('year', year)
+            if month:
+                query = query.eq('month', month)
             result = query.execute()
             return result.data or []
         except Exception as e:
@@ -437,20 +441,27 @@ class SupabaseService:
                             "actual": ind.get('actual', '0'),
                             "icon": ind.get('icon'),
                             "intent": ind.get('intent'),
+                            "year": data.get('year', ind.get('year', 2025)),
+                            "month": data.get('month', ind.get('month')),
                             "updated_at": datetime.now().isoformat()
                         }
                         all_to_upsert.append(item)
                 
-                # Supabase upsert using project_id + name if possible, 
-                # but better to just insert/update individually if no unique constraint
                 for item in all_to_upsert:
-                    # Look for existing by project_id + name + category
-                    existing = self.client.table('ll_indicators')\
+                    # Look for existing by project_id + name + category + year + month
+                    query = self.client.table('ll_indicators')\
                         .select("id")\
                         .eq('project_id', project_id)\
                         .eq('name', item['name'])\
                         .eq('category', item['category'])\
-                        .execute()
+                        .eq('year', item['year'])
+                    
+                    if item.get('month'):
+                        query = query.eq('month', item['month'])
+                    else:
+                        query = query.is_('month', 'null')
+                        
+                    existing = query.execute()
                     
                     if existing.data:
                         self.client.table('ll_indicators').update(item).eq('id', existing.data[0]['id']).execute()
@@ -463,6 +474,16 @@ class SupabaseService:
                 return True
         except Exception as e:
             print(f"[ERROR] Error saving LL indicator: {e}")
+            return False
+
+    def delete_ll_indicator(self, indicator_id: str) -> bool:
+        if not self.enabled:
+            return False
+        try:
+            self.client.table('ll_indicators').delete().eq('id', indicator_id).execute()
+            return True
+        except Exception as e:
+            print(f"[ERROR] Error deleting LL indicator: {e}")
             return False
 
 # Global instance

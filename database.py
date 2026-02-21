@@ -352,10 +352,10 @@ def delete_related_doc(doc_id: str):
 def save_related_docs(docs: List[Dict]):
     _write_json_robust(RELATED_DOCS_FILE, docs)
 
-def get_ll_indicators(project_id: str = None) -> List[Dict]:
+def get_ll_indicators(project_id: str = None, year: int = None, month: int = None) -> List[Dict]:
     """Get LL indicators from Supabase (or local fallback)"""
     if SUPABASE_ENABLED:
-        flat_data = supabase_service.get_ll_indicators(project_id)
+        flat_data = supabase_service.get_ll_indicators(project_id, year, month)
         if not flat_data:
             return []
         

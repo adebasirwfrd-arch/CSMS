@@ -1922,13 +1922,20 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
 @app.get("/api/ll-indicators/{project_id}")
-def get_ll_indicators_route(project_id: str):
+def get_ll_indicators(project_id: str, year: Optional[int] = None, month: Optional[int] = None):
     """Get LL indicators for a project"""
-    indicators = get_ll_indicators(project_id)
+    indicators = db.get_ll_indicators(project_id, year, month)
     if not indicators:
         # Return default structure if not found
         return {"project_id": project_id, "lagging": [], "leading": []}
     return indicators[0]
+
+@app.delete("/api/ll-indicators/delete/{indicator_id}")
+def delete_ll_indicator(indicator_id: str):
+    success = supabase_service.delete_ll_indicator(indicator_id)
+    if success:
+        return {"status": "success"}
+    raise HTTPException(status_code=500, detail="Failed to delete indicator")
 
 @app.post("/api/ll-indicators/{project_id}")
 def save_ll_indicator_route(project_id: str, data: dict):
