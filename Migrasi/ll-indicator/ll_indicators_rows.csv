@@ -1,0 +1,45 @@
+id,project_id,category,name,target,actual,icon,intent,year,month,created_at,updated_at
+0425a1f9-acda-465a-b6c7-f69f5e48d5bd,PEPZ7_AMJ-4T_MPD,Leading,Pelatihan HSSE (minimal Basic HSSE Training),2,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+08c9541b-8adb-4f74-8ed2-6efd4484c2f7,PEPZ7_AMJ-4T_MPD,Leading,Pre job HSSE meeting,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+0e048237-cc6f-4bfa-9cad-49faa62a5ba4,PEPZ7_AMJ-4T_MPD,Lagging,Lost Time Incident (LTI),0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+0fb92b1d-4856-41a3-aef1-f4674e4bd6c3,PEPZ7_AMJ-4T_MPD,Leading,Desinfeksi Area Kerja,0,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+1118d044-3c9a-4843-a6d7-c532e387ab35,PEPZ7_AMJ-4T_MPD,Leading,HSSE Induction,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+154bae72-1135-484e-9ce0-f056cdc8e18b,PEPZ7_AMJ-4T_MPD,Leading,Sosialisasi Kebijakan HSSE,1,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+191c5e88-ad86-4136-87b2-daad1b7d35fd,PEPZ7_AMJ-4T_MPD,Leading,Laporan hasil verifikasi MCU & f/u MCU kategori (P4-P7),12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+206e1b8b-5c5e-4541-8f63-4ac6b761c8b5,PEPZ7_AMJ-4T_MPD,Lagging,Jangka waktu Pekerjaan,11 Hari/Sumur,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+356c9004-76d1-44fa-9abf-6c89ed049691,PEPZ7_AMJ-4T_MPD,Leading,Pemeriksaan kualitas lingkungan kerja a.	Kebisingan b.	Pencahayaan c.	Temperatur,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+3a75f5d6-6e7e-4a4c-a70b-99600efc3199,PEPZ7_AMJ-4T_MPD,Lagging,First Aid Case (FAC),0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+3c74ba0d-7c9c-4493-8bf3-66b72cf90b71,PEPZ7_AMJ-4T_MPD,Lagging,Jumlah  Pekerja,2,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+47eafeec-dabd-42a1-8120-d085c9257d4c,PEPZ7_AMJ-4T_MPD,Leading,MWT,4,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+4dd1c173-9705-4ad3-a0b4-4d94ccd98780,PEPZ7_AMJ-4T_MPD,Lagging,Property damage loss < USD 1 Juta,0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+5a49561e-6bad-4fa8-93b3-78992bac440d,PEPZ7_AMJ-4T_MPD,Lagging,Number of Accidents (NoA) 1.	Fatality  2.	Property damage Kerugian> USD 1 Juta 3.	Tumpahan Minyak > 15 Bbls,0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+5c67087c-63db-4025-91d5-a6e75a2785c9,PEPZ7_AMJ-4T_MPD,Lagging,Gangguan Keamanan,0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+5cc73b84-19fa-43ef-b86c-d661b4d11e71,PEPZ7_AMJ-4T_MPD,Leading,F.	 Kendaraan,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+7a57da05-34ac-484d-a416-6287c090e7f1,PEPZ7_AMJ-4T_MPD,Leading,"Promosi HSSE: a.	CLSR (Corporate Live Saving Rules) b.	SI TEPAT (HFIF, Safe Zone Position, KARIB)  c.	HSSE Marshall d.	Illness Fatality Prevention Programs e. Hand and Finger Safety",12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+7dc14e5b-6a17-4e72-9aed-89fcd9811383,PEPZ7_AMJ-4T_MPD,Leading,A.	 Housekeeping,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+7fe5a4b8-fbec-4fdc-bb70-c79dcd4ab628,PEPZ7_AMJ-4T_MPD,Leading,D.	 Peralatan Kerja,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+84b219c1-4fb8-43f3-befd-285c9a3bed4f,PEPZ7_AMJ-4T_MPD,Lagging,Property damage loss > USD 1 Juta,0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+874272e0-580c-424a-9261-456eb07c974a,PEPZ7_AMJ-4T_MPD,Leading,Pelaporan Kinerja HSSE,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+89cee15b-4c91-4e71-b9ac-eb73f070c254,PEPZ7_AMJ-4T_MPD,Lagging,Jam kerja selamat,Actual,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+99187bf8-7318-4ae2-9864-20e317a376de,PEPZ7_AMJ-4T_MPD,Leading,B.	 fire extinguisher,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+9af1fa03-d14e-4df4-809c-6951da0cded8,PEPZ7_AMJ-4T_MPD,Leading,HSSE Committee Meeting dipimpin oleh pimpinan perusahaan,4,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+a1cc405d-f4fc-45b3-bf23-463e9df2dee4,PEPZ7_AMJ-4T_MPD,Leading,"Memastikan SKCK, MCU, dan BST Seluruh personnel aktif & Valid (Tidak melakukan pemalsuan dokumen). Tidak melakukan unsafe action dengan sengaja",1,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+a48caeb3-f505-4de6-a5a7-e8ff49144675,PEPZ7_AMJ-4T_MPD,Lagging,Illness Medivac,0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+a54796f4-b432-4d8f-86d8-e0729f5580f0,PEPZ7_AMJ-4T_MPD,Leading,Sosialisasi HSE Plan ke seluruh personel yang dikirim kelokasi sumur Pemboran,1,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+ba1f84e7-5c04-4f1c-ba38-fda1845a526c,PEPZ7_AMJ-4T_MPD,Leading,Fit To Task,11,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+bf1c1951-3a3d-4393-81aa-239d5d66cf97,PEPZ7_AMJ-4T_MPD,Lagging,Near miss,0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+bf92976a-2535-4af5-96b8-ac4146b3b0b3,PEPZ7_AMJ-4T_MPD,Leading,Emergency drill :  -Fire Drill -Muster Point Drill -Medevac Drill (MERP Lv 1 & 2) -Medevac Drill (MERP Lv III) - Kick Drill,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+c15c64aa-4529-43cc-9046-920c4470d463,PEPZ7_AMJ-4T_MPD,Leading,HSE Meeting,1,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+c7ded844-72c0-4296-827f-e34a378bbf92,PEPZ7_AMJ-4T_MPD,Leading,Inspeksi HSE,0,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+c8e53478-2777-4097-ae2f-1c3cd983ee4e,PEPZ7_AMJ-4T_MPD,Lagging,Restricted Work Case (RWC),0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+ca8a539e-7681-408c-9fd3-92f3c3589692,PEPZ7_AMJ-4T_MPD,Leading,C.	 APD Umum dan Khusu,12,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+d27dca90-f347-465a-8de9-1ac7a4444b62,PEPZ7_AMJ-4T_MPD,Lagging,Motor Vehicle Accident Case (MVAC),0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+d633eccb-7880-4eb8-9be5-5d446bbaf124,PEPZ7_AMJ-4T_MPD,Leading,Audit Internal/Eksternal HSSE,1,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+e0d9d1fc-2614-4be8-809f-686738a5bd90,PEPZ7_AMJ-4T_MPD,Leading,Pengamatan keselamatan (PEKA),22,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+e1d76c26-a60c-4f2b-ada5-4b6272c2acfe,PEPZ7_AMJ-4T_MPD,Lagging,Tumpahan minyak ≥1 - <15 bbls,0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+e201fd4e-3480-4dfb-8920-d184afb9efb4,PEPZ7_AMJ-4T_MPD,Lagging,TRIR,0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+e6d8925b-e48e-4dfb-92b5-8933e92e8b61,PEPZ7_AMJ-4T_MPD,Lagging,KM driven,Actual,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+ebe9da39-d2c0-409a-9f3f-1afffe57b4df,PEPZ7_AMJ-4T_MPD,Leading,Medical Check-up,8,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+f8613d83-99a3-427b-84cf-21df7b661ed9,PEPZ7_AMJ-4T_MPD,Leading,Melakukan Assesement safety Behaviour & Technical Competency (BST) Internal Perusahaan,1,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+fa2883d4-29b5-4013-8954-dd64a1c79576,PEPZ7_AMJ-4T_MPD,Lagging,Medical Treatment Case (MTC),0,0,📊,negative,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00
+faa58535-32e0-45cf-b52b-9d89e11bd74a,PEPZ7_AMJ-4T_MPD,Leading,RADAR,48,0,📊,positive,2025,3,2026-02-21 16:01:29.43683+00,2026-02-21 16:01:29.43683+00

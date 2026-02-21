@@ -2667,11 +2667,70 @@
 
     <!-- OTP Screen -->
     <section class="screen" id="screen-otp" style="overflow-y: auto; height: calc(100vh - 130px);">
-        <div class="status-section">
-            <h2 class="status-section-title">One Time Program (OTP)</h2>
-            <p style="font-size: 14px; opacity: 0.9;">Tracking mandatory one-time HSE activities</p>
+        <div class="ll-premium-header" style="background: linear-gradient(135deg, #9b59b6, #8e44ad);">
+            <div class="ll-title-group">
+                <div class="ll-icon-box" style="background: rgba(255,255,255,0.15);">
+                    <span style="font-size: 24px;">📋</span>
+                </div>
+                <div class="ll-title-text">
+                    <h2 id="otp-display-year">2025 HSE OTP</h2>
+                    <p>Objective, Target &amp; Program Tracker</p>
+                </div>
+            </div>
+            <div class="ll-controls">
+                <select id="otp-project-select" class="ll-select" onchange="renderOTPScreen()">
+                    <option value="all">Pilih Proyek...</option>
+                </select>
+                <select id="otp-year-select" class="ll-select" onchange="renderOTPScreen()">
+                    <option value="2024">2024</option>
+                    <option value="2025" selected>2025</option>
+                    <option value="2026">2026</option>
+                </select>
+                <button class="ll-btn-add" onclick="openOTPAddProgram()" style="background:#9b59b6;">+ Add
+                    Program</button>
+                <button class="ll-btn-export" onclick="exportOTPCSV()">
+                    <span>📥</span> Export CSV
+                </button>
+            </div>
         </div>
-        <div id="otp-content"></div>
+
+        <div class="ll-stats-bar" id="otp-stats-bar">
+            <div class="ll-stat-card" style="background: linear-gradient(135deg, #27ae60, #2ecc71);">
+                <div class="ll-stat-value" id="otp-stat-total">0</div>
+                <div class="ll-stat-label">Total Programs</div>
+            </div>
+            <div class="ll-stat-card" style="background: linear-gradient(135deg, #3498db, #2980b9);">
+                <div class="ll-stat-value" id="otp-stat-completed">0</div>
+                <div class="ll-stat-label">Completed</div>
+            </div>
+            <div class="ll-stat-card" style="background: linear-gradient(135deg, #f39c12, #e67e22);">
+                <div class="ll-stat-value" id="otp-stat-progress">0</div>
+                <div class="ll-stat-label">In Progress</div>
+            </div>
+            <div class="ll-stat-card" style="background: linear-gradient(135deg, #e74c3c, #c0392b);">
+                <div class="ll-stat-value" id="otp-stat-avg">0%</div>
+                <div class="ll-stat-label">Avg Progress</div>
+            </div>
+        </div>
+
+        <!-- Legend -->
+        <div
+            style="display:flex; gap:16px; padding:8px 16px; font-size:11px; color:var(--text-secondary); flex-wrap:wrap;">
+            <span style="display:flex;align-items:center;gap:4px;"><span
+                    style="width:12px;height:12px;background:#27ae60;border-radius:2px;display:inline-block;"></span>
+                Actual ≥ Plan</span>
+            <span style="display:flex;align-items:center;gap:4px;"><span
+                    style="width:12px;height:12px;background:#f39c12;border-radius:2px;display:inline-block;"></span>
+                Actual &lt; Plan</span>
+            <span style="display:flex;align-items:center;gap:4px;"><span
+                    style="width:12px;height:12px;background:#e74c3c;border-radius:2px;display:inline-block;"></span>
+                Plan &gt; 0, No Actual</span>
+            <span style="display:flex;align-items:center;gap:4px;"><span
+                    style="width:12px;height:12px;background:var(--card-bg);border:1px solid var(--border);border-radius:2px;display:inline-block;"></span>
+                No Activity</span>
+        </div>
+
+        <div id="otp-content" style="padding: 0 16px 16px;"></div>
     </section>
 
     <!-- Matrix Screen -->
@@ -3116,6 +3175,119 @@
         <button class="btn btn-save" style="width: 100%; margin-top: 16px;" onclick="submitLLEditIndicator()">Save
             Changes</button>
         <button class="btn btn-cancel" style="width: 100%; margin-top: 8px;" onclick="closeLLEditModal()">Batal</button>
+    </div>
+</div>
+
+<!-- OTP Edit Month Modal -->
+<div class="modal-overlay" id="otp-edit-modal">
+    <div class="modal-header">
+        <button class="modal-back" onclick="closeOTPEditModal()">←</button>
+        <span class="modal-title" id="otp-edit-title">Edit Month</span>
+    </div>
+    <div class="modal-body" style="max-height:80vh; overflow-y:auto;">
+        <form id="otp-edit-form">
+            <input type="hidden" id="otp-edit-program-id">
+            <input type="hidden" id="otp-edit-month">
+            <input type="hidden" id="otp-edit-program-name">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label class="form-label">Plan Value</label>
+                    <input type="number" class="form-input" id="otp-edit-plan" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Actual Value</label>
+                    <input type="number" class="form-input" id="otp-edit-actual" value="0" min="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">WPTS ID</label>
+                <input type="text" class="form-input" id="otp-edit-wpts" placeholder="Enter WPTS ID">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label class="form-label">Plan Date</label>
+                    <input type="date" class="form-input" id="otp-edit-plan-date">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Implementation Date</label>
+                    <input type="date" class="form-input" id="otp-edit-impl-date">
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label class="form-label">PIC Name</label>
+                    <input type="text" class="form-input" id="otp-edit-pic-name" placeholder="Enter PIC name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">PIC Email</label>
+                    <input type="email" class="form-input" id="otp-edit-pic-email" placeholder="email@example.com">
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div class="form-group">
+                    <label class="form-label">PIC Manager Name</label>
+                    <input type="text" class="form-input" id="otp-edit-mgr-name" placeholder="Enter manager name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">PIC Manager Email</label>
+                    <input type="email" class="form-input" id="otp-edit-mgr-email" placeholder="manager@example.com">
+                </div>
+            </div>
+            <!-- Email reminder checkbox -->
+            <div style="padding:12px; background:rgba(155,89,182,0.1); border-radius:8px; margin-top:8px;">
+                <label style="display:flex; align-items:center; gap:8px; font-size:14px; cursor:pointer;">
+                    <input type="checkbox" id="otp-edit-send-email" style="width:18px;height:18px;" disabled>
+                    <span>✉️</span>
+                    <span id="otp-email-label">Send email reminder to PIC</span>
+                </label>
+                <p id="otp-email-hint" style="font-size:11px; color:var(--text-muted); margin:4px 0 0 34px;">Fill Plan
+                    Date and PIC Email to enable</p>
+            </div>
+        </form>
+        <button class="btn btn-save" style="width:100%; margin-top:16px; background:#9b59b6;"
+            onclick="submitOTPEditMonth()">Save</button>
+        <button class="btn btn-cancel" style="width:100%; margin-top:8px;" onclick="closeOTPEditModal()">Cancel</button>
+    </div>
+</div>
+
+<!-- OTP Add Program Modal -->
+<div class="modal-overlay" id="otp-add-modal">
+    <div class="modal-header">
+        <button class="modal-back" onclick="closeOTPAddModal()">←</button>
+        <span class="modal-title">➕ Add New OTP Program</span>
+    </div>
+    <div class="modal-body">
+        <form id="otp-add-form">
+            <div class="form-group">
+                <label class="form-label">Program Name <span>*</span></label>
+                <input type="text" class="form-input" id="otp-add-name" placeholder="Enter program name" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Guidance</label>
+                <input type="text" class="form-input" id="otp-add-guidance" placeholder="Enter guidance/description">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Plan Type</label>
+                <select class="form-input" id="otp-add-plan-type">
+                    <option value="Annually">Annually</option>
+                    <option value="Annually / Base">Annually / Base</option>
+                    <option value="Quarterly">Quarterly</option>
+                    <option value="Quarterly / Base">Quarterly / Base</option>
+                    <option value="Monthly">Monthly</option>
+                    <option value="Monthly / Base">Monthly / Base</option>
+                    <option value="Per Semester">Per Semester</option>
+                    <option value="Per Semester / Base">Per Semester / Base</option>
+                    <option value="One time in year">One time in year</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Due Date</label>
+                <input type="date" class="form-input" id="otp-add-due-date">
+            </div>
+        </form>
+        <button class="btn btn-save" style="width:100%; margin-top:16px; background:#9b59b6;"
+            onclick="submitOTPAddProgram()">Add Program</button>
+        <button class="btn btn-cancel" style="width:100%; margin-top:8px;" onclick="closeOTPAddModal()">Cancel</button>
     </div>
 </div>
 
@@ -5216,7 +5388,7 @@
     }
 
     function populateAllProjectDropdowns() {
-        const ids = ['ll-project-select', 'schedule-project-select'];
+        const ids = ['ll-project-select', 'otp-project-select', 'schedule-project-select'];
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
@@ -5241,49 +5413,343 @@
     }
 
     // ===== OTP SCREEN =====
-    function renderOTPScreen() {
-        const content = document.getElementById('otp-content');
-        const filteredTasks = selectedProjectId === 'all' ?
-            allTasks.filter(t => t.category === 'OTP') :
-            allTasks.filter(t => t.category === 'OTP' && t.project_id === selectedProjectId);
+    const OTP_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const OTP_MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const OTP_MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    let otpProgramsCache = [];
 
-        if (filteredTasks.length === 0) {
-            content.innerHTML = '<div class="empty-message">No OTP tasks found for the selected project.</div>';
+    function getOTPCellStyle(plan, actual) {
+        plan = parseInt(plan) || 0;
+        actual = parseInt(actual) || 0;
+        if (plan === 0 && actual === 0) return { bg: 'var(--card-bg)', color: 'var(--text-muted)', border: '1px solid var(--border)' };
+        if (actual >= plan && plan > 0) return { bg: 'rgba(39,174,96,0.2)', color: '#27ae60', border: '1px solid rgba(39,174,96,0.3)' };
+        if (actual > 0 && actual < plan) return { bg: 'rgba(243,156,18,0.2)', color: '#f39c12', border: '1px solid rgba(243,156,18,0.3)' };
+        if (plan > 0 && actual === 0) return { bg: 'rgba(231,76,60,0.2)', color: '#e74c3c', border: '1px solid rgba(231,76,60,0.3)' };
+        return { bg: 'var(--card-bg)', color: 'var(--text-muted)', border: '1px solid var(--border)' };
+    }
+
+    async function renderOTPScreen() {
+        const content = document.getElementById('otp-content');
+        const projectId = document.getElementById('otp-project-select').value;
+        const year = document.getElementById('otp-year-select').value;
+
+        // Update header
+        document.getElementById('otp-display-year').textContent = `${year} HSE OTP`;
+
+        if (!projectId || projectId === 'all') {
+            content.innerHTML = '<div class="ll-empty">Pilih proyek terlebih dahulu untuk melihat OTP.</div>';
             return;
         }
 
-        let html = '';
-        filteredTasks.forEach(task => {
-            const project = allProjects.find(p => p.id === task.project_id);
-            const progress = task.status === 'Completed' ? 100 : (task.status === 'In Progress' ? 50 : 0);
+        content.innerHTML = '<div class="ll-empty">Memuat data OTP...</div>';
 
-            html += `
-                <div class="indicator-card" onclick="openTaskDetail('${task.id}')">
-                    <div class="indicator-header">
-                        <div class="indicator-title">
-                            <span class="indicator-icon">📋</span>
-                            <div>
-                                <div>${task.title}</div>
-                                <div style="font-size: 11px; color: var(--text-secondary);">${project ? project.name : 'Unknown'}</div>
-                            </div>
+        try {
+            const res = await fetch(`${API_BASE}/api/otp-programs/${projectId}?year=${year}`);
+            if (!res.ok) {
+                let errDetail = res.statusText;
+                try { const errJson = await res.json(); errDetail = errJson.detail || errDetail; } catch (e) { }
+                content.innerHTML = `<div class="ll-empty">Gagal memuat data (Error ${res.status}): ${errDetail}</div>`;
+                return;
+            }
+
+            const result = await res.json();
+            const programs = result.programs || [];
+            otpProgramsCache = programs;
+
+            // Update stats
+            const total = programs.length;
+            const completed = programs.filter(p => (p.progress || 0) >= 100).length;
+            const inProgress = programs.filter(p => (p.progress || 0) > 0 && (p.progress || 0) < 100).length;
+            const avgProgress = total > 0 ? Math.min(100, Math.round(programs.reduce((s, p) => s + (p.progress || 0), 0) / total)) : 0;
+
+            document.getElementById('otp-stat-total').textContent = total;
+            document.getElementById('otp-stat-completed').textContent = completed;
+            document.getElementById('otp-stat-progress').textContent = inProgress;
+            document.getElementById('otp-stat-avg').textContent = avgProgress + '%';
+
+            if (programs.length === 0) {
+                content.innerHTML = '<div class="ll-empty">Belum ada program OTP. Klik <b>+ Add Program</b> untuk menambahkan.</div>';
+                return;
+            }
+
+            // Render table
+            let html = `<div style="overflow-x:auto; border-radius:12px; border:1px solid var(--border);">
+                <table class="ll-table" style="min-width:1200px;">
+                    <thead>
+                        <tr>
+                            <th style="width:40px; position:sticky;left:0;z-index:2;background:var(--card-bg);">#</th>
+                            <th style="min-width:200px; position:sticky;left:40px;z-index:2;background:var(--card-bg);">Program</th>
+                            <th style="width:90px;">Plan Type</th>
+                            ${OTP_MONTH_LABELS.map(m => `<th style="width:70px; text-align:center;">${m}</th>`).join('')}
+                            <th style="width:100px; text-align:center;">%</th>
+                            <th style="width:50px; text-align:center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+            programs.forEach((prog, idx) => {
+                const progColor = (prog.progress || 0) >= 100 ? '#27ae60' : (prog.progress || 0) >= 50 ? '#f39c12' : '#e74c3c';
+                html += `<tr>
+                    <td style="position:sticky;left:0;background:var(--card-bg);z-index:1;text-align:center;font-weight:600;">${idx + 1}</td>
+                    <td style="position:sticky;left:40px;background:var(--card-bg);z-index:1;">
+                        <div style="font-weight:500; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${(prog.name || '').replace(/"/g, '&quot;')}">${prog.name || '-'}</div>
+                        <div style="font-size:10px; color:var(--text-muted); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${prog.guidance || ''}</div>
+                    </td>
+                    <td style="text-align:center; font-size:10px; color:var(--text-muted);">${prog.plan_type || '-'}</td>`;
+
+                // Monthly cells
+                for (let m = 1; m <= 12; m++) {
+                    const md = prog.months?.[m] || prog.months?.[String(m)] || { plan: 0, actual: 0 };
+                    const plan = parseInt(md.plan) || 0;
+                    const actual = parseInt(md.actual) || 0;
+                    const style = getOTPCellStyle(plan, actual);
+                    const isEmpty = plan === 0 && actual === 0;
+                    const wpts = md.wpts_id || '';
+
+                    html += `<td style="padding:4px;">
+                        <div onclick="openOTPEditModal('${prog.id}', ${m}, '${(prog.name || '').replace(/'/g, "\\'")}')"
+                             style="cursor:pointer; width:60px; height:44px; margin:auto; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:600; font-size:10px; background:${style.bg}; color:${style.color}; border:${style.border}; transition:transform 0.15s;"
+                             onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"
+                             title="Plan: ${plan} | Actual: ${actual}${md.plan_date ? ' | Date: ' + md.plan_date : ''}">
+                            <span>${isEmpty ? '-' : actual + '/' + plan}</span>
+                            ${wpts ? '<span style="font-size:7px; color:#27ae60;">' + wpts + '</span>' : ''}
                         </div>
-                        <div class="status-badge ${task.status === 'Completed' ? 'status-achieved' : 'status-on-track'}">
-                            ${task.status}
+                    </td>`;
+                }
+
+                // Progress column
+                html += `<td style="padding:8px;">
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <div style="flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden;">
+                            <div style="width:${prog.progress || 0}%; height:100%; background:${progColor}; border-radius:3px; transition:width 0.5s;"></div>
                         </div>
+                        <span style="font-size:10px; font-weight:600; width:32px; text-align:right;">${prog.progress || 0}%</span>
                     </div>
-                    <div class="indicator-stats">
-                        <div class="indicator-stat-box">
-                            <div class="indicator-stat-label">Progress</div>
-                            <div class="indicator-stat-value">${progress}%</div>
-                        </div>
-                    </div>
-                    <div class="matrix-progress-bar">
-                        <div class="matrix-progress-fill" style="width: ${progress}%"></div>
-                    </div>
-                </div>
-            `;
+                </td>`;
+
+                // Action column
+                html += `<td style="text-align:center;">
+                    <button class="ll-action-btn" onclick="deleteOTPProgram('${prog.id}', '${(prog.name || '').replace(/'/g, "\\'")}')" title="Hapus">🗑️</button>
+                </td></tr>`;
+            });
+
+            html += '</tbody></table></div>';
+            content.innerHTML = html;
+        } catch (e) {
+            console.error('Error rendering OTP screen:', e);
+            content.innerHTML = '<div class="ll-empty">Gagal memuat data OTP.</div>';
+        }
+    }
+
+    // ===== OTP MODAL FUNCTIONS =====
+    function openOTPEditModal(programId, month, programName) {
+        // Reset form
+        document.getElementById('otp-edit-program-id').value = programId;
+        document.getElementById('otp-edit-month').value = month;
+        document.getElementById('otp-edit-program-name').value = programName;
+        document.getElementById('otp-edit-title').textContent = `Edit ${OTP_MONTH_NAMES[month]} - ${programName.substring(0, 30)}${programName.length > 30 ? '...' : ''}`;
+
+        // Load existing data from cache
+        const prog = otpProgramsCache.find(p => p.id === programId);
+        const md = prog?.months?.[month] || prog?.months?.[String(month)] || {};
+
+        document.getElementById('otp-edit-plan').value = md.plan || 0;
+        document.getElementById('otp-edit-actual').value = md.actual || 0;
+        document.getElementById('otp-edit-wpts').value = md.wpts_id || '';
+        document.getElementById('otp-edit-plan-date').value = md.plan_date || '';
+        document.getElementById('otp-edit-impl-date').value = md.impl_date || '';
+        document.getElementById('otp-edit-pic-name').value = md.pic_name || '';
+        document.getElementById('otp-edit-pic-email').value = md.pic_email || '';
+        document.getElementById('otp-edit-mgr-name').value = md.pic_manager || '';
+        document.getElementById('otp-edit-mgr-email').value = md.pic_manager_email || '';
+        document.getElementById('otp-edit-send-email').checked = false;
+
+        // Enable/disable email checkbox dynamically
+        updateOTPEmailCheckbox();
+
+        document.getElementById('otp-edit-modal').classList.add('active');
+    }
+
+    function updateOTPEmailCheckbox() {
+        const planDate = document.getElementById('otp-edit-plan-date').value;
+        const picEmail = document.getElementById('otp-edit-pic-email').value;
+        const cb = document.getElementById('otp-edit-send-email');
+        const hint = document.getElementById('otp-email-hint');
+
+        if (planDate && picEmail) {
+            cb.disabled = false;
+            hint.style.display = 'none';
+        } else {
+            cb.disabled = true;
+            cb.checked = false;
+            hint.style.display = 'block';
+        }
+    }
+
+    // Attach listeners for dynamic enable/disable
+    document.addEventListener('DOMContentLoaded', () => {
+        const planDateEl = document.getElementById('otp-edit-plan-date');
+        const picEmailEl = document.getElementById('otp-edit-pic-email');
+        if (planDateEl) planDateEl.addEventListener('input', updateOTPEmailCheckbox);
+        if (picEmailEl) picEmailEl.addEventListener('input', updateOTPEmailCheckbox);
+    });
+
+    function closeOTPEditModal() {
+        document.getElementById('otp-edit-modal').classList.remove('active');
+    }
+
+    async function submitOTPEditMonth() {
+        const projectId = document.getElementById('otp-project-select').value;
+        const programId = document.getElementById('otp-edit-program-id').value;
+        const month = parseInt(document.getElementById('otp-edit-month').value);
+        const programName = document.getElementById('otp-edit-program-name').value;
+
+        const payload = {
+            plan: parseInt(document.getElementById('otp-edit-plan').value) || 0,
+            actual: parseInt(document.getElementById('otp-edit-actual').value) || 0,
+            wpts_id: document.getElementById('otp-edit-wpts').value,
+            plan_date: document.getElementById('otp-edit-plan-date').value,
+            impl_date: document.getElementById('otp-edit-impl-date').value,
+            pic_name: document.getElementById('otp-edit-pic-name').value,
+            pic_email: document.getElementById('otp-edit-pic-email').value,
+            pic_manager: document.getElementById('otp-edit-mgr-name').value,
+            pic_manager_email: document.getElementById('otp-edit-mgr-email').value,
+            send_email: document.getElementById('otp-edit-send-email').checked,
+            program_name: programName
+        };
+
+        try {
+            showToast('Menyimpan...', 'info');
+            const res = await fetch(`${API_BASE}/api/otp-programs/${projectId}/${programId}/month/${month}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                showToast(payload.send_email ? 'Tersimpan & email terkirim' : 'Tersimpan', 'success');
+                closeOTPEditModal();
+                renderOTPScreen();
+            } else {
+                showToast('Gagal simpan', 'error');
+            }
+        } catch (e) {
+            showToast('Gagal simpan', 'error');
+        }
+    }
+
+    function openOTPAddProgram() {
+        document.getElementById('otp-add-name').value = '';
+        document.getElementById('otp-add-guidance').value = '';
+        document.getElementById('otp-add-plan-type').value = 'Annually';
+        document.getElementById('otp-add-due-date').value = '';
+        document.getElementById('otp-add-modal').classList.add('active');
+    }
+
+    function closeOTPAddModal() {
+        document.getElementById('otp-add-modal').classList.remove('active');
+    }
+
+    async function submitOTPAddProgram() {
+        const projectId = document.getElementById('otp-project-select').value;
+        const year = document.getElementById('otp-year-select').value;
+        const name = document.getElementById('otp-add-name').value;
+
+        if (!name) {
+            showToast('Masukkan nama program', 'error');
+            return;
+        }
+        if (!projectId || projectId === 'all') {
+            showToast('Pilih proyek terlebih dahulu', 'error');
+            return;
+        }
+
+        const payload = {
+            name: name,
+            guidance: document.getElementById('otp-add-guidance').value,
+            plan_type: document.getElementById('otp-add-plan-type').value,
+            due_date: document.getElementById('otp-add-due-date').value,
+            year: parseInt(year),
+            sort_order: otpProgramsCache.length
+        };
+
+        try {
+            showToast('Menambahkan...', 'info');
+            const res = await fetch(`${API_BASE}/api/otp-programs/${projectId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+                showToast('Program ditambahkan', 'success');
+                closeOTPAddModal();
+                renderOTPScreen();
+            } else {
+                showToast('Gagal menambah', 'error');
+            }
+        } catch (e) {
+            showToast('Gagal menambah', 'error');
+        }
+    }
+
+    async function deleteOTPProgram(programId, programName) {
+        if (!confirm(`Hapus program "${programName}"? Semua data bulanan akan ikut terhapus.`)) return;
+        try {
+            const res = await fetch(`${API_BASE}/api/otp-programs/${programId}`, { method: 'DELETE' });
+            if (res.ok) {
+                showToast('Program terhapus', 'success');
+                renderOTPScreen();
+            } else {
+                showToast('Gagal menghapus', 'error');
+            }
+        } catch (e) {
+            showToast('Gagal menghapus', 'error');
+        }
+    }
+
+    function exportOTPCSV() {
+        const projectId = document.getElementById('otp-project-select').value;
+        if (!projectId || projectId === 'all') {
+            showToast('Pilih proyek terlebih dahulu', 'error');
+            return;
+        }
+
+        const projectName = document.getElementById('otp-project-select').selectedOptions[0]?.text || projectId;
+        const year = document.getElementById('otp-year-select').value;
+        const rows = [];
+        rows.push(['No', 'Program', 'Plan Type', ...OTP_MONTH_LABELS.map(m => m + ' Plan'), ...OTP_MONTH_LABELS.map(m => m + ' Actual'), 'Progress'].join(','));
+
+        otpProgramsCache.forEach((prog, idx) => {
+            const plans = [];
+            const actuals = [];
+            for (let m = 1; m <= 12; m++) {
+                const md = prog.months?.[m] || prog.months?.[String(m)] || {};
+                plans.push(md.plan || 0);
+                actuals.push(md.actual || 0);
+            }
+            rows.push([
+                idx + 1,
+                `"${(prog.name || '').replace(/"/g, '""')}"`,
+                `"${prog.plan_type || ''}"`,
+                ...plans,
+                ...actuals,
+                (prog.progress || 0) + '%'
+            ].join(','));
         });
-        content.innerHTML = html;
+
+        if (rows.length <= 1) {
+            showToast('Tidak ada data untuk diekspor', 'error');
+            return;
+        }
+
+        const csvContent = '\uFEFF' + rows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `OTP_${projectName}_${year}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('CSV berhasil diunduh', 'success');
     }
 
     // ===== MATRIX SCREEN =====

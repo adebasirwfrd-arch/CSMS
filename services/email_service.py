@@ -292,5 +292,65 @@ class EmailService:
             print(f"[EMAIL ERROR] Failed to send error notification: {e}")
             return False
 
+    def send_otp_reminder(self, program_name: str, month_name: str, data: Dict) -> bool:
+        """Send OTP program reminder email to PIC via Brevo."""
+        pic_email = data.get('pic_email', '')
+        if not pic_email:
+            print(f"[EMAIL WARN] No PIC email for OTP reminder: {program_name}")
+            return False
+
+        recipients = [pic_email.strip()]
+        cc_emails = []
+        if data.get('pic_manager_email'):
+            cc_emails = [data['pic_manager_email'].strip()]
+
+        plan_val = data.get('plan', 0)
+        actual_val = data.get('actual', 0)
+        plan_date = data.get('plan_date', 'TBD')
+        wpts_id = data.get('wpts_id', '-')
+        pic_name = data.get('pic_name', 'Team')
+
+        subject = f"[OTP Reminder] {program_name} - {month_name}"
+
+        body_html = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+            <div style="background: #9b59b6; color: white; padding: 20px; border-radius: 8px;">
+                <h2 style="margin: 0;">📋 OTP Program Reminder</h2>
+            </div>
+            <div style="padding: 20px; background: #f5f5f5; border-radius: 8px; margin-top: 10px;">
+                <p>Dear <strong>{pic_name}</strong>,</p>
+                <p>This is a reminder for the following OTP program activity:</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                    <tr style="background: #fff;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Program</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{program_name}</td>
+                    </tr>
+                    <tr style="background: #fff;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Month</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{month_name}</td>
+                    </tr>
+                    <tr style="background: #fff;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Plan / Actual</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{plan_val} / {actual_val}</td>
+                    </tr>
+                    <tr style="background: #fff;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>WPTS ID</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{wpts_id}</td>
+                    </tr>
+                    <tr style="background: #fff;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Plan Date</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd; color: #9b59b6; font-weight: bold;">{plan_date}</td>
+                    </tr>
+                </table>
+                <p>Please ensure this program activity is completed on time.</p>
+                <p>Best regards,<br><strong>CSMS Project Management System</strong><br>Weatherford</p>
+            </div>
+        </body>
+        </html>
+        """
+
+        return self._send_email(recipients, subject, body_html, cc_emails)
+
 # Global Instance
 email_service = EmailService()

@@ -485,5 +485,118 @@ class SupabaseService:
             print(f"[ERROR] Error deleting LL indicator: {e}")
             return False
 
+    # ===== OTP PROGRAMS =====
+    def get_otp_programs(self, project_id: str, year: int = 2025) -> List[Dict]:
+        """Get all OTP programs with their month data for a project/year."""
+        if not self.enabled:
+            return []
+        try:
+            # Fetch programs
+            result = self.client.table('otp_programs').select("*").eq('project_id', project_id).eq('year', year).order('sort_order', desc=False).execute()
+            programs = result.data or []
+
+            # Fetch month data for all programs
+            program_ids = [p['id'] for p in programs]
+            if program_ids:
+                month_result = self.client.table('otp_month_data').select("*").in_('program_id', program_ids).execute()
+                month_data = month_result.data or []
+
+                # Group month data by program_id
+                month_map = {}
+                for md in month_data:
+                    pid = md['program_id']
+                    if pid not in month_map:
+                        month_map[pid] = {}
+                    month_map[pid][md['month']] = md
+
+                # Attach month data to programs
+                for prog in programs:
+                    prog['months'] = month_map.get(prog['id'], {})
+                    # Calculate progress
+                    total_plan = 0
+                    total_actual = 0
+                    for m in range(1, 13):
+                        md = prog['months'].get(m, prog['months'].get(str(m), {}))
+                        total_plan += int(md.get('plan', 0) or 0)
+                        total_actual += int(md.get('actual', 0) or 0)
+                    prog['progress'] = min(100, round((total_actual / total_plan * 100) if total_plan > 0 else 0))
+            
+            return programs
+        except Exception as e:
+            print(f"[ERROR] Error fetching OTP programs: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def save_otp_program(self, project_id: str, data: Dict) -> Dict:
+        """Create or update an OTP program."""
+        if not self.enabled:
+            return {}
+        try:
+            if data.get('id'):
+                # Update existing
+                update_data = {k: v for k, v in data.items() if k != 'id' and v is not None}
+                update_data['updated_at'] = datetime.now().isoformat()
+                result = self.client.table('otp_programs').update(update_data).eq('id', data['id']).execute()
+                return result.data[0] if result.data else {}
+            else:
+                # Create new
+                new_data = {
+                    'project_id': project_id,
+                    'name': data.get('name', ''),
+                    'guidance': data.get('guidance', ''),
+                    'plan_type': data.get('plan_type', 'Annually'),
+                    'due_date': data.get('due_date', ''),
+                    'sort_order': data.get('sort_order', 0),
+                    'year': data.get('year', 2025),
+                    'created_at': datetime.now().isoformat(),
+                    'updated_at': datetime.now().isoformat()
+                }
+                result = self.client.table('otp_programs').insert(new_data).execute()
+                return result.data[0] if result.data else {}
+        except Exception as e:
+            print(f"[ERROR] Error saving OTP program: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
+
+    def save_otp_month_data(self, program_id: str, month: int, data: Dict) -> bool:
+        """Upsert monthly data for an OTP program."""
+        if not self.enabled:
+            return False
+        try:
+            upsert_data = {
+                'program_id': program_id,
+                'month': month,
+                'plan': int(data.get('plan', 0) or 0),
+                'actual': int(data.get('actual', 0) or 0),
+                'wpts_id': data.get('wpts_id', ''),
+                'plan_date': data.get('plan_date', ''),
+                'impl_date': data.get('impl_date', ''),
+                'pic_name': data.get('pic_name', ''),
+                'pic_email': data.get('pic_email', ''),
+                'pic_manager': data.get('pic_manager', ''),
+                'pic_manager_email': data.get('pic_manager_email', ''),
+                'updated_at': datetime.now().isoformat()
+            }
+            self.client.table('otp_month_data').upsert(upsert_data, on_conflict="program_id,month").execute()
+            return True
+        except Exception as e:
+            print(f"[ERROR] Error saving OTP month data: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def delete_otp_program(self, program_id: str) -> bool:
+        """Delete an OTP program (cascade deletes month data)."""
+        if not self.enabled:
+            return False
+        try:
+            self.client.table('otp_programs').delete().eq('id', program_id).execute()
+            return True
+        except Exception as e:
+            print(f"[ERROR] Error deleting OTP program: {e}")
+            return False
+
 # Global instance
 supabase_service = SupabaseService()
