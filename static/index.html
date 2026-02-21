@@ -5274,13 +5274,13 @@
         content.innerHTML = '<div class="ll-empty">Memuat data...</div>';
 
         try {
-            const res = await fetch(`${API_BASE}/api/ll-indicators/${selectedProjectId}?year=${year}`);
+            const res = await fetch(`${API_BASE}/api/ll-indicators/${selectedProjectId}?year=${year}&t=${Date.now()}`);
             const results = await res.json();
 
             // Backend returns a list of grouped objects (transformed from flat Supabase)
             // But we might get multiple projects if we don't filter in database.py correctly
             // Let's assume database.py returns a list [ {project_id, lagging, leading} ]
-            const pData = results.find(r => r.project_id === selectedProjectId) || { lagging: [], leading: [] };
+            const pData = results || { lagging: [], leading: [] };
 
             updateLLStats(pData);
 
