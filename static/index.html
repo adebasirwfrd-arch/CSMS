@@ -3047,6 +3047,55 @@
     </div>
 </div>
 
+<!-- LL Add Indicator Modal -->
+<div class="modal-overlay" id="ll-add-modal">
+    <div class="modal-header">
+        <button class="modal-back" onclick="closeLLAddModal()">←</button>
+        <span class="modal-title" id="ll-add-modal-title">Add Indicator</span>
+    </div>
+    <div class="modal-body">
+        <form id="ll-add-form">
+            <input type="hidden" id="ll-add-category">
+            <div class="form-group">
+                <label class="form-label">Indicator Name <span>*</span></label>
+                <input type="text" class="form-input" id="ll-add-name" placeholder="Enter indicator name" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Target</label>
+                <input type="text" class="form-input" id="ll-add-target" placeholder="Example: 0 or 100%" value="100%">
+            </div>
+            <div class="form-group">
+                <label class="form-label">Icon Emoji</label>
+                <input type="text" class="form-input" id="ll-add-icon" placeholder="Example: 📊" value="📊">
+            </div>
+        </form>
+        <button class="btn btn-save" style="width: 100%; margin-top: 16px;" onclick="submitLLAddIndicator()">Save
+            Indicator</button>
+        <button class="btn btn-cancel" style="width: 100%; margin-top: 8px;" onclick="closeLLAddModal()">Cancel</button>
+    </div>
+</div>
+
+<!-- LL Edit Indicator Modal -->
+<div class="modal-overlay" id="ll-edit-modal">
+    <div class="modal-header">
+        <button class="modal-back" onclick="closeLLEditModal()">←</button>
+        <span class="modal-title">Edit Indicator Actual</span>
+    </div>
+    <div class="modal-body">
+        <form id="ll-edit-form">
+            <input type="hidden" id="ll-edit-id">
+            <div class="form-group">
+                <label class="form-label" id="ll-edit-name-label">Indicator Name</label>
+                <input type="text" class="form-input" id="ll-edit-actual" placeholder="Enter actual value" required>
+            </div>
+        </form>
+        <button class="btn btn-save" style="width: 100%; margin-top: 16px;" onclick="submitLLEditIndicator()">Save
+            Changes</button>
+        <button class="btn btn-cancel" style="width: 100%; margin-top: 8px;"
+            onclick="closeLLEditModal()">Cancel</button>
+    </div>
+</div>
+
 <!-- Create Project Modal -->
 <div class="modal-overlay" id="create-modal">
     <div class="modal-header">
@@ -5411,11 +5460,31 @@
         } catch (e) { showToast('Gagal menghapus', 'error'); }
     }
 
-    async function openAddIndicatorModal(category) {
-        const name = prompt(`Nama indikator (${category}):`);
-        if (!name) return;
-        const target = prompt('Target (misal: 0 atau 100%):', '100%');
-        const icon = prompt('Icon Emoji:', '📊');
+    // ===== LL INDICATOR MODAL LOGIC =====
+    function openLLAddModal(category) {
+        document.getElementById('ll-add-category').value = category;
+        document.getElementById('ll-add-modal-title').textContent = `Add Indicator (${category})`;
+        document.getElementById('ll-add-name').value = '';
+        document.getElementById('ll-add-target').value = '100%';
+        document.getElementById('ll-add-icon').value = '📊';
+        document.getElementById('ll-add-modal').classList.add('active');
+    }
+
+    function closeLLAddModal() {
+        document.getElementById('ll-add-modal').classList.remove('active');
+    }
+
+    async function submitLLAddIndicator() {
+        const category = document.getElementById('ll-add-category').value;
+        const name = document.getElementById('ll-add-name').value;
+        const target = document.getElementById('ll-add-target').value;
+        const icon = document.getElementById('ll-add-icon').value;
+
+        if (!name) {
+            showToast('Please enter indicator name', 'error');
+            return;
+        }
+
         const year = document.getElementById('ll-year-select').value;
         const month = document.getElementById('ll-month-select').value;
         const localProjectId = document.getElementById('ll-project-select').value;
@@ -5444,11 +5513,13 @@
             });
             if (res.ok) {
                 showToast('Ditambahkan', 'success');
+                closeLLAddModal();
                 renderLLScreen();
             }
-        } catch (e) { showToast('Gagal menambah', 'error'); }
+        } catch (e) {
+            showToast('Gagal menambah', 'error');
+        }
     }
-
     function promptAddYear() {
         const year = prompt('Tambah tahun (YYYY):');
         if (year && !isNaN(year)) {
@@ -5474,9 +5545,23 @@
     }
 
     function editIndicatorValue(id, name, currentActual) {
-        const newValue = prompt(`Ubah nilai aktual untuk ${name}:`, currentActual);
-        if (newValue !== null && newValue !== currentActual) {
-            saveIndicatorValue(id, newValue);
+        document.getElementById('ll-edit-id').value = id;
+        document.getElementById('ll-edit-name-label').textContent = name;
+        document.getElementById('ll-edit-actual').value = currentActual;
+        document.getElementById('ll-edit-modal').classList.add('active');
+    }
+
+    function closeLLEditModal() {
+        document.getElementById('ll-edit-modal').classList.remove('active');
+    }
+
+    async function submitLLEditIndicator() {
+        const id = document.getElementById('ll-edit-id').value;
+        const newValue = document.getElementById('ll-edit-actual').value;
+
+        if (newValue !== null && newValue !== undefined) {
+            await saveIndicatorValue(id, newValue);
+            closeLLEditModal();
         }
     }
 

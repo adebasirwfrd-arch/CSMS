@@ -1922,12 +1922,12 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
 @app.get("/api/ll-indicators/{project_id}")
-def get_ll_indicators(project_id: str, year: Optional[int] = None, month: Optional[int] = None):
+def get_ll_indicators_route(project_id: str, year: Optional[int] = None, month: Optional[int] = None):
     """Get LL indicators for a project. Auto-populates defaults if empty."""
     import time
     
     # 1. Fetch from DB
-    indicators = db.get_ll_indicators(project_id, year, month)
+    indicators = get_ll_indicators(project_id, year, month)
     
     # 2. If indicators exist, return the first grouped result
     if indicators and len(indicators) > 0:
@@ -1963,7 +1963,7 @@ def get_ll_indicators(project_id: str, year: Optional[int] = None, month: Option
     }
     
     # 4. Save to DB
-    success = db.save_ll_indicator(project_id, default_data)
+    success = save_ll_indicator(project_id, default_data)
     if not success:
         print("[LL_INDICATOR] Auto-populate failed.")
         return {"project_id": project_id, "lagging": default_data['lagging'], "leading": default_data['leading']}
@@ -1972,7 +1972,7 @@ def get_ll_indicators(project_id: str, year: Optional[int] = None, month: Option
     time.sleep(0.5)
     
     # 5. Re-fetch from DB to get generated UUIDs
-    indicators = db.get_ll_indicators(project_id, target_year, target_month)
+    indicators = get_ll_indicators(project_id, target_year, target_month)
     if indicators and len(indicators) > 0:
         return indicators[0]
         
