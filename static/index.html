@@ -5468,73 +5468,79 @@
             document.getElementById('otp-stat-avg').textContent = avgProgress + '%';
 
             if (programs.length === 0) {
-                content.innerHTML = '<div class="ll-empty">Belum ada program OTP. Klik <b>+ Add Program</b> untuk menambahkan.</div>';
+                content.innerHTML = '<div class="ll-empty">Belum ada indicator. Tambah indicator di halaman <b>LL Indicator</b>.</div>';
                 return;
             }
 
-            // Render table
-            let html = `<div style="overflow-x:auto; border-radius:12px; border:1px solid var(--border);">
-                <table class="ll-table" style="min-width:1200px;">
-                    <thead>
-                        <tr>
+            // Split by category and sort
+            const lagging = programs.filter(p => p.category === 'Lagging').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+            const leading = programs.filter(p => p.category !== 'Lagging').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+            function renderOTPCategoryTable(items, catLabel, catColor) {
+                if (items.length === 0) return '';
+                let h = `<div style="margin-bottom:20px;">
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                        <div style="width:4px;height:24px;background:${catColor};border-radius:2px;"></div>
+                        <h3 style="margin:0;font-size:15px;font-weight:600;">${catLabel} Indicators</h3>
+                        <span style="font-size:12px;color:var(--text-muted);">(${items.length})</span>
+                    </div>
+                    <div style="overflow-x:auto; border-radius:12px; border:1px solid var(--border);">
+                    <table class="ll-table" style="min-width:1200px;">
+                        <thead><tr>
                             <th style="width:40px; position:sticky;left:0;z-index:2;background:var(--card-bg);">#</th>
                             <th style="min-width:200px; position:sticky;left:40px;z-index:2;background:var(--card-bg);box-shadow:4px 0 8px rgba(0,0,0,0.15);">Indicator</th>
-                            <th style="width:80px;">Category</th>
                             <th style="width:70px;">Target</th>
-                            ${OTP_MONTH_LABELS.map(m => `<th style="width:70px; text-align:center;">${m}</th>`).join('')}
-                            <th style="width:100px; text-align:center;">Progress</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
+                            ${OTP_MONTH_LABELS.map(m => '<th style="width:70px;text-align:center;">' + m + '</th>').join('')}
+                            <th style="width:100px;text-align:center;">Progress</th>
+                        </tr></thead>
+                        <tbody>`;
 
-            programs.forEach((prog, idx) => {
-                const progColor = (prog.progress || 0) >= 100 ? '#27ae60' : (prog.progress || 0) >= 50 ? '#f39c12' : '#e74c3c';
-                const catBadge = prog.category === 'Lagging'
-                    ? '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(231,76,60,0.15);color:#e74c3c;">Lagging</span>'
-                    : '<span style="font-size:9px;padding:1px 6px;border-radius:4px;background:rgba(52,152,219,0.15);color:#3498db;">Leading</span>';
-                html += `<tr>
-                    <td style="position:sticky;left:0;background:var(--card-bg);z-index:1;text-align:center;font-weight:600;">${idx + 1}</td>
-                    <td style="position:sticky;left:40px;background:var(--card-bg);z-index:1;box-shadow:4px 0 8px rgba(0,0,0,0.15);">
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <span style="font-size:16px;">${prog.icon || '📊'}</span>
-                            <div style="font-weight:500; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${(prog.name || '').replace(/"/g, '&quot;')}">${prog.name || '-'}</div>
+                items.forEach((prog, idx) => {
+                    const progColor = (prog.progress || 0) >= 100 ? '#27ae60' : (prog.progress || 0) >= 50 ? '#f39c12' : '#e74c3c';
+                    h += `<tr>
+                        <td style="position:sticky;left:0;background:var(--card-bg);z-index:1;text-align:center;font-weight:600;">${idx + 1}</td>
+                        <td style="position:sticky;left:40px;background:var(--card-bg);z-index:1;box-shadow:4px 0 8px rgba(0,0,0,0.15);">
+                            <div style="display:flex;align-items:center;gap:6px;">
+                                <span style="font-size:16px;">${prog.icon || '📊'}</span>
+                                <div style="font-weight:500;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(prog.name || '').replace(/"/g, '&quot;')}">${prog.name || '-'}</div>
+                            </div>
+                        </td>
+                        <td style="text-align:center;font-weight:500;font-size:12px;">${prog.target || '-'}</td>`;
+
+                    for (let m = 1; m <= 12; m++) {
+                        const md = prog.months?.[m] || prog.months?.[String(m)] || { plan: 0, actual: 0 };
+                        const plan = parseInt(md.plan) || 0, actual = parseInt(md.actual) || 0;
+                        const style = getOTPCellStyle(plan, actual);
+                        const isEmpty = plan === 0 && actual === 0;
+                        const wpts = md.wpts_id || '';
+                        h += `<td style="padding:4px;">
+                            <div onclick="openOTPEditModal('${prog.id}', ${m}, '${(prog.name || '').replace(/'/g, "\\'")}')"
+                                 style="cursor:pointer;width:60px;height:44px;margin:auto;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:600;font-size:10px;background:${style.bg};color:${style.color};border:${style.border};transition:transform 0.15s;"
+                                 onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"
+                                 title="Plan: ${plan} | Actual: ${actual}${md.plan_date ? ' | Date: ' + md.plan_date : ''}">
+                                <span>${isEmpty ? '-' : actual + '/' + plan}</span>
+                                ${wpts ? '<span style="font-size:7px;color:#27ae60;">' + wpts + '</span>' : ''}
+                            </div>
+                        </td>`;
+                    }
+
+                    h += `<td style="padding:8px;">
+                        <div style="display:flex;align-items:center;gap:4px;">
+                            <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
+                                <div style="width:${prog.progress || 0}%;height:100%;background:${progColor};border-radius:3px;transition:width 0.5s;"></div>
+                            </div>
+                            <span style="font-size:10px;font-weight:600;width:32px;text-align:right;">${prog.progress || 0}%</span>
                         </div>
-                    </td>
-                    <td style="text-align:center;">${catBadge}</td>
-                    <td style="text-align:center; font-weight:500; font-size:12px;">${prog.target || '-'}</td>`;
+                    </td></tr>`;
+                });
 
-                // Monthly cells
-                for (let m = 1; m <= 12; m++) {
-                    const md = prog.months?.[m] || prog.months?.[String(m)] || { plan: 0, actual: 0 };
-                    const plan = parseInt(md.plan) || 0;
-                    const actual = parseInt(md.actual) || 0;
-                    const style = getOTPCellStyle(plan, actual);
-                    const isEmpty = plan === 0 && actual === 0;
-                    const wpts = md.wpts_id || '';
+                h += '</tbody></table></div></div>';
+                return h;
+            }
 
-                    html += `<td style="padding:4px;">
-                        <div onclick="openOTPEditModal('${prog.id}', ${m}, '${(prog.name || '').replace(/'/g, "\\'")}')"
-                             style="cursor:pointer; width:60px; height:44px; margin:auto; border-radius:6px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-weight:600; font-size:10px; background:${style.bg}; color:${style.color}; border:${style.border}; transition:transform 0.15s;"
-                             onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"
-                             title="Plan: ${plan} | Actual: ${actual}${md.plan_date ? ' | Date: ' + md.plan_date : ''}">
-                            <span>${isEmpty ? '-' : actual + '/' + plan}</span>
-                            ${wpts ? '<span style="font-size:7px; color:#27ae60;">' + wpts + '</span>' : ''}
-                        </div>
-                    </td>`;
-                }
+            let html = renderOTPCategoryTable(lagging, 'Lagging', '#e74c3c');
+            html += renderOTPCategoryTable(leading, 'Leading', '#3498db');
 
-                // Progress column
-                html += `<td style="padding:8px;">
-                    <div style="display:flex; align-items:center; gap:4px;">
-                        <div style="flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden;">
-                            <div style="width:${prog.progress || 0}%; height:100%; background:${progColor}; border-radius:3px; transition:width 0.5s;"></div>
-                        </div>
-                        <span style="font-size:10px; font-weight:600; width:32px; text-align:right;">${prog.progress || 0}%</span>
-                    </div>
-                </td></tr>`;
-            });
-
-            html += '</tbody></table></div>';
             content.innerHTML = html;
         } catch (e) {
             console.error('Error rendering OTP screen:', e);
