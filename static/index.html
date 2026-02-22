@@ -5483,27 +5483,27 @@
                         <span style="font-size:12px;color:var(--text-muted);">(${items.length})</span>
                     </div>
                     <div style="overflow-x:auto; border-radius:12px; border:1px solid var(--border);">
-                    <table class="ll-table" style="min-width:1200px;">
+                    <table class="ll-table" style="min-width:1200px; border-collapse: separate; border-spacing: 0;">
                         <thead><tr>
-                            <th style="width:40px; position:sticky;left:0;z-index:2;background:var(--card-bg);">#</th>
-                            <th style="min-width:200px; position:sticky;left:40px;z-index:2;background:var(--card-bg);box-shadow:4px 0 8px rgba(0,0,0,0.15);">Indicator</th>
-                            <th style="width:70px;">Target</th>
-                            ${OTP_MONTH_LABELS.map(m => '<th style="width:70px;text-align:center;">' + m + '</th>').join('')}
-                            <th style="width:100px;text-align:center;">Progress</th>
+                            <th style="width:40px; position:sticky;left:0;z-index:2;background:var(--card-bg); border-bottom: 1px solid var(--border);">#</th>
+                            <th style="min-width:200px; position:sticky;left:40px;z-index:2;background:var(--card-bg); border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.2); border-bottom: 1px solid var(--border);">Indicator</th>
+                            <th style="width:70px; border-bottom: 1px solid var(--border);">Target</th>
+                            ${OTP_MONTH_LABELS.map(m => '<th style="width:70px;text-align:center; border-bottom: 1px solid var(--border);">' + m + '</th>').join('')}
+                            <th style="width:100px;text-align:center; border-bottom: 1px solid var(--border);">Progress</th>
                         </tr></thead>
                         <tbody>`;
 
                 items.forEach((prog, idx) => {
                     const progColor = (prog.progress || 0) >= 100 ? '#27ae60' : (prog.progress || 0) >= 50 ? '#f39c12' : '#e74c3c';
                     h += `<tr>
-                        <td style="position:sticky;left:0;background:var(--card-bg);z-index:1;text-align:center;font-weight:600;">${idx + 1}</td>
-                        <td style="position:sticky;left:40px;background:var(--card-bg);z-index:1;box-shadow:4px 0 8px rgba(0,0,0,0.15);">
+                        <td style="position:sticky;left:0;background:var(--card-bg);z-index:1;text-align:center;font-weight:600; border-bottom: 1px solid var(--border);">${idx + 1}</td>
+                        <td style="position:sticky;left:40px;background:var(--card-bg);z-index:1;border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.2); border-bottom: 1px solid var(--border);">
                             <div style="display:flex;align-items:center;gap:6px;">
                                 <span style="font-size:16px;">${prog.icon || '📊'}</span>
                                 <div style="font-weight:500;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(prog.name || '').replace(/"/g, '&quot;')}">${prog.name || '-'}</div>
                             </div>
                         </td>
-                        <td style="text-align:center;font-weight:500;font-size:12px;">${prog.target || '-'}</td>`;
+                        <td style="text-align:center;font-weight:500;font-size:12px; border-bottom: 1px solid var(--border);">${prog.target || '-'}</td>`;
 
                     for (let m = 1; m <= 12; m++) {
                         const md = prog.months?.[m] || prog.months?.[String(m)] || { plan: 0, actual: 0 };
@@ -5511,7 +5511,7 @@
                         const style = getOTPCellStyle(plan, actual);
                         const isEmpty = plan === 0 && actual === 0;
                         const wpts = md.wpts_id || '';
-                        h += `<td style="padding:4px;">
+                        h += `<td style="padding:4px; border-bottom: 1px solid var(--border);">
                             <div onclick="openOTPEditModal('${prog.id}', ${m}, '${(prog.name || '').replace(/'/g, "\\'")}')"
                                  style="cursor:pointer;width:60px;height:44px;margin:auto;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:600;font-size:10px;background:${style.bg};color:${style.color};border:${style.border};transition:transform 0.15s;"
                                  onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"
@@ -5522,7 +5522,7 @@
                         </td>`;
                     }
 
-                    h += `<td style="padding:8px;">
+                    h += `<td style="padding:8px; border-bottom: 1px solid var(--border);">
                         <div style="display:flex;align-items:center;gap:4px;">
                             <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
                                 <div style="width:${prog.progress || 0}%;height:100%;background:${progColor};border-radius:3px;transition:width 0.5s;"></div>
