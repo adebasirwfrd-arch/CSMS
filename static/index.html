@@ -5485,8 +5485,8 @@
                     <div style="overflow-x:auto; border-radius:12px; border:1px solid var(--border);">
                     <table class="ll-table" style="min-width:1200px; border-collapse: separate; border-spacing: 0;">
                         <thead><tr>
-                            <th style="width:40px; position:sticky;left:0;z-index:2;background:var(--card-bg); border-bottom: 1px solid var(--border);">#</th>
-                            <th style="min-width:200px; position:sticky;left:40px;z-index:2;background:var(--card-bg); border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.2); border-bottom: 1px solid var(--border);">Indicator</th>
+                            <th style="width:40px; position:sticky;left:0;z-index:10;background:#1f1f1f; border-bottom: 1px solid var(--border);">#</th>
+                            <th style="min-width:200px; position:sticky;left:40px;z-index:10;background:#1f1f1f; border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.3); border-bottom: 1px solid var(--border);">Indicator</th>
                             <th style="width:70px; border-bottom: 1px solid var(--border);">Target</th>
                             ${OTP_MONTH_LABELS.map(m => '<th style="width:70px;text-align:center; border-bottom: 1px solid var(--border);">' + m + '</th>').join('')}
                             <th style="width:100px;text-align:center; border-bottom: 1px solid var(--border);">Progress</th>
@@ -5496,8 +5496,8 @@
                 items.forEach((prog, idx) => {
                     const progColor = (prog.progress || 0) >= 100 ? '#27ae60' : (prog.progress || 0) >= 50 ? '#f39c12' : '#e74c3c';
                     h += `<tr>
-                        <td style="position:sticky;left:0;background:var(--card-bg);z-index:1;text-align:center;font-weight:600; border-bottom: 1px solid var(--border);">${idx + 1}</td>
-                        <td style="position:sticky;left:40px;background:var(--card-bg);z-index:1;border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.2); border-bottom: 1px solid var(--border);">
+                        <td style="position:sticky;left:0;background:#1f1f1f;z-index:5;text-align:center;font-weight:600; border-bottom: 1px solid var(--border);">${idx + 1}</td>
+                        <td style="position:sticky;left:40px;background:#1f1f1f;z-index:5;border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.3); border-bottom: 1px solid var(--border);">
                             <div style="display:flex;align-items:center;gap:6px;">
                                 <span style="font-size:16px;">${prog.icon || '📊'}</span>
                                 <div style="font-weight:500;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(prog.name || '').replace(/"/g, '&quot;')}">${prog.name || '-'}</div>
