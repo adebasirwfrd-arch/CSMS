@@ -1315,6 +1315,7 @@ async def initiate_csms_pb_upload(filename: str = Form(...), mime_type: str = Fo
 
 @app.post("/csms-pb/upload-chunk")
 async def upload_csms_pb_chunk(
+    background_tasks: BackgroundTasks,
     pb_id: str = Form(...),
     upload_url: str = Form(...),
     chunk_index: int = Form(...),
@@ -1373,8 +1374,6 @@ async def upload_csms_pb_chunk(
             raise HTTPException(status_code=response.status_code, detail=f"Drive error: {response.text}")
     except Exception as e:
         log_error("CSMS_PB", f"Chunk upload failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/csms-pb/statistics")
@@ -1519,6 +1518,7 @@ async def upload_related_doc_chunk(
 
 @app.post("/related-docs")
 async def create_related_doc(
+    background_tasks: BackgroundTasks,
     project_id: str = Form(...),
     well_name: str = Form(None),
     doc_name: str = Form(...),
