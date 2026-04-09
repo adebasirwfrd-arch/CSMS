@@ -7565,8 +7565,17 @@
                     reader.readAsDataURL(blob);
                     closeDownloadModal();
                     showToast('Download started! Check your notifications.', 'success');
+                } else if (/Android/i.test(navigator.userAgent)) {
+                    // Direct approach for Android to trigger System Download Manager
+                    // This is the most reliable way for Android WebViews to handle downloads
+                    closeDownloadModal();
+                    showToast('Download started! Check notifications.', 'success');
+                    
+                    // Direct URL navigation causes the WebView to hand off to DownloadManager
+                    const downloadUrl = `${API_BASE}/projects/${projectId}/report?mode=download`;
+                    window.location.href = downloadUrl;
                 } else {
-                    // Universal approach: blob + anchor download (works on all browsers & WebViews)
+                    // Standard approach for Desktop & iOS: blob + anchor
                     const blob = await res.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -7576,11 +7585,10 @@
                     document.body.appendChild(a);
                     a.click();
                     
-                    // Cleanup after a delay
                     setTimeout(() => {
                         document.body.removeChild(a);
                         window.URL.revokeObjectURL(url);
-                    }, 1000);
+                    }, 2000);
                     
                     closeDownloadModal();
                     showToast('Report downloaded successfully!', 'success');
@@ -8452,7 +8460,6 @@
             showToast('Preparing download...', 'info');
         } else if (window.AndroidInterface && window.AndroidInterface.downloadFile) {
             // Running in native Android WebView with JS bridge
-            // Fetch the file first, then send base64 to native
             fetch(url)
                 .then(res => res.blob())
                 .then(blob => {
@@ -8464,9 +8471,12 @@
                 })
                 .catch(err => showToast('Download failed: ' + err.message, 'error'));
             showToast('Preparing download...', 'info');
+        } else if (/Android/i.test(navigator.userAgent)) {
+            // Direct approach for Android system download
+            showToast('Download started!', 'success');
+            window.location.href = url;
         } else {
-            // Universal: fetch as blob, then trigger download via anchor
-            // This works on desktop browsers, mobile browsers, and most WebViews
+            // Fetch as blob, then trigger download via anchor for Desktop/iOS
             fetch(url)
                 .then(res => {
                     if (!res.ok) throw new Error('Download failed');
@@ -8484,15 +8494,14 @@
                     setTimeout(() => {
                         document.body.removeChild(link);
                         window.URL.revokeObjectURL(blobUrl);
-                    }, 1000);
+                    }, 2000);
                     
                     showToast('Download started!', 'success');
                 })
                 .catch(err => {
                     console.error('Download error:', err);
-                    // Fallback: open in new tab
                     window.open(url, '_blank');
-                    showToast('Opening file in new tab...', 'info');
+                    showToast('Opening file...', 'info');
                 });
         }
     }
