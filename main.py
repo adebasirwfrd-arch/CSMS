@@ -396,12 +396,19 @@ async def project_setup_task(project_name: str):
         # 1. Create/Find project folder
         folder_id = drive_service.find_or_create_folder(project_name)
         if folder_id:
+            # 1b. Persist drive_folder_id to project record for future use
+            projects = db.get_projects()
+            project = next((p for p in projects if p['name'] == project_name), None)
+            if project and project.get('drive_folder_id') != folder_id:
+                db.update_project(project['id'], {"drive_folder_id": folder_id})
+                log_info("SYSTEM", f"Saved drive_folder_id {folder_id} for project {project_name}")
+            
             # 2. Clone template recursive
             await template_service.clone_template_to_project(folder_id)
             
             # 3. Trigger TOC regeneration (Initial)
             from services.daftar_isi_service import regenerate_daftar_isi_for_project
-            asyncio.create_task(regenerate_daftar_isi_for_project(folder_id, project_name))
+            await regenerate_daftar_isi_for_project(folder_id, project_name)
     except Exception as e:
         log_error("SYSTEM", f"Background setup failed for {project_name}: {e}")
 
@@ -564,6 +571,10 @@ async def manual_regenerate_toc(project_id: str, background_tasks: BackgroundTas
     folder_id = project.get('drive_folder_id')
     if not folder_id:
         folder_id = drive_service.find_or_create_folder(project['name'])
+        # Persist for future use
+        if folder_id:
+            db.update_project(project_id, {"drive_folder_id": folder_id})
+            log_info("TOC", f"Persisted drive_folder_id {folder_id} for project {project['name']}")
     
     if not folder_id:
         raise HTTPException(status_code=500, detail="Could not find or create Google Drive folder for this project")
@@ -1203,9 +1214,15 @@ async def upload_task_chunk(
                 
                 # Trigger regeneration in background
                 project = db.get_project(task['project_id'])
-                if project and project.get('drive_folder_id'):
-                    from services.daftar_isi_service import regenerate_daftar_isi_for_project
-                    background_tasks.add_task(regenerate_daftar_isi_for_project, project['drive_folder_id'], project['name'])
+                if project:
+                    folder_id = project.get('drive_folder_id') or drive_service.find_or_create_folder(project['name'])
+                    if folder_id:
+                        # Persist drive_folder_id for future use if not already saved
+                        if not project.get('drive_folder_id'):
+                            db.update_project(project['id'], {"drive_folder_id": folder_id})
+                            log_info("UPLOAD", f"Persisted drive_folder_id {folder_id} for project {project['name']}")
+                        from services.daftar_isi_service import regenerate_daftar_isi_for_project
+                        background_tasks.add_task(regenerate_daftar_isi_for_project, folder_id, project['name'])
                 
                 return {"status": "complete", "file_id": file_id, "folder_id": task.get('drive_folder_id', 'unknown')}
             
@@ -1361,6 +1378,10 @@ async def upload_csms_pb_chunk(
                         if project:
                             folder_id = project.get('drive_folder_id') or drive_service.find_or_create_folder(project['name'])
                             if folder_id:
+                                # Persist drive_folder_id for future use if not already saved
+                                if not project.get('drive_folder_id'):
+                                    db.update_project(project['id'], {"drive_folder_id": folder_id})
+                                    log_info("CSMS_PB", f"Persisted drive_folder_id {folder_id} for project {project['name']}")
                                 from services.daftar_isi_service import regenerate_daftar_isi_for_project
                                 background_tasks.add_task(regenerate_daftar_isi_for_project, folder_id, project['name'])
                     
@@ -1563,6 +1584,10 @@ async def create_related_doc(
         if project:
             folder_id = project.get('drive_folder_id') or drive_service.find_or_create_folder(project['name'])
             if folder_id:
+                # Persist drive_folder_id for future use if not already saved
+                if not project.get('drive_folder_id'):
+                    db.update_project(project['id'], {"drive_folder_id": folder_id})
+                    log_info("RELATED_DOC", f"Persisted drive_folder_id {folder_id} for project {project['name']}")
                 from services.daftar_isi_service import regenerate_daftar_isi_for_project
                 background_tasks.add_task(regenerate_daftar_isi_for_project, folder_id, project['name'])
         
