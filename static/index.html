@@ -7555,36 +7555,33 @@
                     reader.readAsDataURL(blob);
                     closeDownloadModal();
                     showToast('Report sent to download!', 'success');
-                } else if (isMobile) {
-                    // Mobile browser - use direct download link
-                    // Create an iframe to trigger download without navigating away
+                } else if (window.AndroidInterface && window.AndroidInterface.downloadFile) {
+                    // Running in native Android WebView with JS bridge
+                    const blob = await res.blob();
+                    const reader = new FileReader();
+                    reader.onloadend = function () {
+                        window.AndroidInterface.downloadFile(reader.result, filename, 'application/pdf');
+                    };
+                    reader.readAsDataURL(blob);
                     closeDownloadModal();
-
-                    const downloadUrl = `${API_BASE}/projects/${projectId}/report?mode=download`;
-
-                    // Method 1: Use hidden iframe for download
-                    const iframe = document.createElement('iframe');
-                    iframe.style.display = 'none';
-                    iframe.src = downloadUrl;
-                    document.body.appendChild(iframe);
-
-                    // Show confirmation
-                    setTimeout(() => {
-                        showToast('Download started! Check your Downloads folder.', 'success');
-                        // Clean up iframe after delay
-                        setTimeout(() => document.body.removeChild(iframe), 5000);
-                    }, 1000);
+                    showToast('Download started! Check your notifications.', 'success');
                 } else {
-                    // Desktop browser - use standard blob download
+                    // Universal approach: blob + anchor download (works on all browsers & WebViews)
                     const blob = await res.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
                     a.download = filename;
+                    a.style.display = 'none';
                     document.body.appendChild(a);
                     a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
+                    
+                    // Cleanup after a delay
+                    setTimeout(() => {
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                    }, 1000);
+                    
                     closeDownloadModal();
                     showToast('Report downloaded successfully!', 'success');
                 }
@@ -8444,9 +8441,7 @@
 
     // Trigger file download - works on both web and mobile
     function triggerFileDownload(url, filename) {
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-        // Check if running in mobile app WebView (React Native)
+        // Check if running in React Native WebView
         if (window.ReactNativeWebView) {
             // Send message to React Native to handle download
             window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -8455,27 +8450,50 @@
                 filename: filename
             }));
             showToast('Preparing download...', 'info');
-        } else if (isMobile) {
-            // Mobile browser - use iframe for download
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            iframe.src = url;
-            document.body.appendChild(iframe);
-
-            showToast('Download started! Check your Downloads folder.', 'success');
-
-            // Clean up iframe after delay
-            setTimeout(() => document.body.removeChild(iframe), 10000);
+        } else if (window.AndroidInterface && window.AndroidInterface.downloadFile) {
+            // Running in native Android WebView with JS bridge
+            // Fetch the file first, then send base64 to native
+            fetch(url)
+                .then(res => res.blob())
+                .then(blob => {
+                    const reader = new FileReader();
+                    reader.onloadend = function () {
+                        window.AndroidInterface.downloadFile(reader.result, filename, blob.type);
+                    };
+                    reader.readAsDataURL(blob);
+                })
+                .catch(err => showToast('Download failed: ' + err.message, 'error'));
+            showToast('Preparing download...', 'info');
         } else {
-            // Desktop browser - open in new tab or trigger download
-            const link = document.createElement('a');
-            link.href = url;
-            link.target = '_blank';
-            link.download = filename || 'download';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showToast('Download started', 'success');
+            // Universal: fetch as blob, then trigger download via anchor
+            // This works on desktop browsers, mobile browsers, and most WebViews
+            fetch(url)
+                .then(res => {
+                    if (!res.ok) throw new Error('Download failed');
+                    return res.blob();
+                })
+                .then(blob => {
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = filename || 'download';
+                    link.style.display = 'none';
+                    document.body.appendChild(link);
+                    link.click();
+                    
+                    setTimeout(() => {
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(blobUrl);
+                    }, 1000);
+                    
+                    showToast('Download started!', 'success');
+                })
+                .catch(err => {
+                    console.error('Download error:', err);
+                    // Fallback: open in new tab
+                    window.open(url, '_blank');
+                    showToast('Opening file in new tab...', 'info');
+                });
         }
     }
 
