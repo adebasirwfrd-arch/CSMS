@@ -15,6 +15,7 @@ import time
 import ssl
 import random
 import socket
+import threading
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 from dotenv import load_dotenv
@@ -30,36 +31,82 @@ MAX_DELAY = 32  # seconds
 SCOPES = ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive']
 
 class GoogleDriveService:
+    """
+    Google Drive client with **lazy** network initialization.
+
+    Construction is intentionally cheap (no network, no socket timeout
+    changes) so that importing this module never blocks function cold
+    start on serverless platforms (Vercel etc). Authentication and the
+    googleapiclient `build()` call happen on the first attribute access
+    that needs the service (`.service`, `.enabled`) or via
+    `_ensure_initialized()`.
+    """
+
     def __init__(self):
         self.folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")
         self.token_json = os.getenv("GOOGLE_TOKEN_JSON", "")
         self.credentials_json = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
         self.service_account_json = os.getenv("SERVICE_ACCOUNT_JSON", "")
-        self.service = None
-        self.enabled = False
+
+        # Backing fields populated by `_ensure_initialized`. Public access
+        # goes through the `service`/`enabled` properties below.
+        self._service = None
+        self._enabled = False
         self.folders_cache = {}
-        self.auth_method = None  # Track which auth method was used
-        
-        log_info("DRIVE", "Initializing Google Drive Service...")
+        self.auth_method = None
+        self._initialized = False
+        self._init_lock = threading.Lock()
+
+        log_info("DRIVE", "GoogleDriveService created (network init deferred)")
         log_info("DRIVE", f"FOLDER_ID: {self.folder_id[:20] + '...' if self.folder_id else 'NOT SET'}")
         log_info("DRIVE", f"TOKEN_JSON length: {len(self.token_json)} chars")
         log_info("DRIVE", f"SERVICE_ACCOUNT_JSON length: {len(self.service_account_json)} chars")
-        
-        if not self.folder_id:
-            log_error("DRIVE", "GOOGLE_DRIVE_FOLDER_ID not set - cannot initialize Drive service")
+
+    def _ensure_initialized(self):
+        """Run authentication + googleapiclient.build on first use.
+
+        Safe to call repeatedly and from multiple threads. Failures are
+        logged once; subsequent calls return the cached (possibly-None)
+        service instead of retrying every request.
+        """
+        if self._initialized:
             return
-        
-        # Try to initialize the service
-        try:
-            # Set default timeout for all internal socket operations
-            socket.setdefaulttimeout(60) 
-            self.service = self._get_drive_service()
-            self.enabled = bool(self.service)
-            if self.enabled:
-                log_info("DRIVE", f"Service initialized via {self.auth_method}!")
-        except Exception as e:
-            log_drive_error("INIT", e)
-            self.enabled = False
+        with self._init_lock:
+            if self._initialized:
+                return
+            self._initialized = True
+
+            if not self.folder_id:
+                log_error(
+                    "DRIVE",
+                    "GOOGLE_DRIVE_FOLDER_ID not set - Drive service disabled",
+                    send_email=False,
+                )
+                self._enabled = False
+                return
+
+            try:
+                socket.setdefaulttimeout(60)
+                self._service = self._get_drive_service()
+                self._enabled = bool(self._service)
+                if self._enabled:
+                    log_info("DRIVE", f"Service initialized via {self.auth_method}!")
+                else:
+                    log_warning("DRIVE", "Service initialization returned no client")
+            except Exception as e:
+                log_drive_error("INIT", e)
+                self._enabled = False
+                self._service = None
+
+    @property
+    def service(self):
+        self._ensure_initialized()
+        return self._service
+
+    @property
+    def enabled(self) -> bool:
+        self._ensure_initialized()
+        return self._enabled
     
     def _execute_with_retry(self, request, operation_name="API_CALL"):
         """Execute a Google API request with exponential backoff retry for transient errors.
