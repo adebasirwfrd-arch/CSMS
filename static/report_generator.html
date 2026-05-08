@@ -257,9 +257,15 @@
             }
         });
 
-        // Upload limits — keep in sync with routers/reports.py
-        const MAX_PER_FILE_MB = 25;
-        const MAX_TOTAL_MB = 80;
+        // Upload limits.
+        // NOTE: This site is served from Vercel Serverless, which enforces a
+        // hard 4.5 MB request body limit on every plan (Hobby, Pro, even most
+        // Enterprise) and silently rejects bigger uploads with a generic
+        // FUNCTION_PAYLOAD_TOO_LARGE / net::ERR_FAILED. We cap below that
+        // (multipart adds boundary overhead) so users get a friendly message
+        // here instead of seeing the request fail at the edge.
+        const MAX_PER_FILE_MB = 4;
+        const MAX_TOTAL_MB = 4;
         const REQUEST_TIMEOUT_MS = 180000; // 3 minutes
 
         function formatMb(bytes) {
@@ -271,20 +277,28 @@
             for (const f of files) {
                 if (!f) continue;
                 if (f.size > MAX_PER_FILE_MB * 1024 * 1024) {
-                    return `File "${f.name}" is ${formatMb(f.size)} MB. Max per file is ${MAX_PER_FILE_MB} MB.`;
+                    return (
+                        `File "${f.name}" is ${formatMb(f.size)} MB. ` +
+                        `Vercel limits each upload to ${MAX_PER_FILE_MB} MB. ` +
+                        `Please split the document or compress the PDF.`
+                    );
                 }
                 total += f.size;
             }
             if (total > MAX_TOTAL_MB * 1024 * 1024) {
-                return `Combined size is ${formatMb(total)} MB. Max total is ${MAX_TOTAL_MB} MB.`;
+                return (
+                    `Combined size is ${formatMb(total)} MB. ` +
+                    `Vercel caps the request body at ~${MAX_TOTAL_MB} MB total. ` +
+                    `Upload fewer files at once.`
+                );
             }
             return null;
         }
 
         // Translate a fetch failure into a human-friendly message.
-        // `Failed to fetch` / ERR_FAILED almost always means the request was
-        // aborted before the server could send a response: the upload was too
-        // big for the proxy, the server crashed/timed out, or network broke.
+        // `Failed to fetch` / ERR_FAILED on this endpoint almost always means
+        // Vercel's edge rejected the multipart body for being over 4.5 MB
+        // before our handler could respond.
         function describeFetchError(err) {
             if (err && err.name === 'AbortError') {
                 return `Request aborted after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s. The server took too long to respond. Try smaller files or fewer sources at once.`;
@@ -292,9 +306,10 @@
             if (err instanceof TypeError) {
                 return (
                     "Could not reach the server (network error). " +
-                    "Likely causes: upload exceeds the deployment's body-size limit, " +
-                    "the server timed out / crashed while parsing, or the connection dropped. " +
-                    "Try smaller / fewer files, then check server logs."
+                    "On this Vercel deployment, the most common cause is that " +
+                    "the multipart upload is over Vercel's 4.5 MB body limit, " +
+                    "which is rejected at the edge before our app sees it. " +
+                    "Please use smaller / compressed files (target < 4 MB total)."
                 );
             }
             return err && err.message ? err.message : String(err);
