@@ -6,6 +6,7 @@ Provides structured logging to console (always) and file (when writable).
 """
 import logging
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
@@ -66,6 +67,19 @@ class CSMSFormatter(logging.Formatter):
             record.module_name = record.name.upper()
         return super().format(record)
 
+
+class _MaxLevelFilter(logging.Filter):
+    """Allow only records strictly below the given level (used to keep
+    INFO/DEBUG on stdout while WARNING+ goes to stderr)."""
+
+    def __init__(self, max_level: int):
+        super().__init__()
+        self.max_level = max_level
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno < self.max_level
+
+
 # Create the logger
 def create_logger(name: str = "CSMS") -> logging.Logger:
     """
@@ -81,16 +95,31 @@ def create_logger(name: str = "CSMS") -> logging.Logger:
         return logger
     
     logger.setLevel(logging.DEBUG)
-    
-    # Console Handler - INFO and above (always enabled)
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
+    # Prevent duplicate output via the root logger (e.g. uvicorn's handler
+    # picking up the same record and printing a second, differently-formatted
+    # line on a different stream).
+    logger.propagate = False
+
     console_format = CSMSFormatter(
         fmt="[%(asctime)s] [%(levelname)s] [%(module_name)s] %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
-    console_handler.setFormatter(console_format)
-    logger.addHandler(console_handler)
+
+    # stdout handler -> INFO and DEBUG only.
+    # In serverless log viewers (HF Spaces, Vercel, Cloud Run, ...) stdout is
+    # tagged as [info] and stderr as [error]; routing levels to the right
+    # stream keeps INFO logs from being mis-tagged as errors.
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setLevel(logging.INFO)
+    stdout_handler.addFilter(_MaxLevelFilter(logging.WARNING))
+    stdout_handler.setFormatter(console_format)
+    logger.addHandler(stdout_handler)
+
+    # stderr handler -> WARNING and above only.
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setLevel(logging.WARNING)
+    stderr_handler.setFormatter(console_format)
+    logger.addHandler(stderr_handler)
     
     # File Handler - Only if filesystem is writable (not on Vercel)
     if FILE_LOGGING_ENABLED:
