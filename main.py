@@ -55,12 +55,19 @@ app = FastAPI()
 log_info("MAIN", "Starting CSMS Backend with Google Drive Fix v2 (Force Update)")
 
 # CORS
+# NOTE: Per CORS spec, allow_credentials=True is incompatible with
+# allow_origins=["*"] — the browser will reject the response and surface a
+# generic "Failed to fetch" / net::ERR_FAILED. We don't actually rely on
+# cookies for auth (frontend uses same-origin or no credentials), so set
+# allow_credentials=False and keep the wildcard origin permissive.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+    max_age=600,
 )
 
 db = Database()

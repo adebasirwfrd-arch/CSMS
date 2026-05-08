@@ -257,6 +257,59 @@
             }
         });
 
+        // Upload limits — keep in sync with routers/reports.py
+        const MAX_PER_FILE_MB = 25;
+        const MAX_TOTAL_MB = 80;
+        const REQUEST_TIMEOUT_MS = 180000; // 3 minutes
+
+        function formatMb(bytes) {
+            return (bytes / (1024 * 1024)).toFixed(2);
+        }
+
+        function validateUploadSizes(files) {
+            let total = 0;
+            for (const f of files) {
+                if (!f) continue;
+                if (f.size > MAX_PER_FILE_MB * 1024 * 1024) {
+                    return `File "${f.name}" is ${formatMb(f.size)} MB. Max per file is ${MAX_PER_FILE_MB} MB.`;
+                }
+                total += f.size;
+            }
+            if (total > MAX_TOTAL_MB * 1024 * 1024) {
+                return `Combined size is ${formatMb(total)} MB. Max total is ${MAX_TOTAL_MB} MB.`;
+            }
+            return null;
+        }
+
+        // Translate a fetch failure into a human-friendly message.
+        // `Failed to fetch` / ERR_FAILED almost always means the request was
+        // aborted before the server could send a response: the upload was too
+        // big for the proxy, the server crashed/timed out, or network broke.
+        function describeFetchError(err) {
+            if (err && err.name === 'AbortError') {
+                return `Request aborted after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s. The server took too long to respond. Try smaller files or fewer sources at once.`;
+            }
+            if (err instanceof TypeError) {
+                return (
+                    "Could not reach the server (network error). " +
+                    "Likely causes: upload exceeds the deployment's body-size limit, " +
+                    "the server timed out / crashed while parsing, or the connection dropped. " +
+                    "Try smaller / fewer files, then check server logs."
+                );
+            }
+            return err && err.message ? err.message : String(err);
+        }
+
+        async function fetchWithTimeout(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+            try {
+                return await fetch(url, { ...options, signal: ctrl.signal });
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
         // Preview Logic
         document.getElementById('previewBtn').addEventListener('click', async () => {
             const sourceFile = document.getElementById('sourceFile').files[0];
@@ -265,6 +318,9 @@
                 return;
             }
 
+            const sizeError = validateUploadSizes([sourceFile]);
+            if (sizeError) { alert("Upload too large: " + sizeError); return; }
+
             const formData = new FormData();
             formData.append('source_file', sourceFile);
 
@@ -272,7 +328,7 @@
             document.getElementById('previewArea').classList.add('hidden');
 
             try {
-                const res = await fetch('/api/reports/preview', {
+                const res = await fetchWithTimeout('/api/reports/preview', {
                     method: 'POST',
                     body: formData
                 });
@@ -286,7 +342,8 @@
                 document.getElementById('previewArea').classList.remove('hidden');
 
             } catch (e) {
-                alert("Preview failed: " + e.message);
+                console.error('[Preview] failed:', e);
+                alert("Preview failed: " + describeFetchError(e));
             } finally {
                 document.getElementById('loading').classList.add('hidden');
             }
@@ -317,17 +374,26 @@
                 finalTemplate = new File([""], "report.csv", { type: "text/csv" });
             }
 
+            // Client-side size check so users get a friendly message
+            // instead of net::ERR_FAILED from the proxy/serverless edge.
+            const filesForCheck = [];
+            if (finalTemplate && finalTemplate.size > 0) filesForCheck.push(finalTemplate);
+            for (let i = 0; i < sourceFiles.length; i++) filesForCheck.push(sourceFiles[i]);
+            const sizeError = validateUploadSizes(filesForCheck);
+            if (sizeError) {
+                alert("Upload too large: " + sizeError);
+                return;
+            }
+
             const formData = new FormData();
             if (finalTemplate) {
                 formData.append('template_file', finalTemplate);
             }
 
-            // Append all source files with the SAME key 'source_files'
             for (let i = 0; i < sourceFiles.length; i++) {
                 formData.append('source_files', sourceFiles[i]);
             }
 
-            // Pass the forceCsv flag to backend
             if (forceCsv) {
                 formData.append('force_csv', 'true');
             }
@@ -337,7 +403,7 @@
             document.getElementById('previewArea').classList.add('hidden');
 
             try {
-                const res = await fetch('/api/reports/generate', {
+                const res = await fetchWithTimeout('/api/reports/generate', {
                     method: 'POST',
                     body: formData
                 });
@@ -356,18 +422,16 @@
                             }
                         }
                     } catch (parseErr) {
-                        errorMsg = errorText.substring(0, 100);
+                        errorMsg = errorText.substring(0, 200);
                     }
                     throw new Error(errorMsg);
                 }
 
-                // Download
                 const blob = await res.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
 
-                // Filename logic
                 let filename = "generated_report.xlsx";
                 const contentDisp = res.headers.get('Content-Disposition');
                 if (contentDisp && contentDisp.includes('filename=')) {
@@ -382,8 +446,8 @@
                 document.getElementById('success').classList.remove('hidden');
 
             } catch (error) {
-                alert("Error: " + error.message);
-                console.error(error);
+                console.error('[Generate] failed:', error);
+                alert("Error: " + describeFetchError(error));
             } finally {
                 document.getElementById('loading').classList.add('hidden');
             }

@@ -20,35 +20,52 @@ class ReportEngine:
 
     def parse_excel_source(self, file_content: bytes) -> List[Dict[str, Any]]:
         """
-        Parse an Excel source file using openpyxl instead of pandas
+        Parse an Excel source file using openpyxl in read_only mode.
+        read_only=True streams rows from disk and avoids loading the full
+        workbook into memory, which is the main cause of OOM on small VMs /
+        serverless containers when the source spreadsheet is large.
         """
+        wb = None
         try:
-            wb = openpyxl.load_workbook(io.BytesIO(file_content), data_only=True)
+            wb = openpyxl.load_workbook(
+                io.BytesIO(file_content), data_only=True, read_only=True
+            )
             ws = wb.active
-            
-            data = []
-            headers = []
-            
-            # Get headers from first row
-            for cell in ws[1]:
-                headers.append(str(cell.value).strip() if cell.value else f"col_{cell.col_idx}")
-                
-            # Parse rows
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                record = {}
+
+            data: List[Dict[str, Any]] = []
+            headers: List[str] = []
+
+            row_iter = ws.iter_rows(values_only=True)
+
+            try:
+                first_row = next(row_iter)
+            except StopIteration:
+                return []
+
+            for idx, value in enumerate(first_row, start=1):
+                headers.append(str(value).strip() if value is not None else f"col_{idx}")
+
+            for row in row_iter:
+                record: Dict[str, Any] = {}
                 has_data = False
                 for i, value in enumerate(row):
                     if i < len(headers):
                         record[headers[i]] = value
-                        if value: has_data = True
-                
+                        if value not in (None, ""):
+                            has_data = True
                 if has_data:
                     data.append(record)
-                    
+
             return data
         except Exception as e:
             print(f"[ReportEngine] Error parsing Excel: {e}")
             return []
+        finally:
+            try:
+                if wb is not None:
+                    wb.close()
+            except Exception:
+                pass
 
     def parse_pdf_source(self, file_content: bytes) -> Dict[str, Any]:
         """
@@ -328,23 +345,30 @@ class ReportEngine:
     def process_request(self, template_content: bytes, template_filename: str, source_contents: List[bytes], source_filenames: List[str]) -> bytes:
         """
         Main entry point. Handles multiple sources.
+        Errors in a single source are logged but do not abort the whole batch.
         """
-        # 1. Parse All Sources
-        all_source_data = []
-        
-        for content, filename in zip(source_contents, source_filenames):
-            if filename.lower().endswith('.xlsx') or filename.lower().endswith('.xls'):
-                data = self.parse_excel_source(content)
-                if isinstance(data, list):
-                    all_source_data.append({'records': data, 'filename': filename})
-                else:
+        all_source_data: List[Any] = []
+
+        for idx, (content, filename) in enumerate(zip(source_contents, source_filenames)):
+            try:
+                lower = (filename or "").lower()
+                if lower.endswith(".xlsx") or lower.endswith(".xls"):
+                    data = self.parse_excel_source(content)
+                    if isinstance(data, list):
+                        all_source_data.append({"records": data, "filename": filename})
+                    else:
+                        all_source_data.append(data)
+                elif lower.endswith(".pdf"):
+                    data = self.parse_pdf_source(content)
                     all_source_data.append(data)
-                    
-            elif filename.lower().endswith('.pdf'):
-                data = self.parse_pdf_source(content)
-                all_source_data.append(data)
-            else:
-                print(f"[ReportEngine] Skip unsupported: {filename}")
+                else:
+                    print(f"[ReportEngine] Skip unsupported: {filename}")
+            except Exception as e:
+                print(f"[ReportEngine] Failed to parse '{filename}': {e}")
+            finally:
+                # Drop the raw bytes from the caller's list slot so memory is
+                # released as soon as parsing finishes for that source.
+                source_contents[idx] = b""
 
         if not all_source_data:
             print("[ReportEngine] No data extracted from sources")
