@@ -292,10 +292,20 @@ class GoogleDriveService:
         return success_count[0]
 
     @staticmethod
+    def _normalize_task_code(task_code: str) -> str:
+        """Normalize any task code (e.g. ' 4.3.2.2.5 ', '1.1.1') for folder resolution."""
+        if not task_code:
+            return ""
+        return ".".join(p.strip() for p in str(task_code).strip().split(".") if p.strip())
+
+    @staticmethod
     def _folder_matches_segment(folder_name: str, segment_code: str) -> bool:
         """
         True when folder_name is exactly the code or code + space + title.
-        Prevents 4.3.2 matching 4.3.2.1 OFFICE (must be 4.3.2 or 4.3.2 PROGRAM..., not 4.3.2.1).
+
+        Works for every dotted segment (1.1, 2.10.3, 4.3.2.2, 0.1, etc.):
+        - '4.3.2' matches '4.3.2 PROGRAM' but NOT '4.3.2.1 OFFICE' or '4.3.2.2 SITE'
+        - '1.1' matches '1.1 HSE' but NOT '1.10' or '1.1.1 REPORT'
         """
         fn = (folder_name or "").strip()
         sc = (segment_code or "").strip()
@@ -305,6 +315,9 @@ class GoogleDriveService:
             return True
         if fn.startswith(sc + " "):
             return True
+        # Reject longer codes that share a prefix (e.g. segment 1.1 vs folder 1.1.1)
+        if fn.startswith(sc + "."):
+            return False
         return False
 
     def _list_subfolders(self, parent_id: str) -> List[Dict[str, Any]]:
@@ -334,6 +347,28 @@ class GoogleDriveService:
             f"Segment '{segment_code}' matched folder '{chosen['name']}' under parent {parent_id[:12]}...",
         )
         return chosen["id"]
+
+    def _find_segment_folder(
+        self,
+        current_parent_id: str,
+        anchor_parent_id: str,
+        segment_code: str,
+    ) -> Optional[str]:
+        """
+        Resolve one path segment for any task code depth.
+
+        1. Direct child of the current folder (normal nested template).
+        2. Direct child of the ELEMENT anchor (flat siblings under the same element).
+        """
+        seen = set()
+        for parent_id in (current_parent_id, anchor_parent_id):
+            if not parent_id or parent_id in seen:
+                continue
+            seen.add(parent_id)
+            found = self._find_child_for_segment(parent_id, segment_code)
+            if found:
+                return found
+        return None
 
     def _find_element_folder(self, project_folder_id: str, element_num: str) -> Optional[str]:
         """Match template ELEMENT folders (ELEMENT 4), not a duplicate Element 4 tree."""
@@ -445,16 +480,17 @@ class GoogleDriveService:
             return None
 
     def create_nested_task_folder(self, project_name: str, task_code: str, task_title: str = "") -> str:
-        """Create nested folder structure based on task code hierarchy.
+        """Create nested folder structure for any task code (all elements / depths).
 
-        Walks template folders using strict segment matching so 4.3.2.2.5 lands under
-        4.3.2.2 SITE, not under 4.3.2.1 OFFICE. Supports flat template layouts where
-        4.3.2.1 / 4.3.2.2 are direct children of 4.3 PROGRAM (no empty 4.3.2 folder).
+        Uses strict per-segment matching at every level so sibling branches never cross
+        (e.g. 4.3.2.1 vs 4.3.2.2, 1.1 vs 1.10, 2.3.4 vs 2.3.5). Supports nested and flat
+        Drive templates by searching the current folder then the ELEMENT anchor folder.
         """
         if not self.enabled or not self.service:
             log_warning("DRIVE", "Drive not enabled for nested folder creation")
             return None
 
+        task_code = self._normalize_task_code(task_code)
         if not task_code:
             log_warning("DRIVE", "No task code provided, falling back to project folder")
             return self.find_or_create_folder(project_name)
@@ -465,59 +501,57 @@ class GoogleDriveService:
                 log_error("DRIVE", "Could not create project folder", send_email=False)
                 return None
 
-            parts = [p for p in task_code.split(".") if p]
+            parts = task_code.split(".")
             if not parts:
                 return project_folder_id
 
-            # Prefer ELEMENT N from template clone (not a parallel "Element N" tree)
-            current_parent_id = self._find_element_folder(project_folder_id, parts[0])
-            if not current_parent_id:
-                current_parent_id = self.find_or_create_folder(
+            element_anchor_id = self._find_element_folder(project_folder_id, parts[0])
+            if not element_anchor_id:
+                element_anchor_id = self.find_or_create_folder(
                     f"ELEMENT {parts[0]}", project_folder_id
                 )
-            if not current_parent_id:
+            if not element_anchor_id:
                 log_error("DRIVE", f"Could not find ELEMENT {parts[0]}", send_email=False)
                 return project_folder_id
 
+            current_parent_id = element_anchor_id
             log_drive_operation("NESTED", f"Element folder for {project_name}")
 
             for i in range(1, len(parts)):
                 folder_code = ".".join(parts[: i + 1])
                 is_final = folder_code == task_code
 
-                if is_final:
-                    if task_title:
-                        safe_title = "".join(
-                            x for x in task_title if (x.isalnum() or x in "._- ")
-                        ).strip()
-                        folder_name = (
-                            f"{folder_code} {safe_title}" if safe_title else folder_code
-                        )
-                    else:
-                        folder_name = folder_code
+                child_id = self._find_segment_folder(
+                    current_parent_id, element_anchor_id, folder_code
+                )
 
-                    child_id = self._find_child_for_segment(
-                        current_parent_id, folder_code
-                    )
+                if is_final:
                     if child_id:
                         current_parent_id = child_id
                     else:
+                        if task_title:
+                            safe_title = "".join(
+                                x for x in task_title if (x.isalnum() or x in "._- ")
+                            ).strip()
+                            folder_name = (
+                                f"{folder_code} {safe_title}"
+                                if safe_title
+                                else folder_code
+                            )
+                        else:
+                            folder_name = folder_code
                         current_parent_id = self.find_or_create_folder(
                             folder_name, current_parent_id
                         )
+                elif child_id:
+                    current_parent_id = child_id
                 else:
-                    child_id = self._find_child_for_segment(
-                        current_parent_id, folder_code
+                    log_info(
+                        "DRIVE",
+                        f"Segment {folder_code} not in tree yet; keep searching from "
+                        f"ELEMENT {parts[0]} for deeper codes",
                     )
-                    if child_id:
-                        current_parent_id = child_id
-                    else:
-                        # Flat template: skip missing intermediate (e.g. no "4.3.2" folder)
-                        log_info(
-                            "DRIVE",
-                            f"Segment {folder_code} not found; trying deeper segments at same level",
-                        )
-                        continue
+                    continue
 
                 if not current_parent_id:
                     log_error(
@@ -554,7 +588,8 @@ class GoogleDriveService:
                 # Format folder path for debug/return info
                 safe_title = "".join(x for x in task_title if (x.isalnum() or x in "._- ")) if task_title else ""
                 folder_suffix = f" {safe_title}" if safe_title else ""
-                folder_path = f"{project_name}/Element {task_code.split('.')[0]}/{task_code}{folder_suffix}"
+                el = self._normalize_task_code(task_code).split(".")[0]
+                folder_path = f"{project_name}/ELEMENT {el}/{task_code}{folder_suffix}"
             else:
                 # Fallback to project folder only
                 target_folder_id = project_folder_id
