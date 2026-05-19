@@ -6620,9 +6620,9 @@
         const checkClass = status === 'achieved' ? 'check-ok' : (status === 'on-track' ? 'check-warn' : 'check-err');
         const checkIcon = status === 'achieved' ? '✓' : (status === 'on-track' ? '~' : '!');
 
-        const indJson = JSON.stringify(ind).replace(/'/g, "&#39;").replace(/"/g, '&quot;');
+        const indEncoded = encodeURIComponent(JSON.stringify(ind));
         return `
-            <tr style="cursor: pointer;" onclick="editIndicatorFull(this)" data-indicator="${indJson}">
+            <tr style="cursor: pointer;" onclick="editIndicatorFull(this)" data-indicator="${indEncoded}">
                 <td class="ll-row-num">${num}</td>
                 <td class="ll-row-icon">${ind.icon || '📊'}</td>
                 <td class="ll-row-indicator">${ind.name}</td>
@@ -6750,7 +6750,7 @@
 
         document.querySelectorAll('#ll-indicator-content tr[data-indicator]').forEach((tr, idx) => {
             try {
-                const ind = JSON.parse(tr.dataset.indicator);
+                const ind = JSON.parse(decodeURIComponent(tr.getAttribute('data-indicator') || ''));
                 const status = calculateIndicatorStatus(ind.target, ind.actual);
                 const escapeName = (ind.name || '').replace(/"/g, '""');
                 rows.push([
@@ -6783,7 +6783,8 @@
     }
 
     function editIndicatorFull(rowEl) {
-        const ind = JSON.parse(rowEl.dataset.indicator);
+        const raw = rowEl.getAttribute('data-indicator') || '';
+        const ind = JSON.parse(decodeURIComponent(raw));
         document.getElementById('ll-edit-id').value = ind.id || '';
         document.getElementById('ll-edit-name').value = ind.name || '';
         document.getElementById('ll-edit-icon').value = ind.icon || '📊';
@@ -6818,6 +6819,11 @@
             project_id: localProjectId
         };
 
+        if (!payload.id) {
+            showToast('ID indikator tidak valid — refresh halaman lalu coba lagi', 'error');
+            return;
+        }
+
         try {
             showToast('Menyimpan...', 'info');
             const res = await fetch(`${API_BASE}/api/ll-indicators/${localProjectId}`, {
@@ -6825,14 +6831,21 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            if (res.ok) {
+            let body = {};
+            try {
+                body = await res.json();
+            } catch (e) { /* ignore */ }
+            if (res.ok && body.status === 'success') {
                 showToast('Tersimpan', 'success');
                 closeLLEditModal();
                 renderLLScreen();
             } else {
-                showToast('Gagal simpan', 'error');
+                const msg = body.detail || body.message || 'Gagal simpan';
+                showToast(msg, 'error');
             }
-        } catch (e) { showToast('Gagal simpan', 'error'); }
+        } catch (e) {
+            showToast('Gagal simpan: ' + e.message, 'error');
+        }
     }
 
     function calculateIndicatorStatus(target, actual) {

@@ -458,15 +458,40 @@ class SupabaseService:
                     self.client.table('ll_indicators').upsert(all_to_upsert, on_conflict="project_id,category,name,year,month").execute()
                 return True
             else:
-                # Flat single item update
-                if 'id' in data and data['id']:
-                    update_data = {k: v for k, v in data.items() if k != 'id' and v is not None}
-                    update_data['updated_at'] = datetime.now().isoformat()
-                    update_data['project_id'] = project_id
-                    self.client.table('ll_indicators').update(update_data).eq('id', data['id']).execute()
+                # Flat single item update/insert
+                if data.get('id'):
+                    allowed = (
+                        'name', 'target', 'actual', 'icon', 'intent',
+                        'year', 'month', 'sort_order', 'category'
+                    )
+                    update_data = {'updated_at': datetime.now().isoformat()}
+                    for key in allowed:
+                        if key not in data:
+                            continue
+                        val = data[key]
+                        if key in ('target', 'actual'):
+                            update_data[key] = '' if val is None else str(val)
+                        elif val is not None and str(val).strip() != '':
+                            update_data[key] = val
+                    if not update_data.get('category'):
+                        intent = str(data.get('intent') or '').lower()
+                        update_data['category'] = 'Lagging' if 'negative' in intent else 'Leading'
+                    result = (
+                        self.client.table('ll_indicators')
+                        .update(update_data)
+                        .eq('id', data['id'])
+                        .eq('project_id', project_id)
+                        .execute()
+                    )
+                    if not result.data:
+                        print(f"[SUPABASE] LL update returned no rows for id={data['id']}")
+                        return False
                 else:
-                    # For new single items
                     new_item = {**data, "project_id": project_id, "updated_at": datetime.now().isoformat()}
+                    if new_item.get('target') is not None:
+                        new_item['target'] = str(new_item['target'])
+                    if new_item.get('actual') is not None:
+                        new_item['actual'] = str(new_item['actual'])
                     self.client.table('ll_indicators').insert(new_item).execute()
                 return True
         except Exception as e:

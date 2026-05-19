@@ -2570,8 +2570,15 @@ def delete_ll_indicator(indicator_id: str):
 @app.post("/api/ll-indicators/{project_id}")
 def save_ll_indicator_route(project_id: str, data: dict):
     """Save/Update LL indicator data for a project"""
-    success = save_ll_indicator(project_id, data)
-    return {"status": "success" if success else "failed"}
+    try:
+        success = save_ll_indicator(project_id, data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save LL indicator")
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ===== OTP ROUTES (uses ll_indicators + otp_month_data) =====

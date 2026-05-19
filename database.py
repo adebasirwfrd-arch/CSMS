@@ -378,7 +378,11 @@ def get_ll_indicators(project_id: str = None, year: int = None, month: int = Non
                 "target": item.get('target'),
                 "actual": item.get('actual'),
                 "icon": item.get('icon'),
-                "intent": item.get('intent')
+                "intent": item.get('intent'),
+                "category": item.get('category'),
+                "sort_order": item.get('sort_order', 0),
+                "year": item.get('year'),
+                "month": item.get('month'),
             }
             
             category = str(item.get('category') or '').lower()
