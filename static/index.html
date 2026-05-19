@@ -2782,8 +2782,14 @@
                 </div>
             </div>
             <div class="ll-controls">
-                <select id="otp-project-select" class="ll-select" onchange="renderOTPScreen()">
-                    <option value="all">Pilih Proyek...</option>
+                <select id="otp-form-client-select" class="ll-select" onchange="onOtpLlFilterChange('otp')">
+                    <option value="">Pilih Client</option>
+                </select>
+                <select id="otp-form-product-line-select" class="ll-select" onchange="onOtpLlFilterChange('otp')">
+                    <option value="">Pilih Product Line</option>
+                </select>
+                <select id="otp-project-select" class="ll-select" onchange="onOtpLlProjectChange('otp', this.value)">
+                    <option value="">Pilih Proyek...</option>
                 </select>
                 <select id="otp-year-select" class="ll-select" onchange="renderOTPScreen()">
                     <option value="2024">2024</option>
@@ -2793,6 +2799,7 @@
                 <button class="ll-btn-export" onclick="exportOTPCSV()">
                     <span>📥</span> Export CSV
                 </button>
+                <p id="otp-project-filter-hint" style="width:100%;font-size:11px;color:var(--text-muted);margin:0;"></p>
             </div>
         </div>
 
@@ -2857,8 +2864,14 @@
                 </div>
             </div>
             <div class="ll-controls">
-                <select id="ll-project-select" class="ll-select" onchange="renderLLScreen()">
-                    <option value="all">Pilih Proyek...</option>
+                <select id="ll-form-client-select" class="ll-select" onchange="onOtpLlFilterChange('ll')">
+                    <option value="">Pilih Client</option>
+                </select>
+                <select id="ll-form-product-line-select" class="ll-select" onchange="onOtpLlFilterChange('ll')">
+                    <option value="">Pilih Product Line</option>
+                </select>
+                <select id="ll-project-select" class="ll-select" onchange="onOtpLlProjectChange('ll', this.value)">
+                    <option value="">Pilih Proyek...</option>
                 </select>
                 <select id="ll-month-select" class="ll-select" onchange="renderLLScreen()">
                     <option value="">Full Year</option>
@@ -2884,6 +2897,7 @@
                 <button class="ll-btn-export" onclick="exportLLData()">
                     <span>📥</span> Export CSV
                 </button>
+                <p id="ll-project-filter-hint" style="width:100%;font-size:11px;color:var(--text-muted);margin:0;"></p>
             </div>
         </div>
 
@@ -5729,9 +5743,13 @@
             renderMeetingCalendar();
             renderProjectCalendar();
         }
-        if (screen === 'otp') renderOTPScreen();
+        if (screen === 'otp') {
+            populateOtpLlScreen('otp').then(() => renderOTPScreen());
+        }
         if (screen === 'matrix') renderMatrixScreen();
-        if (screen === 'll-indicator') renderLLScreen();
+        if (screen === 'll-indicator') {
+            populateOtpLlScreen('ll').then(() => renderLLScreen());
+        }
         if (screen === 'master-data') loadMasterDataPage();
         if (screen === 'projects') populateProjectListFilters();
     }
@@ -5775,6 +5793,12 @@
                 renderProjects();
                 populateAllProjectDropdowns();
                 populateProjectListFilters();
+                if (document.getElementById('otp-form-client-select')) {
+                    refreshOtpLlProjectSelect('otp');
+                }
+                if (document.getElementById('ll-form-client-select')) {
+                    refreshOtpLlProjectSelect('ll');
+                }
             } else {
                 console.error('[loadData] Projects fetch failed:', projectsRes.status);
             }
@@ -5846,7 +5870,7 @@
     }
 
     function populateAllProjectDropdowns() {
-        const ids = ['ll-project-select', 'otp-project-select', 'schedule-project-select'];
+        const ids = ['schedule-project-select'];
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
@@ -5870,6 +5894,129 @@
         console.log('[handleProjectChange] Header dropdown removed - transition to local filters');
     }
 
+    // ===== OTP / LL shared Client + Product Line filters =====
+    function getOtpLlFilterValues(screenKey) {
+        return {
+            clientId: document.getElementById(`${screenKey}-form-client-select`)?.value || '',
+            productLineId: document.getElementById(`${screenKey}-form-product-line-select`)?.value || ''
+        };
+    }
+
+    function getProjectsForOtpLlScreen(screenKey) {
+        const { clientId, productLineId } = getOtpLlFilterValues(screenKey);
+        let list = [...allProjects];
+        if (clientId) {
+            list = list.filter(p => String(p.client_id) === String(clientId));
+        }
+        if (productLineId) {
+            list = list.filter(p => String(p.product_line_id) === String(productLineId));
+        }
+        return sortProjectsNewestFirst(list);
+    }
+
+    function refreshOtpLlProjectSelect(screenKey, keepProjectId) {
+        const select = document.getElementById(`${screenKey}-project-select`);
+        const hint = document.getElementById(`${screenKey}-project-filter-hint`);
+        if (!select) return;
+
+        const { clientId, productLineId } = getOtpLlFilterValues(screenKey);
+        const list = getProjectsForOtpLlScreen(screenKey);
+        const placeholder = t('selectProject') || 'Pilih Proyek';
+
+        select.innerHTML = `<option value="">${placeholder}</option>` +
+            list.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+        const preserveId = keepProjectId || select.value;
+        if (preserveId && list.some(p => p.id === preserveId)) {
+            select.value = preserveId;
+        }
+
+        if (hint) {
+            if (!clientId || !productLineId) {
+                hint.textContent = 'Pilih Client dan Product Line untuk memfilter daftar proyek.';
+            } else if (list.length === 0) {
+                hint.textContent = 'Tidak ada proyek untuk kombinasi Client + Product Line ini.';
+            } else {
+                hint.textContent = `${list.length} proyek tersedia (terbaru di atas).`;
+            }
+        }
+    }
+
+    async function populateOtpLlFormFilters(screenKey) {
+        try {
+            if (!cachedClients.length) cachedClients = await fetchClients();
+            if (!cachedProductLines.length) cachedProductLines = await fetchProductLines();
+            fillSelectOptions(
+                document.getElementById(`${screenKey}-form-client-select`),
+                cachedClients,
+                'Pilih Client'
+            );
+            fillSelectOptions(
+                document.getElementById(`${screenKey}-form-product-line-select`),
+                cachedProductLines,
+                'Pilih Product Line'
+            );
+        } catch (e) {
+            console.error(`[${screenKey}] populate filters:`, e);
+        }
+    }
+
+    async function populateOtpLlScreen(screenKey) {
+        await populateOtpLlFormFilters(screenKey);
+        refreshOtpLlProjectSelect(screenKey);
+    }
+
+    function onOtpLlFilterChange(screenKey) {
+        refreshOtpLlProjectSelect(screenKey);
+        if (screenKey === 'otp') renderOTPScreen();
+        else renderLLScreen();
+    }
+    window.onOtpLlFilterChange = onOtpLlFilterChange;
+
+    function onOtpLlProjectChange(screenKey, projectId) {
+        const project = allProjects.find(p => p.id === projectId);
+        if (project) {
+            const clientSel = document.getElementById(`${screenKey}-form-client-select`);
+            const plSel = document.getElementById(`${screenKey}-form-product-line-select`);
+            if (clientSel && project.client_id != null) {
+                clientSel.value = String(project.client_id);
+            }
+            if (plSel && project.product_line_id != null) {
+                plSel.value = String(project.product_line_id);
+            }
+            refreshOtpLlProjectSelect(screenKey, projectId);
+        }
+        if (screenKey === 'otp') renderOTPScreen();
+        else renderLLScreen();
+    }
+    window.onOtpLlProjectChange = onOtpLlProjectChange;
+
+    function validateOtpLlProjectSelection(screenKey) {
+        const { clientId, productLineId } = getOtpLlFilterValues(screenKey);
+        const projectId = document.getElementById(`${screenKey}-project-select`)?.value;
+
+        if (!clientId || !productLineId) {
+            showToast('Pilih Client dan Product Line', 'error');
+            return null;
+        }
+        if (!projectId) {
+            showToast('Pilih proyek untuk kombinasi Client + Product Line ini', 'error');
+            return null;
+        }
+
+        const project = allProjects.find(p => p.id === projectId);
+        if (
+            project &&
+            (String(project.client_id) !== String(clientId) ||
+                String(project.product_line_id) !== String(productLineId))
+        ) {
+            showToast('Proyek tidak sesuai dengan Client / Product Line yang dipilih', 'error');
+            return null;
+        }
+
+        return { clientId, productLineId, projectId, project };
+    }
+
     // ===== OTP SCREEN =====
     const OTP_MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
     const OTP_MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -5888,13 +6035,18 @@
 
     async function renderOTPScreen() {
         const content = document.getElementById('otp-content');
+        const { clientId, productLineId } = getOtpLlFilterValues('otp');
         const projectId = document.getElementById('otp-project-select').value;
         const year = document.getElementById('otp-year-select').value;
 
         // Update header
         document.getElementById('otp-display-year').textContent = `${year} HSE OTP`;
 
-        if (!projectId || projectId === 'all') {
+        if (!clientId || !productLineId) {
+            content.innerHTML = '<div class="ll-empty">Pilih Client dan Product Line terlebih dahulu.</div>';
+            return;
+        }
+        if (!projectId) {
             content.innerHTML = '<div class="ll-empty">Pilih proyek terlebih dahulu untuk melihat OTP.</div>';
             return;
         }
@@ -6064,7 +6216,9 @@
     }
 
     async function submitOTPEditMonth() {
-        const projectId = document.getElementById('otp-project-select').value;
+        const selection = validateOtpLlProjectSelection('otp');
+        if (!selection) return;
+        const projectId = selection.projectId;
         const programId = document.getElementById('otp-edit-program-id').value;
         const month = parseInt(document.getElementById('otp-edit-month').value);
         const programName = document.getElementById('otp-edit-program-name').value;
@@ -6115,16 +6269,14 @@
     }
 
     async function submitOTPAddProgram() {
-        const projectId = document.getElementById('otp-project-select').value;
+        const selection = validateOtpLlProjectSelection('otp');
+        if (!selection) return;
+        const projectId = selection.projectId;
         const year = document.getElementById('otp-year-select').value;
         const name = document.getElementById('otp-add-name').value;
 
         if (!name) {
             showToast('Masukkan nama program', 'error');
-            return;
-        }
-        if (!projectId || projectId === 'all') {
-            showToast('Pilih proyek terlebih dahulu', 'error');
             return;
         }
 
@@ -6172,12 +6324,9 @@
     }
 
     function exportOTPCSV() {
-        const projectId = document.getElementById('otp-project-select').value;
-        if (!projectId || projectId === 'all') {
-            showToast('Pilih proyek terlebih dahulu', 'error');
-            return;
-        }
-
+        const selection = validateOtpLlProjectSelection('otp');
+        if (!selection) return;
+        const projectId = selection.projectId;
         const projectName = document.getElementById('otp-project-select').selectedOptions[0]?.text || projectId;
         const year = document.getElementById('otp-year-select').value;
         const rows = [];
@@ -6270,10 +6419,15 @@
         const content = document.getElementById('ll-indicator-content');
         const year = document.getElementById('ll-year-select').value;
         const month = document.getElementById('ll-month-select').value;
+        const { clientId, productLineId } = getOtpLlFilterValues('ll');
         const localProjectId = document.getElementById('ll-project-select').value;
         const displayYear = document.getElementById('ll-display-year');
 
-        if (localProjectId === 'all' || !localProjectId) {
+        if (!clientId || !productLineId) {
+            content.innerHTML = '<div class="ll-empty">Pilih Client dan Product Line terlebih dahulu.</div>';
+            return;
+        }
+        if (!localProjectId) {
             content.innerHTML = '<div class="ll-empty">Pilih proyek di atas untuk melihat indikator.</div>';
             return;
         }
@@ -6448,12 +6602,9 @@
 
         const year = document.getElementById('ll-year-select').value;
         const month = document.getElementById('ll-month-select').value;
-        const localProjectId = document.getElementById('ll-project-select').value;
-
-        if (!localProjectId || localProjectId === 'all') {
-            showToast('Pilih proyek terlebih dahulu', 'error');
-            return;
-        }
+        const selection = validateOtpLlProjectSelection('ll');
+        if (!selection) return;
+        const localProjectId = selection.projectId;
 
         const newInd = {
             project_id: localProjectId,
@@ -6496,11 +6647,9 @@
     }
 
     function exportLLData() {
-        const localProjectId = document.getElementById('ll-project-select').value;
-        if (!localProjectId || localProjectId === 'all') {
-            showToast('Pilih proyek terlebih dahulu', 'error');
-            return;
-        }
+        const selection = validateOtpLlProjectSelection('ll');
+        if (!selection) return;
+        const localProjectId = selection.projectId;
 
         // Get current data from the page
         const year = document.getElementById('ll-year-select').value;
@@ -6511,7 +6660,7 @@
         const rows = [];
         rows.push(['No', 'Category', 'Indicator', 'Target', 'Actual', 'Status', 'Intent'].join(','));
 
-        document.querySelectorAll('#ll-content tr[data-indicator]').forEach((tr, idx) => {
+        document.querySelectorAll('#ll-indicator-content tr[data-indicator]').forEach((tr, idx) => {
             try {
                 const ind = JSON.parse(tr.dataset.indicator);
                 const status = calculateIndicatorStatus(ind.target, ind.actual);
@@ -6563,11 +6712,9 @@
     }
 
     async function submitLLEditIndicator() {
-        const localProjectId = document.getElementById('ll-project-select').value;
-        if (!localProjectId || localProjectId === 'all') {
-            showToast('Pilih proyek terlebih dahulu', 'error');
-            return;
-        }
+        const selection = validateOtpLlProjectSelection('ll');
+        if (!selection) return;
+        const localProjectId = selection.projectId;
 
         const payload = {
             id: document.getElementById('ll-edit-id').value,
