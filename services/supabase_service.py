@@ -486,13 +486,15 @@ class SupabaseService:
             return False
 
     # ===== OTP (uses ll_indicators table + otp_month_data) =====
-    def get_otp_programs(self, project_id: str, year: int = 2025) -> List[Dict]:
+    def get_otp_programs(self, project_id: str, year: int = 2025, month: int = None) -> List[Dict]:
         """Get LL indicators as OTP programs with their monthly data."""
         if not self.enabled:
             return []
         try:
             # Fetch indicators from ll_indicators for this project/year
             query = self.client.table('ll_indicators').select("*").eq('project_id', project_id).eq('year', year)
+            if month is not None:
+                query = query.eq('month', int(month))
             query = query.order('sort_order', desc=False)
             result = query.execute()
             indicators = result.data or []

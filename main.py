@@ -2577,13 +2577,44 @@ def save_ll_indicator_route(project_id: str, data: dict):
 # ===== OTP ROUTES (uses ll_indicators + otp_month_data) =====
 
 @app.get("/api/otp-programs/{project_id}")
-def get_otp_programs_route(project_id: str, year: Optional[int] = 2025):
+def get_otp_programs_route(project_id: str, year: Optional[int] = 2025, month: Optional[int] = None):
     """Get LL indicators as OTP programs with month data."""
     try:
         if supabase_service and supabase_service.enabled:
-            programs = supabase_service.get_otp_programs(project_id, year)
+            programs = supabase_service.get_otp_programs(project_id, year, month)
             return {"programs": programs}
         return {"programs": []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.post("/api/otp-programs/{project_id}")
+def create_otp_program_route(project_id: str, data: dict):
+    """Create a new OTP program (ll_indicators row) for project/year/month."""
+    try:
+        if not (supabase_service and supabase_service.enabled):
+            raise HTTPException(status_code=503, detail="Supabase not enabled")
+        payload = {
+            "name": data.get("name"),
+            "category": data.get("category", "Leading"),
+            "target": data.get("target", "0"),
+            "actual": "0",
+            "icon": data.get("icon", "📊"),
+            "intent": data.get("intent", "positive"),
+            "year": int(data.get("year") or 2025),
+            "month": int(data.get("month")) if data.get("month") is not None else None,
+            "sort_order": int(data.get("sort_order") or 0),
+        }
+        if not payload.get("name"):
+            raise HTTPException(status_code=400, detail="name is required")
+        if payload.get("month") is None:
+            raise HTTPException(status_code=400, detail="month is required")
+        success = save_ll_indicator(project_id, payload)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to create OTP program")
+        return {"status": "success"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 

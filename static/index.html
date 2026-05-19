@@ -2791,6 +2791,21 @@
                 <select id="otp-project-select" class="ll-select" onchange="onOtpLlProjectChange('otp', this.value)">
                     <option value="">Pilih Proyek...</option>
                 </select>
+                <select id="otp-month-select" class="ll-select" onchange="onOtpLlFilterChange('otp')">
+                    <option value="">Pilih Bulan</option>
+                    <option value="1">Januari</option>
+                    <option value="2">Februari</option>
+                    <option value="3">Maret</option>
+                    <option value="4">April</option>
+                    <option value="5">Mei</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">Agustus</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Desember</option>
+                </select>
                 <select id="otp-year-select" class="ll-select" onchange="renderOTPScreen()">
                     <option value="2024">2024</option>
                     <option value="2025" selected>2025</option>
@@ -2873,20 +2888,20 @@
                 <select id="ll-project-select" class="ll-select" onchange="onOtpLlProjectChange('ll', this.value)">
                     <option value="">Pilih Proyek...</option>
                 </select>
-                <select id="ll-month-select" class="ll-select" onchange="renderLLScreen()">
-                    <option value="">Full Year</option>
-                    <option value="1">January</option>
-                    <option value="2">February</option>
-                    <option value="3">March</option>
+                <select id="ll-month-select" class="ll-select" onchange="onOtpLlFilterChange('ll')">
+                    <option value="">Pilih Bulan</option>
+                    <option value="1">Januari</option>
+                    <option value="2">Februari</option>
+                    <option value="3">Maret</option>
                     <option value="4">April</option>
-                    <option value="5">May</option>
-                    <option value="6">June</option>
-                    <option value="7">July</option>
-                    <option value="8">August</option>
+                    <option value="5">Mei</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">Agustus</option>
                     <option value="9">September</option>
-                    <option value="10">October</option>
+                    <option value="10">Oktober</option>
                     <option value="11">November</option>
-                    <option value="12">December</option>
+                    <option value="12">Desember</option>
                 </select>
                 <select id="ll-year-select" class="ll-select" onchange="renderLLScreen()">
                     <option value="2024">2024</option>
@@ -4734,14 +4749,23 @@
         const list = Array.isArray(items) ? items : [];
         const current = selectEl.value;
         selectEl.innerHTML = `<option value="">${placeholder}</option>` +
-            list.map(i => `<option value="${i.id}">${i.name || i.id}</option>`).join('');
+            list.map(i => `<option value="${String(i.id)}">${i.name || i.id}</option>`).join('');
         if (current) selectEl.value = current;
+    }
+
+    async function reloadMasterDataCaches() {
+        const [clients, productLines] = await Promise.all([
+            fetchClients(),
+            fetchProductLines()
+        ]);
+        cachedClients = clients;
+        cachedProductLines = productLines;
+        return { clients, productLines };
     }
 
     async function populateClientProductLineDropdowns() {
         try {
-            cachedClients = await fetchClients();
-            cachedProductLines = await fetchProductLines();
+            await reloadMasterDataCaches();
             fillSelectOptions(document.getElementById('project-client-select'), cachedClients, 'Pilih Client');
             fillSelectOptions(document.getElementById('project-product-line-select'), cachedProductLines, 'Pilih Product Line');
             fillSelectOptions(document.getElementById('tpl-client-select'), cachedClients, 'Pilih Client');
@@ -4753,8 +4777,7 @@
 
     async function loadMasterDataPage() {
         try {
-            cachedClients = await fetchClients();
-            cachedProductLines = await fetchProductLines();
+            await reloadMasterDataCaches();
             const templates = await fetchClientProductTemplates();
             console.log('[MasterData] loaded', cachedClients.length, 'clients,', cachedProductLines.length, 'product lines');
 
@@ -5781,6 +5804,9 @@
                     headers: { 'Cache-Control': 'no-cache' }
                 })
             ]);
+            await reloadMasterDataCaches().catch(e => {
+                console.error('[loadData] master data:', e);
+            });
 
             let projectsOk = false;
             let tasksOk = false;
@@ -5793,12 +5819,8 @@
                 renderProjects();
                 populateAllProjectDropdowns();
                 populateProjectListFilters();
-                if (document.getElementById('otp-form-client-select')) {
-                    refreshOtpLlProjectSelect('otp');
-                }
-                if (document.getElementById('ll-form-client-select')) {
-                    refreshOtpLlProjectSelect('ll');
-                }
+                populateOtpLlFormFilters('otp').catch(e => console.error('[loadData] otp filters:', e));
+                populateOtpLlFormFilters('ll').catch(e => console.error('[loadData] ll filters:', e));
             } else {
                 console.error('[loadData] Projects fetch failed:', projectsRes.status);
             }
@@ -5944,8 +5966,7 @@
 
     async function populateOtpLlFormFilters(screenKey) {
         try {
-            if (!cachedClients.length) cachedClients = await fetchClients();
-            if (!cachedProductLines.length) cachedProductLines = await fetchProductLines();
+            await reloadMasterDataCaches();
             fillSelectOptions(
                 document.getElementById(`${screenKey}-form-client-select`),
                 cachedClients,
@@ -5956,9 +5977,45 @@
                 cachedProductLines,
                 'Pilih Product Line'
             );
+            if (!cachedClients.length) {
+                console.warn(`[${screenKey}] no clients returned from API`);
+            }
         } catch (e) {
             console.error(`[${screenKey}] populate filters:`, e);
+            showToast('Gagal memuat Client / Product Line', 'error');
         }
+    }
+
+    function getOtpLlYearValue(screenKey) {
+        return document.getElementById(`${screenKey}-year-select`)?.value || '2025';
+    }
+
+    function getOtpLlMonthValue(screenKey) {
+        return document.getElementById(`${screenKey}-month-select`)?.value || '';
+    }
+
+    function validateOtpLlMonthForSave(screenKey) {
+        const monthVal = getOtpLlMonthValue(screenKey);
+        if (!monthVal) {
+            showToast('Pilih bulan (Januari–Desember) untuk menyimpan data', 'error');
+            return null;
+        }
+        return parseInt(monthVal, 10);
+    }
+
+    function getOtpLlSaveContext(screenKey, requireMonth = true) {
+        const selection = validateOtpLlProjectSelection(screenKey);
+        if (!selection) return null;
+        const year = parseInt(getOtpLlYearValue(screenKey), 10) || 2025;
+        let month = null;
+        if (requireMonth) {
+            month = validateOtpLlMonthForSave(screenKey);
+            if (!month) return null;
+        } else {
+            const monthVal = getOtpLlMonthValue(screenKey);
+            month = monthVal ? parseInt(monthVal, 10) : null;
+        }
+        return { ...selection, year, month };
     }
 
     async function populateOtpLlScreen(screenKey) {
@@ -6037,10 +6094,14 @@
         const content = document.getElementById('otp-content');
         const { clientId, productLineId } = getOtpLlFilterValues('otp');
         const projectId = document.getElementById('otp-project-select').value;
-        const year = document.getElementById('otp-year-select').value;
+        const year = getOtpLlYearValue('otp');
+        const month = getOtpLlMonthValue('otp');
 
         // Update header
-        document.getElementById('otp-display-year').textContent = `${year} HSE OTP`;
+        const monthLabel = month ? OTP_MONTH_NAMES[parseInt(month, 10)] : '';
+        document.getElementById('otp-display-year').textContent = monthLabel
+            ? `${year} HSE OTP — ${monthLabel}`
+            : `${year} HSE OTP`;
 
         if (!clientId || !productLineId) {
             content.innerHTML = '<div class="ll-empty">Pilih Client dan Product Line terlebih dahulu.</div>';
@@ -6050,11 +6111,15 @@
             content.innerHTML = '<div class="ll-empty">Pilih proyek terlebih dahulu untuk melihat OTP.</div>';
             return;
         }
+        if (!month) {
+            content.innerHTML = '<div class="ll-empty">Pilih bulan (Januari–Desember) untuk melihat dan menyimpan data OTP.</div>';
+            return;
+        }
 
         content.innerHTML = '<div class="ll-empty">Memuat data OTP...</div>';
 
         try {
-            const res = await fetch(`${API_BASE}/api/otp-programs/${projectId}?year=${year}`);
+            const res = await fetch(`${API_BASE}/api/otp-programs/${projectId}?year=${year}&month=${month}`);
             if (!res.ok) {
                 let errDetail = res.statusText;
                 try { const errJson = await res.json(); errDetail = errJson.detail || errDetail; } catch (e) { }
@@ -6216,11 +6281,15 @@
     }
 
     async function submitOTPEditMonth() {
-        const selection = validateOtpLlProjectSelection('otp');
-        if (!selection) return;
-        const projectId = selection.projectId;
+        const ctx = getOtpLlSaveContext('otp', true);
+        if (!ctx) return;
+        const projectId = ctx.projectId;
         const programId = document.getElementById('otp-edit-program-id').value;
-        const month = parseInt(document.getElementById('otp-edit-month').value);
+        const month = parseInt(document.getElementById('otp-edit-month').value, 10);
+        if (month !== ctx.month) {
+            showToast('Bulan sel tidak sesuai dengan filter bulan yang dipilih', 'error');
+            return;
+        }
         const programName = document.getElementById('otp-edit-program-name').value;
 
         const payload = {
@@ -6269,10 +6338,9 @@
     }
 
     async function submitOTPAddProgram() {
-        const selection = validateOtpLlProjectSelection('otp');
-        if (!selection) return;
-        const projectId = selection.projectId;
-        const year = document.getElementById('otp-year-select').value;
+        const ctx = getOtpLlSaveContext('otp', true);
+        if (!ctx) return;
+        const projectId = ctx.projectId;
         const name = document.getElementById('otp-add-name').value;
 
         if (!name) {
@@ -6285,7 +6353,8 @@
             guidance: document.getElementById('otp-add-guidance').value,
             plan_type: document.getElementById('otp-add-plan-type').value,
             due_date: document.getElementById('otp-add-due-date').value,
-            year: parseInt(year),
+            year: ctx.year,
+            month: ctx.month,
             sort_order: otpProgramsCache.length
         };
 
@@ -6324,11 +6393,12 @@
     }
 
     function exportOTPCSV() {
-        const selection = validateOtpLlProjectSelection('otp');
-        if (!selection) return;
-        const projectId = selection.projectId;
+        const ctx = getOtpLlSaveContext('otp', true);
+        if (!ctx) return;
+        const projectId = ctx.projectId;
         const projectName = document.getElementById('otp-project-select').selectedOptions[0]?.text || projectId;
-        const year = document.getElementById('otp-year-select').value;
+        const year = ctx.year;
+        const month = ctx.month;
         const rows = [];
         rows.push(['No', 'Program', 'Plan Type', ...OTP_MONTH_LABELS.map(m => m + ' Plan'), ...OTP_MONTH_LABELS.map(m => m + ' Actual'), 'Progress'].join(','));
 
@@ -6360,7 +6430,7 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `OTP_${projectName}_${year}.csv`;
+        a.download = `OTP_${projectName}_${year}_m${month}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         showToast('CSV berhasil diunduh', 'success');
@@ -6417,8 +6487,8 @@
     // ===== LL INDICATOR SCREEN =====
     async function renderLLScreen() {
         const content = document.getElementById('ll-indicator-content');
-        const year = document.getElementById('ll-year-select').value;
-        const month = document.getElementById('ll-month-select').value;
+        const year = getOtpLlYearValue('ll');
+        const month = getOtpLlMonthValue('ll');
         const { clientId, productLineId } = getOtpLlFilterValues('ll');
         const localProjectId = document.getElementById('ll-project-select').value;
         const displayYear = document.getElementById('ll-display-year');
@@ -6431,13 +6501,17 @@
             content.innerHTML = '<div class="ll-empty">Pilih proyek di atas untuk melihat indikator.</div>';
             return;
         }
+        if (!month) {
+            content.innerHTML = '<div class="ll-empty">Pilih bulan (Januari–Desember) untuk melihat dan menyimpan indikator.</div>';
+            return;
+        }
 
-        displayYear.textContent = `${year} LL Indicator`;
+        const monthLabel = OTP_MONTH_NAMES[parseInt(month, 10)] || month;
+        displayYear.textContent = `${year} LL Indicator — ${monthLabel}`;
         content.innerHTML = '<div class="ll-empty">Memuat data...</div>';
 
         try {
-            let url = `${API_BASE}/api/ll-indicators/${localProjectId}?year=${year}&t=${Date.now()}`;
-            if (month) url += `&month=${month}`;
+            let url = `${API_BASE}/api/ll-indicators/${localProjectId}?year=${year}&month=${month}&t=${Date.now()}`;
 
             console.log(`[LL] Fetching: ${url}`);
             const res = await fetch(url);
@@ -6600,11 +6674,9 @@
             return;
         }
 
-        const year = document.getElementById('ll-year-select').value;
-        const month = document.getElementById('ll-month-select').value;
-        const selection = validateOtpLlProjectSelection('ll');
-        if (!selection) return;
-        const localProjectId = selection.projectId;
+        const ctx = getOtpLlSaveContext('ll', true);
+        if (!ctx) return;
+        const localProjectId = ctx.projectId;
 
         const newInd = {
             project_id: localProjectId,
@@ -6614,8 +6686,8 @@
             actual: '0',
             icon: icon || '📊',
             intent: category === 'Lagging' ? 'negative' : 'positive',
-            year: parseInt(year),
-            month: month ? parseInt(month) : null
+            year: ctx.year,
+            month: ctx.month
         };
 
         try {
@@ -6647,13 +6719,13 @@
     }
 
     function exportLLData() {
-        const selection = validateOtpLlProjectSelection('ll');
-        if (!selection) return;
-        const localProjectId = selection.projectId;
+        const ctx = getOtpLlSaveContext('ll', true);
+        if (!ctx) return;
+        const localProjectId = ctx.projectId;
 
         // Get current data from the page
-        const year = document.getElementById('ll-year-select').value;
-        const month = document.getElementById('ll-month-select').value;
+        const year = ctx.year;
+        const month = ctx.month;
         const projectName = document.getElementById('ll-project-select').selectedOptions[0]?.text || localProjectId;
 
         // Collect all indicator rows from the rendered tables
@@ -6712,9 +6784,9 @@
     }
 
     async function submitLLEditIndicator() {
-        const selection = validateOtpLlProjectSelection('ll');
-        if (!selection) return;
-        const localProjectId = selection.projectId;
+        const ctx = getOtpLlSaveContext('ll', true);
+        if (!ctx) return;
+        const localProjectId = ctx.projectId;
 
         const payload = {
             id: document.getElementById('ll-edit-id').value,
@@ -6724,7 +6796,10 @@
             actual: document.getElementById('ll-edit-actual').value,
             intent: document.getElementById('ll-edit-intent').value,
             category: document.getElementById('ll-edit-category').value,
-            sort_order: parseInt(document.getElementById('ll-edit-sort-order').value) || 0
+            sort_order: parseInt(document.getElementById('ll-edit-sort-order').value) || 0,
+            year: ctx.year,
+            month: ctx.month,
+            project_id: localProjectId
         };
 
         try {
@@ -6838,8 +6913,7 @@
 
     async function populateProjectListFilters() {
         try {
-            if (!cachedClients.length) cachedClients = await fetchClients();
-            if (!cachedProductLines.length) cachedProductLines = await fetchProductLines();
+            await reloadMasterDataCaches();
             const clientSel = document.getElementById('project-filter-client');
             const plSel = document.getElementById('project-filter-product-line');
             if (clientSel) {
@@ -7094,8 +7168,7 @@
 
     async function populateTaskCreateFilters() {
         try {
-            if (!cachedClients.length) cachedClients = await fetchClients();
-            if (!cachedProductLines.length) cachedProductLines = await fetchProductLines();
+            await reloadMasterDataCaches();
             fillSelectOptions(
                 document.getElementById('task-form-client-select'),
                 cachedClients,
@@ -8889,8 +8962,7 @@
 
     async function populatePbFormFilters() {
         try {
-            if (!cachedClients.length) cachedClients = await fetchClients();
-            if (!cachedProductLines.length) cachedProductLines = await fetchProductLines();
+            await reloadMasterDataCaches();
             fillSelectOptions(
                 document.getElementById('pb-form-client-select'),
                 cachedClients,
