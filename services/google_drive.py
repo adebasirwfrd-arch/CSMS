@@ -948,111 +948,123 @@ class GoogleDriveService:
             log_error("DRIVE", f"Error getting metadata for {file_id}: {e}", send_email=False)
             return None
 
-    def fetch_files_in_folder(self, folder_id: str) -> List[Dict[str, Any]]:
-        """List ALL files and folders in a specific folder with name and mimeType.
-        Handles pagination to ensure all items are fetched.
-        """
+    def fetch_files_in_folder(
+        self, folder_id: str, include_app_properties: bool = False
+    ) -> List[Dict[str, Any]]:
+        """List files and folders in a Drive folder (paginated)."""
         if not self.enabled or not self.service:
             return []
         try:
             query = f"'{folder_id}' in parents and trashed = false"
+            fields = "nextPageToken, files(id, name, mimeType)"
+            if include_app_properties:
+                fields += ", files(appProperties)"
             all_files = []
             page_token = None
-            
+
             while True:
                 request = self.service.files().list(
                     q=query,
-                    fields="nextPageToken, files(id, name, mimeType)",
+                    fields=fields,
                     supportsAllDrives=True,
                     includeItemsFromAllDrives=True,
                     pageToken=page_token,
-                    pageSize=200  # Reduced from 1000 to avoid read timeouts
+                    pageSize=200,
                 )
                 results = self._execute_with_retry(request, f"FETCH_FOLDER_{folder_id[:10]}")
-                all_files.extend(results.get('files', []))
-                
-                page_token = results.get('nextPageToken')
+                all_files.extend(results.get("files", []))
+
+                page_token = results.get("nextPageToken")
                 if not page_token:
                     break
-                    
+
             return all_files
         except Exception as e:
             log_error("DRIVE", f"Error fetching files in folder {folder_id}: {e}")
             return []
 
-# Singleton instance for consistent authentication and caching across services
-    async def copy_file(self, file_id: str, parent_id: str, new_name: str = None) -> str:
-        """Copy a file to a new parent folder (Wrapper for batch compatibility)."""
+    async def copy_file_as_template(
+        self, file_id: str, parent_id: str, name: str, template_source_id: str
+    ) -> Optional[str]:
+        """Copy a modal/template file into a project folder and mark it as template-managed."""
         if not self.enabled or not self.service:
             return None
-        
-        # This is a single copy, but we use the batch logic under the hood if needed
-        # For now, just a standard single execution to keep it simple when called individually
         try:
-            body = {'parents': [parent_id]}
-            if new_name:
-                body['name'] = new_name
-            
+            body = {
+                "parents": [parent_id],
+                "name": name,
+                "appProperties": {
+                    "csms_origin": "template",
+                    "csms_template_source_id": template_source_id,
+                },
+            }
             request = self.service.files().copy(
                 fileId=file_id,
                 body=body,
-                fields='id',
-                supportsAllDrives=True
+                fields="id",
+                supportsAllDrives=True,
             )
-            result = self._execute_with_retry(request, f"COPY_{file_id}")
-            return result.get('id')
+            copied = self._execute_with_retry(request, f"COPY_TPL_{name[:20]}")
+            return copied.get("id")
         except Exception as e:
-            log_error("DRIVE", f"Error copying file {file_id}: {e}")
+            log_error("DRIVE", f"copy_file_as_template failed for {name}: {e}", send_email=False)
             return None
 
-    def batch_copy_files(self, file_list: List[Tuple[str, str, str]]) -> int:
-        """
-        Execute copy commands in batches of 100 using Google Drive Batch API.
-        file_list: list of (file_id, parent_id, new_name)
-        Returns: number of successfully copied files
-        """
-        if not self.enabled or not self.service or not file_list:
-            return 0
-        
-        success_count = [0] # Mutable to hold count in callback
-        
-        def callback(request_id, response, exception):
-            if exception:
-                # log_error("DRIVE", f"Batch copy failed for {request_id}: {exception}")
-                pass
-            else:
-                success_count[0] += 1
-        
-        # Process in chunks of 50 to be safe (Limit is 100)
-        chunk_size = 50 
-        total_processed = 0
-        
-        for i in range(0, len(file_list), chunk_size):
-            chunk = file_list[i:i + chunk_size]
-            batch = self.service.new_batch_http_request(callback=callback)
-            
-            for file_id, parent_id, new_name in chunk:
-                body = {'parents': [parent_id]}
-                if new_name:
-                    body['name'] = new_name
-                
-                request = self.service.files().copy(
-                    fileId=file_id,
-                    body=body,
-                    fields='id',
-                    supportsAllDrives=True
-                )
-                batch.add(request)
-            
-            try:
-                batch.execute()
-                total_processed += len(chunk)
-                log_info("DRIVE", f"Batch executed: {success_count[0]} files copied so far...")
-            except Exception as e:
-                log_error("DRIVE", f"Batch execution failed: {e}")
-                
-        return success_count[0]
+    def ensure_template_file_properties(self, file_id: str, template_source_id: str) -> bool:
+        """Tag an existing project file as managed by the modal template."""
+        if not self.enabled or not self.service:
+            return False
+        try:
+            request = self.service.files().update(
+                fileId=file_id,
+                body={
+                    "appProperties": {
+                        "csms_origin": "template",
+                        "csms_template_source_id": template_source_id,
+                    }
+                },
+                fields="id",
+                supportsAllDrives=True,
+            )
+            self._execute_with_retry(request, f"TAG_TPL_{file_id[:10]}")
+            return True
+        except Exception as e:
+            log_warning("DRIVE", f"ensure_template_file_properties {file_id}: {e}")
+            return False
 
-# Singleton instance for consistent authentication and caching across services
+    def tag_file_as_upload(self, file_id: str) -> bool:
+        """Mark a file uploaded via CSMS so template sync will not delete it."""
+        if not self.enabled or not self.service:
+            return False
+        try:
+            request = self.service.files().update(
+                fileId=file_id,
+                body={"appProperties": {"csms_origin": "upload"}},
+                fields="id",
+                supportsAllDrives=True,
+            )
+            self._execute_with_retry(request, f"TAG_UPLOAD_{file_id[:10]}")
+            return True
+        except Exception as e:
+            log_warning("DRIVE", f"tag_file_as_upload {file_id}: {e}")
+            return False
+
+    def trash_file(self, file_id: str) -> bool:
+        """Move a file to trash (used when removed from modal template)."""
+        if not self.enabled or not self.service:
+            return False
+        try:
+            request = self.service.files().update(
+                fileId=file_id,
+                body={"trashed": True},
+                supportsAllDrives=True,
+            )
+            self._execute_with_retry(request, f"TRASH_{file_id[:10]}")
+            return True
+        except Exception as e:
+            log_error("DRIVE", f"trash_file {file_id}: {e}", send_email=False)
+            return False
+
+
 drive_service = GoogleDriveService()
 

@@ -579,3 +579,41 @@ def _read_json_list(filepath: str) -> List[Dict]:
     return []
 
 
+_db = Database()
+
+
+def get_projects_for_client_product_line(
+    client_id: int, product_line_id: int
+) -> List[Dict]:
+    """Projects that share a client + product line (for template propagation)."""
+    return [
+        p
+        for p in _db.get_projects()
+        if p.get("client_id") == client_id
+        and p.get("product_line_id") == product_line_id
+    ]
+
+
+def collect_protected_drive_file_ids(project_id: str) -> set:
+    """Drive file IDs that must never be removed by template sync (app uploads)."""
+    protected = set()
+    for task in _db.get_tasks(project_id):
+        attachments = task.get("attachments")
+        if isinstance(attachments, str):
+            try:
+                attachments = json.loads(attachments)
+            except Exception:
+                attachments = []
+        if not isinstance(attachments, list):
+            continue
+        for att in attachments:
+            fid = att.get("file_id")
+            if fid:
+                protected.add(fid)
+    return protected
+
+
+def update_project_drive_folder(project_id: str, drive_folder_id: str) -> None:
+    _db.update_project(project_id, {"drive_folder_id": drive_folder_id})
+
+

@@ -9,6 +9,7 @@ from models.master_data import (
     ProductLineCreate,
     ProductLineUpdate,
     GenerateTemplateRequest,
+    PropagateTemplateRequest,
 )
 from database import (
     get_clients,
@@ -24,6 +25,7 @@ from database import (
     get_client_product_templates,
 )
 from services.master_data_drive import generate_client_product_template
+from services.template_project_sync import propagate_client_template_to_all_projects
 from services.logger_service import log_error, log_info
 
 router = APIRouter(tags=["master-data"])
@@ -128,3 +130,53 @@ async def generate_template(
             "Proses clone berjalan di background (beberapa menit)."
         ),
     }
+
+
+@router.post("/propagate-template")
+async def propagate_template(
+    body: PropagateTemplateRequest, background_tasks: BackgroundTasks
+):
+    """
+    Sinkronkan perubahan folder modal (CLIENT_PRODUCTLINE) ke semua proyek
+    dengan Client + Product Line yang sama. File upload dari aplikasi tidak dihapus.
+    """
+    client = get_client(body.client_id)
+    pl = get_product_line(body.product_line_id)
+    if not client or not pl:
+        raise HTTPException(status_code=404, detail="Client or Product Line not found")
+
+    async def _task():
+        try:
+            result = await propagate_client_template_to_all_projects(
+                body.client_id, body.product_line_id
+            )
+            log_info("MASTER", f"propagate-template done: {result.get('message')}")
+        except Exception as e:
+            log_error("MASTER", f"propagate_template failed: {e}", e)
+
+    background_tasks.add_task(_task)
+    return {
+        "status": "started",
+        "message": (
+            f"Sinkronisasi modal {client['name']} + {pl['name']} ke semua proyek "
+            "sedang berjalan di background. File yang di-upload dari aplikasi tetap aman."
+        ),
+    }
+
+
+@router.post("/propagate-template/sync")
+async def propagate_template_sync(body: PropagateTemplateRequest):
+    """Same as propagate-template but waits for completion (for testing / small sets)."""
+    client = get_client(body.client_id)
+    pl = get_product_line(body.product_line_id)
+    if not client or not pl:
+        raise HTTPException(status_code=404, detail="Client or Product Line not found")
+    try:
+        return await propagate_client_template_to_all_projects(
+            body.client_id, body.product_line_id
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        log_error("MASTER", f"propagate_template_sync failed: {e}", e)
+        raise HTTPException(status_code=500, detail=str(e))

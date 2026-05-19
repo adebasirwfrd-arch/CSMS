@@ -2906,7 +2906,9 @@
                     <select class="form-input" id="tpl-product-line-select"><option value="">Pilih Product Line</option></select>
                 </div>
                 <button type="button" class="btn btn-save" onclick="generateDriveTemplate()" style="white-space: nowrap;">Buat Folder Template</button>
+                <button type="button" class="btn btn-secondary" onclick="propagateTemplateToProjects()" style="white-space: nowrap;">Sinkron ke Proyek</button>
             </div>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">Setelah mengubah folder modal, klik <strong>Sinkron ke Proyek</strong>. File upload aplikasi tidak dihapus.</p>
             <div id="templates-list" style="margin-top: 16px; font-size: 12px; color: var(--text-secondary);"></div>
         </div>
 
@@ -4835,7 +4837,38 @@
             showToast('Error: ' + e.message, 'error');
         }
     }
+    async function propagateTemplateToProjects() {
+        const clientId = document.getElementById('tpl-client-select')?.value;
+        const plId = document.getElementById('tpl-product-line-select')?.value;
+        if (!clientId || !plId) {
+            showToast('Pilih Client dan Product Line', 'error');
+            return;
+        }
+        if (!confirm(
+            'Sinkronkan perubahan folder modal ke SEMUA proyek dengan Client + Product Line ini?\n\n' +
+            'File yang di-upload dari aplikasi tidak akan dihapus.'
+        )) {
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/propagate-template`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: parseInt(clientId, 10), product_line_id: parseInt(plId, 10) })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.detail || 'Gagal memulai sinkronisasi', 'error');
+                return;
+            }
+            alert(data.message || 'Sinkronisasi template sedang berjalan di background.');
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    }
+
     window.generateDriveTemplate = generateDriveTemplate;
+    window.propagateTemplateToProjects = propagateTemplateToProjects;
     window.resetClientForm = resetClientForm;
     window.resetProductLineForm = resetProductLineForm;
     window.loadMasterDataPage = loadMasterDataPage;
@@ -5665,31 +5698,57 @@
                 })
             ]);
 
-            if (projectsRes.ok && tasksRes.ok) {
+            let projectsOk = false;
+            let tasksOk = false;
+
+            if (projectsRes.ok) {
                 allProjects = await projectsRes.json();
-                allTasks = await tasksRes.json();
-                console.log('[loadData] Loaded', allProjects.length, 'projects and', allTasks.length, 'tasks');
+                projectsOk = true;
                 updateHomeStats();
-                updateCounts(); // Update filter counts
+                updateCounts();
                 renderProjects();
-                renderTasks();
-                loadSchedules(); // Load schedules for calendar
-                renderCalendar(); // Render home calendar
-                loadComments(); // Load status updates/comments
                 populateAllProjectDropdowns();
             } else {
-                console.error('[loadData] Failed to fetch:', projectsRes.status, tasksRes.status);
+                console.error('[loadData] Projects fetch failed:', projectsRes.status);
+            }
+
+            if (tasksRes.ok) {
+                allTasks = await tasksRes.json();
+                tasksOk = true;
+                updateCounts();
+                renderTasks();
+                loadSchedules();
+                renderCalendar();
+                loadComments();
+            } else {
+                console.error('[loadData] Tasks fetch failed:', tasksRes.status);
+            }
+
+            if (projectsOk || tasksOk) {
+                console.log(
+                    '[loadData] Loaded',
+                    projectsOk ? allProjects.length + ' projects' : 'projects unchanged',
+                    tasksOk ? 'and ' + allTasks.length + ' tasks' : '(tasks unchanged)'
+                );
             }
         } catch (error) {
             console.error('[loadData] Error:', error);
         }
     }
 
+    function projectStatusMatches(project, filterStatus) {
+        const s = project.status;
+        if (filterStatus === 'InProgress') {
+            return s === 'InProgress' || s === 'In Progress' || s === 'Ongoing';
+        }
+        return s === filterStatus;
+    }
+
     function updateCounts() {
         // Project Counts
         document.getElementById('count-all').textContent = `(${allProjects.length})`;
         ['Upcoming', 'InProgress', 'Completed', 'OnHold', 'Canceled'].forEach(status => {
-            const count = allProjects.filter(p => p.status === status).length;
+            const count = allProjects.filter(p => projectStatusMatches(p, status)).length;
             const el = document.getElementById(`count-${status.toLowerCase()}`);
             if (el) el.textContent = `(${count})`;
         });
@@ -6528,7 +6587,7 @@
     function renderProjects() {
         let filtered = currentProjectFilter === 'all'
             ? allProjects
-            : allProjects.filter(p => p.status === currentProjectFilter);
+            : allProjects.filter(p => projectStatusMatches(p, currentProjectFilter));
 
         // Sort by canonical name: Client_ProductLine_Project
         filtered = [...filtered].sort((a, b) =>
@@ -6804,11 +6863,20 @@
             });
 
             if (res.ok) {
-                showToast('Project created successfully!', 'success');
+                const created = await res.json();
+                const existingIdx = allProjects.findIndex(p => p.id === created.id);
+                if (existingIdx >= 0) {
+                    allProjects[existingIdx] = created;
+                } else {
+                    allProjects.push(created);
+                }
+                updateCounts();
+                filterProjects('all');
+                showToast('Proyek berhasil dibuat: ' + created.name, 'success');
                 closeCreateModal();
-                await loadData(); // Wait for data to reload
-                updateStatistics(); // Refresh statistics dashboard
-                renderProjectCalendar(); // Refresh Project Calendar
+                loadData().catch(err => console.error('[saveProject] loadData:', err));
+                updateStatistics();
+                renderProjectCalendar();
             } else {
                 let msg = 'Error creating project';
                 try {

@@ -410,6 +410,16 @@ async def project_setup_task(
 ):
     """Workflow to ensure folder exists and clone template in background."""
     try:
+        # Never create Drive folders for projects that are not in the database
+        projects = db.get_projects()
+        project = next((p for p in projects if p.get("name") == project_name), None)
+        if not project:
+            log_error(
+                "SYSTEM",
+                f"Skipping Drive setup: project '{project_name}' not found in database",
+            )
+            return
+
         from services.master_data_drive import resolve_template_source_folder
 
         source_folder_id = None
@@ -433,9 +443,7 @@ async def project_setup_task(
         folder_id = drive_service.find_or_create_folder(project_name)
         if folder_id:
             # 1b. Persist drive_folder_id to project record for future use
-            projects = db.get_projects()
-            project = next((p for p in projects if p['name'] == project_name), None)
-            if project and project.get('drive_folder_id') != folder_id:
+            if project.get('drive_folder_id') != folder_id:
                 db.update_project(project['id'], {"drive_folder_id": folder_id})
                 log_info("SYSTEM", f"Saved drive_folder_id {folder_id} for project {project_name}")
             
@@ -503,9 +511,16 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
                 f"Project display name: {payload['name']} (from short '{short_name}')",
             )
 
-    # 1. Create in DB (fast local write + background Supabase sync)
-    new_project = db.create_project(payload)
-    
+    # 1. Create in DB (must succeed before Drive setup)
+    try:
+        new_project = db.create_project(payload)
+    except Exception as e:
+        log_error("MAIN", f"create_project DB insert failed: {e}", send_email=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Gagal menyimpan proyek ke database: {e}",
+        )
+
     # 2. Trigger Folder Creation & Template Clone (in background)
     background_tasks.add_task(
         project_setup_task,
@@ -1304,6 +1319,8 @@ async def upload_task_chunk(
                 if not update_result:
                     log_error("UPLOAD", f"Failed to update database for task {task_id} after successful Drive upload")
                     raise HTTPException(status_code=500, detail="File uploaded to Drive, but failed to save to database.")
+
+                drive_service.tag_file_as_upload(file_id)
                 
                 # Trigger regeneration in background
                 project = db.get_project(task['project_id'])

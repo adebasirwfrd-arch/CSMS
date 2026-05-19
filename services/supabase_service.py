@@ -91,10 +91,10 @@ class SupabaseService:
                 return result.data[0]
             else:
                 self._log_warn("SUPABASE", "No data returned from insert")
-                return project_data
+                raise RuntimeError("Supabase insert returned no data")
         except Exception as e:
             self._log_err("INSERT", "projects", e)
-            return project_data
+            raise
     
     def update_project(self, project_id: str, updates: Dict) -> Optional[Dict]:
         if not self.enabled:

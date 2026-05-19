@@ -46,6 +46,11 @@ class GenerateTemplateRequest(BaseModel):
     product_line_id: int
 
 
+class PropagateTemplateRequest(BaseModel):
+    client_id: int
+    product_line_id: int
+
+
 class ClientProductTemplate(BaseModel):
     id: int
     client_id: int
