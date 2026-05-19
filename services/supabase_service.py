@@ -556,5 +556,175 @@ class SupabaseService:
             traceback.print_exc()
             return False
 
+    # ==================== CLIENTS ====================
+
+    def get_clients(self) -> List[Dict]:
+        if not self.enabled:
+            return []
+        try:
+            result = self.client.table("clients").select("*").order("name").execute()
+            return result.data or []
+        except Exception as e:
+            self._log_err("SELECT", "clients", e)
+            return []
+
+    def get_client(self, client_id: int) -> Optional[Dict]:
+        if not self.enabled:
+            return None
+        try:
+            result = (
+                self.client.table("clients").select("*").eq("id", client_id).execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self._log_err("SELECT", "clients", e)
+            return None
+
+    def create_client(self, data: Dict) -> Dict:
+        if not self.enabled:
+            return data
+        try:
+            result = self.client.table("clients").insert(data).execute()
+            return result.data[0] if result.data else data
+        except Exception as e:
+            self._log_err("INSERT", "clients", e)
+            raise
+
+    def update_client(self, client_id: int, updates: Dict) -> Optional[Dict]:
+        if not self.enabled:
+            return None
+        try:
+            result = (
+                self.client.table("clients")
+                .update(updates)
+                .eq("id", client_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self._log_err("UPDATE", "clients", e)
+            return None
+
+    def delete_client(self, client_id: int) -> bool:
+        if not self.enabled:
+            return False
+        try:
+            self.client.table("clients").delete().eq("id", client_id).execute()
+            return True
+        except Exception as e:
+            self._log_err("DELETE", "clients", e)
+            return False
+
+    # ==================== PRODUCT LINES ====================
+
+    def get_product_lines(self) -> List[Dict]:
+        if not self.enabled:
+            return []
+        try:
+            result = (
+                self.client.table("product_lines").select("*").order("name").execute()
+            )
+            return result.data or []
+        except Exception as e:
+            self._log_err("SELECT", "product_lines", e)
+            return []
+
+    def get_product_line(self, product_line_id: int) -> Optional[Dict]:
+        if not self.enabled:
+            return None
+        try:
+            result = (
+                self.client.table("product_lines")
+                .select("*")
+                .eq("id", product_line_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self._log_err("SELECT", "product_lines", e)
+            return None
+
+    def create_product_line(self, data: Dict) -> Dict:
+        if not self.enabled:
+            return data
+        try:
+            result = self.client.table("product_lines").insert(data).execute()
+            return result.data[0] if result.data else data
+        except Exception as e:
+            self._log_err("INSERT", "product_lines", e)
+            raise
+
+    def update_product_line(self, product_line_id: int, updates: Dict) -> Optional[Dict]:
+        if not self.enabled:
+            return None
+        try:
+            result = (
+                self.client.table("product_lines")
+                .update(updates)
+                .eq("id", product_line_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self._log_err("UPDATE", "product_lines", e)
+            return None
+
+    def delete_product_line(self, product_line_id: int) -> bool:
+        if not self.enabled:
+            return False
+        try:
+            self.client.table("product_lines").delete().eq("id", product_line_id).execute()
+            return True
+        except Exception as e:
+            self._log_err("DELETE", "product_lines", e)
+            return False
+
+    # ==================== CLIENT + PRODUCT LINE TEMPLATES ====================
+
+    def get_client_product_templates(self) -> List[Dict]:
+        if not self.enabled:
+            return []
+        try:
+            result = (
+                self.client.table("client_product_templates").select("*").execute()
+            )
+            return result.data or []
+        except Exception as e:
+            self._log_err("SELECT", "client_product_templates", e)
+            return []
+
+    def get_client_product_template(
+        self, client_id: int, product_line_id: int
+    ) -> Optional[Dict]:
+        if not self.enabled:
+            return None
+        try:
+            result = (
+                self.client.table("client_product_templates")
+                .select("*")
+                .eq("client_id", client_id)
+                .eq("product_line_id", product_line_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self._log_err("SELECT", "client_product_templates", e)
+            return None
+
+    def upsert_client_product_template(self, data: Dict) -> Dict:
+        if not self.enabled:
+            return data
+        try:
+            result = (
+                self.client.table("client_product_templates")
+                .upsert(data, on_conflict="client_id,product_line_id")
+                .execute()
+            )
+            return result.data[0] if result.data else data
+        except Exception as e:
+            self._log_err("UPSERT", "client_product_templates", e)
+            raise
+
+
 # Global instance
 supabase_service = SupabaseService()

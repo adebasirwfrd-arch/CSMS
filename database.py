@@ -39,6 +39,9 @@ COMMENTS_FILE = os.path.join(DATA_DIR, "comments.json")
 CSMS_PB_FILE = os.path.join(DATA_DIR, "csms_pb.json")
 RELATED_DOCS_FILE = os.path.join(DATA_DIR, "related_docs.json")
 LL_INDICATOR_FILE = os.path.join(DATA_DIR, "ll_indicator.json")
+CLIENTS_FILE = os.path.join(DATA_DIR, "clients.json")
+PRODUCT_LINES_FILE = os.path.join(DATA_DIR, "product_lines.json")
+CLIENT_PRODUCT_TEMPLATES_FILE = os.path.join(DATA_DIR, "client_product_templates.json")
 
 
 def _write_json_robust(filepath, data):
@@ -415,5 +418,164 @@ def save_ll_indicator(project_id: str, data: Dict):
     
     _write_json_robust(LL_INDICATOR_FILE, all_data)
     return True
+
+
+# ==================== MASTER DATA (CLIENTS / PRODUCT LINES) ====================
+
+def _next_serial_id(items: List[Dict]) -> int:
+    if not items:
+        return 1
+    return max(int(i.get("id", 0)) for i in items) + 1
+
+
+def get_clients() -> List[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.get_clients()
+    return _read_json_list(CLIENTS_FILE)
+
+
+def get_client(client_id: int) -> Optional[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.get_client(client_id)
+    return next((c for c in get_clients() if c.get("id") == client_id), None)
+
+
+def create_client(data: Dict) -> Dict:
+    if SUPABASE_ENABLED:
+        return supabase_service.create_client(data)
+    clients = get_clients()
+    new_client = {
+        "id": _next_serial_id(clients),
+        "created_at": datetime.now().isoformat(),
+        **data,
+    }
+    clients.append(new_client)
+    _write_json_robust(CLIENTS_FILE, clients)
+    return new_client
+
+
+def update_client(client_id: int, updates: Dict) -> Optional[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.update_client(client_id, updates)
+    clients = get_clients()
+    for i, c in enumerate(clients):
+        if c.get("id") == client_id:
+            clients[i] = {**c, **updates}
+            _write_json_robust(CLIENTS_FILE, clients)
+            return clients[i]
+    return None
+
+
+def delete_client(client_id: int) -> bool:
+    if SUPABASE_ENABLED:
+        return supabase_service.delete_client(client_id)
+    clients = [c for c in get_clients() if c.get("id") != client_id]
+    _write_json_robust(CLIENTS_FILE, clients)
+    return True
+
+
+def get_product_lines() -> List[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.get_product_lines()
+    return _read_json_list(PRODUCT_LINES_FILE)
+
+
+def get_product_line(product_line_id: int) -> Optional[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.get_product_line(product_line_id)
+    return next(
+        (p for p in get_product_lines() if p.get("id") == product_line_id), None
+    )
+
+
+def create_product_line(data: Dict) -> Dict:
+    if SUPABASE_ENABLED:
+        return supabase_service.create_product_line(data)
+    lines = get_product_lines()
+    new_line = {
+        "id": _next_serial_id(lines),
+        "created_at": datetime.now().isoformat(),
+        **data,
+    }
+    lines.append(new_line)
+    _write_json_robust(PRODUCT_LINES_FILE, lines)
+    return new_line
+
+
+def update_product_line(product_line_id: int, updates: Dict) -> Optional[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.update_product_line(product_line_id, updates)
+    lines = get_product_lines()
+    for i, p in enumerate(lines):
+        if p.get("id") == product_line_id:
+            lines[i] = {**p, **updates}
+            _write_json_robust(PRODUCT_LINES_FILE, lines)
+            return lines[i]
+    return None
+
+
+def delete_product_line(product_line_id: int) -> bool:
+    if SUPABASE_ENABLED:
+        return supabase_service.delete_product_line(product_line_id)
+    lines = [p for p in get_product_lines() if p.get("id") != product_line_id]
+    _write_json_robust(PRODUCT_LINES_FILE, lines)
+    return True
+
+
+def get_client_product_templates() -> List[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.get_client_product_templates()
+    return _read_json_list(CLIENT_PRODUCT_TEMPLATES_FILE)
+
+
+def get_client_product_template(
+    client_id: int, product_line_id: int
+) -> Optional[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.get_client_product_template(client_id, product_line_id)
+    return next(
+        (
+            t
+            for t in get_client_product_templates()
+            if t.get("client_id") == client_id
+            and t.get("product_line_id") == product_line_id
+        ),
+        None,
+    )
+
+
+def upsert_client_product_template(data: Dict) -> Dict:
+    if SUPABASE_ENABLED:
+        return supabase_service.upsert_client_product_template(data)
+    templates = get_client_product_templates()
+    found = False
+    for i, t in enumerate(templates):
+        if (
+            t.get("client_id") == data.get("client_id")
+            and t.get("product_line_id") == data.get("product_line_id")
+        ):
+            templates[i] = {**t, **data}
+            found = True
+            break
+    if not found:
+        templates.append(
+            {
+                "id": _next_serial_id(templates),
+                "created_at": datetime.now().isoformat(),
+                **data,
+            }
+        )
+    _write_json_robust(CLIENT_PRODUCT_TEMPLATES_FILE, templates)
+    return get_client_product_template(data["client_id"], data["product_line_id"]) or data
+
+
+def _read_json_list(filepath: str) -> List[Dict]:
+    try:
+        if os.path.exists(filepath):
+            with open(filepath, "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return []
 
 

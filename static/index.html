@@ -2876,6 +2876,68 @@
         <div id="ll-indicator-content"></div>
     </section>
 
+    <!-- Master Data (Admin only) -->
+    <section class="screen" id="screen-master-data" style="overflow-y: auto; height: calc(100vh - 130px);">
+        <div class="screen-tabs">
+            <div class="screen-tab active">Master Data</div>
+        </div>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+            Kelola Client &amp; Product Line. Buat folder template Drive per kombinasi sebelum membuat project baru.
+        </p>
+
+        <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #333;">
+            <h3 style="margin-bottom: 12px; font-size: 15px;">Folder Template Drive</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+                Membuat folder <strong>CLIENTNAME_PRODUCTLINE</strong> di bawah root CSMS (berisi ELEMENT 0-8 dari master template).
+            </p>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end;">
+                <div style="flex: 1; min-width: 140px;">
+                    <label class="form-label">Client</label>
+                    <select class="form-input" id="tpl-client-select"><option value="">Pilih Client</option></select>
+                </div>
+                <div style="flex: 1; min-width: 140px;">
+                    <label class="form-label">Product Line</label>
+                    <select class="form-input" id="tpl-product-line-select"><option value="">Pilih Product Line</option></select>
+                </div>
+                <button type="button" class="btn btn-save" onclick="generateDriveTemplate()" style="white-space: nowrap;">Buat Folder Template</button>
+            </div>
+            <div id="templates-list" style="margin-top: 16px; font-size: 12px; color: var(--text-secondary);"></div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+            <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px; border: 1px solid #333;">
+                <h3 style="margin-bottom: 12px;">Client</h3>
+                <form id="client-form" onsubmit="saveClient(event)" style="margin-bottom: 12px;">
+                    <input type="hidden" id="client-edit-id" value="">
+                    <div style="display: grid; gap: 8px;">
+                        <input class="form-input" id="client-name-input" placeholder="Nama Client *" required>
+                        <input class="form-input" id="client-desc-input" placeholder="Deskripsi">
+                        <div style="display: flex; gap: 8px;">
+                            <button type="submit" class="btn btn-save" style="flex:1;">Simpan Client</button>
+                            <button type="button" class="btn btn-cancel" onclick="resetClientForm()">Reset</button>
+                        </div>
+                    </div>
+                </form>
+                <div id="clients-table-wrap" style="overflow-x: auto;"></div>
+            </div>
+            <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px; border: 1px solid #333;">
+                <h3 style="margin-bottom: 12px;">Product Line</h3>
+                <form id="product-line-form" onsubmit="saveProductLine(event)" style="margin-bottom: 12px;">
+                    <input type="hidden" id="product-line-edit-id" value="">
+                    <div style="display: grid; gap: 8px;">
+                        <input class="form-input" id="pl-name-input" placeholder="Nama Product Line *" required>
+                        <input class="form-input" id="pl-desc-input" placeholder="Deskripsi">
+                        <div style="display: flex; gap: 8px;">
+                            <button type="submit" class="btn btn-save" style="flex:1;">Simpan Product Line</button>
+                            <button type="button" class="btn btn-cancel" onclick="resetProductLineForm()">Reset</button>
+                        </div>
+                    </div>
+                </form>
+                <div id="product-lines-table-wrap" style="overflow-x: auto;"></div>
+            </div>
+        </div>
+    </section>
+
 </main>
 
 <!-- Bottom Navigation -->
@@ -2892,6 +2954,12 @@
                 d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
         </svg>
         <span data-i18n="projects">Projects</span>
+    </div>
+    <div class="nav-item hide-in-preview admin-only" data-screen="master-data" onclick="navigateToMasterData()">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H8V4h12v12zM10 9h8v2h-8V9zm0 3h4v2h-4v-2z" />
+        </svg>
+        <span>Master</span>
     </div>
     <div class="nav-item" onclick="navigateTo('tasks')">
         <svg viewBox="0 0 24 24" fill="currentColor">
@@ -3303,6 +3371,23 @@
             <div class="form-group">
                 <label class="form-label"><span data-i18n="projectName">Project Name</span> <span>*</span></label>
                 <input type="text" class="form-input" name="name" placeholder="Enter project name" required>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Client <span>*</span></label>
+                <select class="form-input" name="client_id" id="project-client-select" required>
+                    <option value="">Pilih Client</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Product Line <span>*</span></label>
+                <select class="form-input" name="product_line_id" id="project-product-line-select" required>
+                    <option value="">Pilih Product Line</option>
+                </select>
+                <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+                    Template Drive harus sudah dibuat di Master Data untuk kombinasi Client + Product Line ini.
+                </p>
             </div>
 
             <div class="form-group">
@@ -4522,6 +4607,229 @@
     }
     window.openFullChecklist = openFullChecklist;
 
+    // ===== MASTER DATA (Client / Product Line) =====
+    let cachedClients = [];
+    let cachedProductLines = [];
+
+    function renderMasterTable(items, columns, onEdit, onDelete) {
+        if (!items.length) return '<p style="color:var(--text-muted);font-size:12px;">Belum ada data.</p>';
+        const heads = columns.map(c => `<th style="text-align:left;padding:8px;border-bottom:1px solid #444;">${c.label}</th>`).join('');
+        const rows = items.map(item => {
+            const cells = columns.map(c => `<td style="padding:8px;border-bottom:1px solid #333;">${c.render(item)}</td>`).join('');
+            return `<tr>${cells}
+                <td style="padding:8px;border-bottom:1px solid #333;white-space:nowrap;">
+                    <button type="button" class="btn btn-cancel" style="padding:4px 8px;font-size:11px;" onclick="${onEdit}(${item.id})">Edit</button>
+                    <button type="button" class="btn btn-cancel" style="padding:4px 8px;font-size:11px;margin-left:4px;" onclick="${onDelete}(${item.id})">Hapus</button>
+                </td></tr>`;
+        }).join('');
+        return `<table style="width:100%;font-size:12px;border-collapse:collapse;"><thead><tr>${heads}<th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    async function fetchClients() {
+        const res = await fetch(`${API_BASE}/clients`);
+        if (!res.ok) throw new Error('Gagal memuat clients');
+        return res.json();
+    }
+
+    async function fetchProductLines() {
+        const res = await fetch(`${API_BASE}/product-lines`);
+        if (!res.ok) throw new Error('Gagal memuat product lines');
+        return res.json();
+    }
+
+    async function fetchClientProductTemplates() {
+        const res = await fetch(`${API_BASE}/client-product-templates`);
+        if (!res.ok) return [];
+        return res.json();
+    }
+
+    function fillSelectOptions(selectEl, items, placeholder) {
+        if (!selectEl) return;
+        const current = selectEl.value;
+        selectEl.innerHTML = `<option value="">${placeholder}</option>` +
+            items.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+        if (current) selectEl.value = current;
+    }
+
+    async function populateClientProductLineDropdowns() {
+        try {
+            cachedClients = await fetchClients();
+            cachedProductLines = await fetchProductLines();
+            fillSelectOptions(document.getElementById('project-client-select'), cachedClients, 'Pilih Client');
+            fillSelectOptions(document.getElementById('project-product-line-select'), cachedProductLines, 'Pilih Product Line');
+            fillSelectOptions(document.getElementById('tpl-client-select'), cachedClients, 'Pilih Client');
+            fillSelectOptions(document.getElementById('tpl-product-line-select'), cachedProductLines, 'Pilih Product Line');
+        } catch (e) {
+            console.error('[MasterData] populate dropdowns:', e);
+        }
+    }
+
+    async function loadMasterDataPage() {
+        if (!document.body.classList.contains('admin-mode')) return;
+        try {
+            cachedClients = await fetchClients();
+            cachedProductLines = await fetchProductLines();
+            const templates = await fetchClientProductTemplates();
+
+            document.getElementById('clients-table-wrap').innerHTML = renderMasterTable(
+                cachedClients,
+                [
+                    { label: 'Nama', render: i => i.name },
+                    { label: 'Deskripsi', render: i => i.description || '-' }
+                ],
+                'editClient',
+                'deleteClientRow'
+            );
+
+            document.getElementById('product-lines-table-wrap').innerHTML = renderMasterTable(
+                cachedProductLines,
+                [
+                    { label: 'Nama', render: i => i.name },
+                    { label: 'Deskripsi', render: i => i.description || '-' }
+                ],
+                'editProductLine',
+                'deleteProductLineRow'
+            );
+
+            fillSelectOptions(document.getElementById('tpl-client-select'), cachedClients, 'Pilih Client');
+            fillSelectOptions(document.getElementById('tpl-product-line-select'), cachedProductLines, 'Pilih Product Line');
+
+            const tplList = document.getElementById('templates-list');
+            if (templates.length) {
+                tplList.innerHTML = '<strong>Template terdaftar:</strong><ul style="margin-top:8px;padding-left:18px;">' +
+                    templates.map(t => {
+                        const c = cachedClients.find(x => x.id === t.client_id);
+                        const p = cachedProductLines.find(x => x.id === t.product_line_id);
+                        return `<li>${t.template_folder_name || ''} — ${c?.name || t.client_id} / ${p?.name || t.product_line_id}</li>`;
+                    }).join('') + '</ul>';
+            } else {
+                tplList.textContent = 'Belum ada template folder terdaftar.';
+            }
+        } catch (e) {
+            console.error('[MasterData] load:', e);
+            showToast('Gagal memuat Master Data', 'error');
+        }
+    }
+
+    function resetClientForm() {
+        document.getElementById('client-edit-id').value = '';
+        document.getElementById('client-name-input').value = '';
+        document.getElementById('client-desc-input').value = '';
+    }
+
+    function resetProductLineForm() {
+        document.getElementById('product-line-edit-id').value = '';
+        document.getElementById('pl-name-input').value = '';
+        document.getElementById('pl-desc-input').value = '';
+    }
+
+    async function saveClient(e) {
+        e.preventDefault();
+        const id = document.getElementById('client-edit-id').value;
+        const body = {
+            name: document.getElementById('client-name-input').value.trim(),
+            description: document.getElementById('client-desc-input').value.trim() || null
+        };
+        const url = id ? `${API_BASE}/clients/${id}` : `${API_BASE}/clients`;
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.detail || 'Gagal menyimpan client', 'error');
+            return;
+        }
+        showToast('Client disimpan', 'success');
+        resetClientForm();
+        await loadMasterDataPage();
+    }
+    window.saveClient = saveClient;
+
+    function editClient(id) {
+        const c = cachedClients.find(x => x.id === id);
+        if (!c) return;
+        document.getElementById('client-edit-id').value = c.id;
+        document.getElementById('client-name-input').value = c.name;
+        document.getElementById('client-desc-input').value = c.description || '';
+    }
+    window.editClient = editClient;
+
+    async function deleteClientRow(id) {
+        if (!confirm('Hapus client ini?')) return;
+        const res = await fetch(`${API_BASE}/clients/${id}`, { method: 'DELETE' });
+        if (!res.ok) { showToast('Gagal menghapus client', 'error'); return; }
+        showToast('Client dihapus', 'success');
+        await loadMasterDataPage();
+    }
+    window.deleteClientRow = deleteClientRow;
+
+    async function saveProductLine(e) {
+        e.preventDefault();
+        const id = document.getElementById('product-line-edit-id').value;
+        const body = {
+            name: document.getElementById('pl-name-input').value.trim(),
+            description: document.getElementById('pl-desc-input').value.trim() || null
+        };
+        const url = id ? `${API_BASE}/product-lines/${id}` : `${API_BASE}/product-lines`;
+        const method = id ? 'PUT' : 'POST';
+        const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.detail || 'Gagal menyimpan product line', 'error');
+            return;
+        }
+        showToast('Product Line disimpan', 'success');
+        resetProductLineForm();
+        await loadMasterDataPage();
+    }
+    window.saveProductLine = saveProductLine;
+
+    function editProductLine(id) {
+        const p = cachedProductLines.find(x => x.id === id);
+        if (!p) return;
+        document.getElementById('product-line-edit-id').value = p.id;
+        document.getElementById('pl-name-input').value = p.name;
+        document.getElementById('pl-desc-input').value = p.description || '';
+    }
+    window.editProductLine = editProductLine;
+
+    async function deleteProductLineRow(id) {
+        if (!confirm('Hapus product line ini?')) return;
+        const res = await fetch(`${API_BASE}/product-lines/${id}`, { method: 'DELETE' });
+        if (!res.ok) { showToast('Gagal menghapus product line', 'error'); return; }
+        showToast('Product Line dihapus', 'success');
+        await loadMasterDataPage();
+    }
+    window.deleteProductLineRow = deleteProductLineRow;
+
+    async function generateDriveTemplate() {
+        const clientId = document.getElementById('tpl-client-select')?.value;
+        const plId = document.getElementById('tpl-product-line-select')?.value;
+        if (!clientId || !plId) {
+            showToast('Pilih Client dan Product Line', 'error');
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/generate-template`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ client_id: parseInt(clientId, 10), product_line_id: parseInt(plId, 10) })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.detail || 'Gagal membuat template', 'error');
+                return;
+            }
+            alert(data.message || 'Template sedang dibuat di background.');
+            await loadMasterDataPage();
+        } catch (e) {
+            showToast('Error: ' + e.message, 'error');
+        }
+    }
+    window.generateDriveTemplate = generateDriveTemplate;
+    window.resetClientForm = resetClientForm;
+    window.resetProductLineForm = resetProductLineForm;
+    window.loadMasterDataPage = loadMasterDataPage;
+
     // ===== COMMENTS SYSTEM =====
     let allComments = [];
     let commentAttachmentData = null;
@@ -5269,6 +5577,15 @@
     });
 
     // ===== NAVIGATION =====
+    function navigateToMasterData() {
+        if (!document.body.classList.contains('admin-mode')) {
+            alert('Akses Ditolak: Halaman Master Data hanya untuk Admin.');
+            return;
+        }
+        navigateTo('master-data');
+    }
+    window.navigateToMasterData = navigateToMasterData;
+
     function navigateTo(screen) {
         // Update screens
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -5279,8 +5596,11 @@
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         document.querySelectorAll('.drawer-item').forEach(n => n.classList.remove('active'));
 
+        const dataScreenNav = document.querySelector(`.nav-item[data-screen="${screen}"]`);
+        if (dataScreenNav) dataScreenNav.classList.add('active');
+
         const navIndex = ['home', 'projects', 'tasks', 'statistics', 'schedule', 'calendar', 'csms-pb', 'otp', 'matrix', 'll-indicator', 'related-docs'].indexOf(screen);
-        if (navIndex !== -1) {
+        if (navIndex !== -1 && !dataScreenNav) {
             document.querySelectorAll('.nav-item')[navIndex]?.classList.add('active');
             // Drawer items are in the same relative order but with some extras like reports/download/login
             // Better to find by onclick content
@@ -5304,6 +5624,7 @@
         if (screen === 'otp') renderOTPScreen();
         if (screen === 'matrix') renderMatrixScreen();
         if (screen === 'll-indicator') renderLLScreen();
+        if (screen === 'master-data') loadMasterDataPage();
     }
 
     function toggleDrawer() {
@@ -6324,6 +6645,7 @@
 
     // ===== MODALS =====
     function showCreateModal() {
+        populateClientProductLineDropdowns();
         document.getElementById('create-modal').classList.add('active');
     }
 
@@ -6436,6 +6758,13 @@
         console.log('[DEBUG] pic_email:', form.pic_email.value);
         console.log('[DEBUG] pic_manager_email:', picManagerEmail);
 
+        const clientId = form.client_id?.value;
+        const productLineId = form.product_line_id?.value;
+        if (!clientId || !productLineId) {
+            showToast('Pilih Client dan Product Line', 'error');
+            return;
+        }
+
         const data = {
             name: form.name.value,
             title: form.title.value,
@@ -6447,7 +6776,9 @@
             rig_down: form.rig_down.value || null,
             assigned_to: form.assigned_to.value,
             pic_email: form.pic_email.value,
-            pic_manager_email: picManagerEmail || null
+            pic_manager_email: picManagerEmail || null,
+            client_id: parseInt(clientId, 10),
+            product_line_id: parseInt(productLineId, 10)
         };
 
         try {
@@ -6464,7 +6795,12 @@
                 updateStatistics(); // Refresh statistics dashboard
                 renderProjectCalendar(); // Refresh Project Calendar
             } else {
-                showToast('Error creating project', 'error');
+                let msg = 'Error creating project';
+                try {
+                    const err = await res.json();
+                    msg = err.detail || msg;
+                } catch (_) {}
+                showToast(msg, 'error');
             }
         } catch (error) {
             showToast('Error connecting to server', 'error');

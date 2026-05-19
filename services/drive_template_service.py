@@ -7,19 +7,29 @@ class DriveTemplateService:
     def __init__(self):
         self.master_template_id = "1lWxdLWnw3VBcpEsQJmzVPXzC4WbeS_3o"
 
-    async def clone_template_to_project(self, project_folder_id: str):
+    async def clone_template_to_project(
+        self, project_folder_id: str, source_folder_id: str = None
+    ):
         """
         Trigger PARALLEL Google Apps Script executions.
         Instead of 1 big clone, we split it by top-level folders (Element 0, 1, 2...).
         This runs ~10 scripts in parallel on Google Side -> 10x Speed.
+
+        Args:
+            project_folder_id: Destination folder (project or CLIENT_PRODUCTLINE template).
+            source_folder_id: Source template folder; defaults to master_template_id.
         """
         GAS_URL = "https://script.google.com/macros/s/AKfycbywzZs9ADxmgr9l3EFhzdbsmPjROj-Xh8APm04ecSYqIL4rUsaDUEh4CGarLDiV_j8MDA/exec"
-        
-        log_info("TEMPLATE", f"Starting Parallel GAS Clone for project: {project_folder_id}")
-        
+        source_id = source_folder_id or self.master_template_id
+
+        log_info(
+            "TEMPLATE",
+            f"Parallel GAS clone dest={project_folder_id} source={source_id}",
+        )
+
         try:
-            # 1. Get Top-Level Elements from Master Template
-            elements = drive_service.fetch_files_in_folder(self.master_template_id)
+            # 1. Get Top-Level Elements from source template
+            elements = drive_service.fetch_files_in_folder(source_id)
             if not elements:
                 log_error("TEMPLATE", "Master template is empty!")
                 return

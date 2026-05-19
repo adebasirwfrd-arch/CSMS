@@ -44,6 +44,7 @@ except ImportError:
     SUPABASE_AVAILABLE = False
 
 from routers.reports import router as reports_router
+from routers.master_data import router as master_data_router
 from services.logger_service import (
     app_logger, log_request, log_response, log_info, log_error, log_warning
 )
@@ -80,6 +81,7 @@ if static_dir.exists():
 
 # Include Routers
 app.include_router(reports_router)
+app.include_router(master_data_router)
 
 # Global Exception Handler - sends email on any unhandled exception
 from fastapi import Request
@@ -144,15 +146,19 @@ async def log_requests(request, call_next):
 class ProjectCreate(BaseModel):
     name: str
     description: Optional[str] = ""
+    title: Optional[str] = None  # Frontend alias; stored as description when set
     well_name: Optional[str] = None
     kontrak_no: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     rig_down_date: Optional[str] = None
     rig_down: Optional[str] = None  # Alias for rig_down_date
+    assigned_to: Optional[str] = None
     pic_email: Optional[str] = None
     pic_manager_email: Optional[str] = None  # CC email for reminders
     status: str = "Ongoing"
+    client_id: Optional[int] = None
+    product_line_id: Optional[int] = None
 
 class TaskCreate(BaseModel):
     title: str
@@ -397,9 +403,32 @@ def send_reminders(background_tasks: BackgroundTasks):
     }
 # --- Background Tasks ---
 
-async def project_setup_task(project_name: str):
+async def project_setup_task(
+    project_name: str,
+    client_id: Optional[int] = None,
+    product_line_id: Optional[int] = None,
+):
     """Workflow to ensure folder exists and clone template in background."""
     try:
+        from services.master_data_drive import resolve_template_source_folder
+
+        source_folder_id = None
+        if client_id and product_line_id:
+            source_folder_id, template_name = resolve_template_source_folder(
+                client_id, product_line_id
+            )
+            if source_folder_id:
+                log_info(
+                    "SYSTEM",
+                    f"Using client template '{template_name}' for project {project_name}",
+                )
+            else:
+                log_warning(
+                    "SYSTEM",
+                    f"No template folder for client_id={client_id} pl_id={product_line_id}; "
+                    f"falling back to master template",
+                )
+
         # 1. Create/Find project folder
         folder_id = drive_service.find_or_create_folder(project_name)
         if folder_id:
@@ -410,8 +439,11 @@ async def project_setup_task(project_name: str):
                 db.update_project(project['id'], {"drive_folder_id": folder_id})
                 log_info("SYSTEM", f"Saved drive_folder_id {folder_id} for project {project_name}")
             
-            # 2. Clone template recursive
-            await template_service.clone_template_to_project(folder_id)
+            # 2. Clone from client template or global master
+            await template_service.clone_template_to_project(
+                folder_id,
+                source_folder_id=source_folder_id,
+            )
             
             # 3. Trigger TOC regeneration (Initial)
             from services.daftar_isi_service import regenerate_daftar_isi_for_project
@@ -427,11 +459,45 @@ def list_projects():
 
 @app.post("/projects")
 def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
+    payload = project.dict(exclude_none=True)
+    if payload.get("title") and not payload.get("description"):
+        payload["description"] = payload.pop("title")
+    elif "title" in payload:
+        payload.pop("title", None)
+
+    client_id = payload.get("client_id")
+    product_line_id = payload.get("product_line_id")
+
+    if (client_id is None) ^ (product_line_id is None):
+        raise HTTPException(
+            status_code=400,
+            detail="client_id and product_line_id must both be provided together",
+        )
+
+    if client_id and product_line_id:
+        from services.master_data_drive import resolve_template_source_folder
+
+        tpl_id, tpl_name = resolve_template_source_folder(client_id, product_line_id)
+        if not tpl_id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Template folder belum dibuat. Silakan buat terlebih dahulu di "
+                    f"halaman Master Data (Client + Product Line → Buat Folder Template). "
+                    f"Expected folder: {tpl_name or 'CLIENTNAME_PRODUCTLINE'}"
+                ),
+            )
+
     # 1. Create in DB (fast local write + background Supabase sync)
-    new_project = db.create_project(project.dict())
+    new_project = db.create_project(payload)
     
     # 2. Trigger Folder Creation & Template Clone (in background)
-    background_tasks.add_task(project_setup_task, new_project['name'])
+    background_tasks.add_task(
+        project_setup_task,
+        new_project['name'],
+        client_id,
+        product_line_id,
+    )
     
     # 3. Generate Standard Tasks - BATCH INSERT (much faster!)
     tasks_to_create = [
@@ -486,7 +552,12 @@ async def sync_full_checklist(project_id: str, background_tasks: BackgroundTasks
         log_info("SYNC", f"Project found: {project.get('name', 'UNKNOWN')}")
 
         # 2. Trigger background folder/template check/resume
-        background_tasks.add_task(project_setup_task, project['name'])
+        background_tasks.add_task(
+            project_setup_task,
+            project['name'],
+            project.get('client_id'),
+            project.get('product_line_id'),
+        )
         log_info("SYNC", "Background task triggered for folder setup")
         
         # 3. Get template structure from Drive

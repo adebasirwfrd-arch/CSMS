@@ -17,7 +17,7 @@ import random
 import socket
 import threading
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from dotenv import load_dotenv
 from services.logger_service import log_drive_operation, log_drive_error, log_info, log_warning, log_error
 
@@ -290,6 +290,40 @@ class GoogleDriveService:
                 log_error("DRIVE", f"Batch execution failed: {e}")
                 
         return success_count[0]
+
+    def find_folder(self, folder_name: str, parent_id: str = None, prefix_search: bool = False) -> Optional[str]:
+        """Find an existing folder by name without creating one. Returns folder id or None."""
+        if not self.enabled or not self.service:
+            return None
+        try:
+            parent_id = parent_id or self.folder_id
+            if prefix_search:
+                query = (
+                    f"(name = '{folder_name}' or name contains '{folder_name} ') "
+                    f"and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' "
+                    f"and trashed=false"
+                )
+            else:
+                query = (
+                    f"name='{folder_name}' and '{parent_id}' in parents "
+                    f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
+                )
+            search_request = self.service.files().list(
+                q=query,
+                spaces="drive",
+                fields="files(id, name)",
+                pageSize=10,
+                supportsAllDrives=True,
+            )
+            results = self._execute_with_retry(search_request, f"FIND_ONLY_{folder_name[:15]}")
+            files = results.get("files", [])
+            if not files:
+                return None
+            files.sort(key=lambda x: (x["name"] != folder_name, x["name"]))
+            return files[0]["id"]
+        except Exception as e:
+            print(f"[ERROR] find_folder failed: {e}")
+            return None
 
     def find_or_create_folder(self, folder_name: str, parent_id: str = None, prefix_search: bool = False) -> str:
         """Find existing folder or create new one by name. 
