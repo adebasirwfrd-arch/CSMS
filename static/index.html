@@ -853,6 +853,62 @@
             color: var(--netflix-red);
         }
 
+        /* Executive Statistics Dashboard */
+        .ex-stats-header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .ex-stats-title-row { display: flex; align-items: center; gap: 12px; }
+        .ex-stats-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .ex-kpi-strip {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+        .ex-kpi {
+            background: linear-gradient(145deg, var(--bg-secondary), var(--bg-tertiary));
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            border-left: 4px solid var(--kpi-color, var(--netflix-red));
+        }
+        .ex-kpi span { display: block; font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+        .ex-kpi strong { display: block; font-size: 22px; font-weight: 700; margin-top: 4px; color: var(--kpi-color, var(--text-primary)); }
+        .ex-section-title {
+            font-size: 15px;
+            font-weight: 700;
+            margin: 28px 0 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-primary);
+        }
+        .ex-section-title span { color: var(--netflix-red); font-size: 12px; }
+        .ex-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+        .ex-chart-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+        }
+        .ex-chart-card.ex-chart-wide { grid-column: 1 / -1; }
+        .ex-chart-card h3, .ex-chart-card h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
+        .ex-chart-desc { font-size: 11px; color: var(--text-muted); margin: 0 0 12px; }
+        .ex-chart-wrap { position: relative; height: 220px; width: 100%; }
+        .ex-chart-wrap.ex-chart-tall { height: 300px; }
+
         /* ===== PREVIEW MODE ===== */
         body.preview-mode .hide-in-preview {
             display: none !important;
@@ -1770,526 +1826,92 @@
         <div id="tasks-container"></div>
     </section>
 
-    <!-- Statistics Screen - Modern Dashboard -->
+    <!-- Statistics Screen - Executive Monthly Report -->
     <section class="screen" id="screen-statistics" style="overflow-y: auto; height: calc(100vh - 130px);">
-        <!-- Dashboard Header -->
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
-            <svg viewBox="0 0 24 24" fill="var(--netflix-red)" width="28" height="28">
-                <path
-                    d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" />
-            </svg>
-            <h2 style="font-size: 24px; font-weight: 700;" data-i18n="dashboard">Dashboard</h2>
-        </div>
-
-        <!-- KPI Cards Row -->
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px;">
-            <div onclick="navigateTo('projects')"
-                style="background: linear-gradient(135deg, #E50914 0%, #B20710 100%); border-radius: 12px; padding: 16px; cursor: pointer; transition: transform 0.2s;">
-                <div style="font-size: 12px; opacity: 0.8;" data-i18n="totalProjects">Total Projects</div>
-                <div id="stat-total-projects" style="font-size: 32px; font-weight: 700;">0</div>
-                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;" data-i18n="tapToView">Tap to view →</div>
-            </div>
-            <div onclick="navigateTo('tasks')"
-                style="background: linear-gradient(135deg, #46D369 0%, #2E8B4F 100%); border-radius: 12px; padding: 16px; cursor: pointer; transition: transform 0.2s;">
-                <div style="font-size: 12px; opacity: 0.8;" data-i18n="totalTasks">Total Tasks</div>
-                <div id="stat-total-tasks" style="font-size: 32px; font-weight: 700;">0</div>
-                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;" data-i18n="tapToView">Tap to view →</div>
-            </div>
-            <div onclick="navigateTo('tasks')"
-                style="background: linear-gradient(135deg, #4A90D9 0%, #2E5A8C 100%); border-radius: 12px; padding: 16px; cursor: pointer; transition: transform 0.2s;">
-                <div style="font-size: 12px; opacity: 0.8;" data-i18n="completionRate">Completion Rate</div>
-                <div id="stat-completion-rate" style="font-size: 32px; font-weight: 700;">0%</div>
-                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;" data-i18n="tapForTasks">Tap for tasks →
+        <div class="ex-stats-header">
+            <div class="ex-stats-title-row">
+                <svg viewBox="0 0 24 24" fill="var(--netflix-red)" width="28" height="28">
+                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
+                </svg>
+                <div>
+                    <h2 style="font-size: 22px; font-weight: 700; margin: 0;" data-i18n="statisticsTitle">Laporan Statistik Executive</h2>
+                    <p id="ex-report-period" style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0;">—</p>
                 </div>
             </div>
-            <div onclick="navigateTo('schedule')"
-                style="background: linear-gradient(135deg, #F5A623 0%, #C88820 100%); border-radius: 12px; padding: 16px; cursor: pointer; transition: transform 0.2s;">
-                <div style="font-size: 12px; opacity: 0.8;" data-i18n="upcomingMWT">Upcoming MWT</div>
-                <div id="stat-upcoming-mwt" style="font-size: 32px; font-weight: 700;">0</div>
-                <div style="font-size: 11px; opacity: 0.6; margin-top: 4px;" data-i18n="tapForSchedule">Tap for schedule
-                    →</div>
+            <div class="ex-stats-filters">
+                <select id="ex-filter-month" class="form-input" style="width: auto; min-width: 120px;" onchange="loadDashboardStats()">
+                    <option value="">Semua Bulan</option>
+                    <option value="1">Januari</option><option value="2">Februari</option><option value="3">Maret</option>
+                    <option value="4">April</option><option value="5">Mei</option><option value="6">Juni</option>
+                    <option value="7">Juli</option><option value="8">Agustus</option><option value="9">September</option>
+                    <option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+                </select>
+                <select id="ex-filter-year" class="form-input" style="width: auto; min-width: 90px;" onchange="loadDashboardStats()"></select>
+                <button type="button" class="btn btn-save" onclick="loadDashboardStats()" style="padding: 8px 14px;">🔄 Refresh</button>
             </div>
         </div>
 
-        <!-- Project Status Donut Chart -->
-        <div onclick="navigateTo('projects')"
-            style="background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px; cursor: pointer;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <div style="font-size: 16px; font-weight: 600;" data-i18n="projectStatusDistribution">Project Status
-                    Distribution</div>
-                <span style="font-size: 11px; color: var(--text-muted);" data-i18n="tapToView">Tap to view →</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 24px;">
-                <div id="project-donut-chart" style="width: 120px; height: 120px; position: relative;">
-                    <!-- SVG donut chart will be inserted here -->
-                </div>
-                <div id="project-legend-new" style="flex: 1;">
-                    <!-- Legend items -->
-                </div>
-            </div>
+        <div class="ex-kpi-strip">
+            <div class="ex-kpi" style="--kpi-color:#E50914"><span>Proyek</span><strong id="ex-kpi-projects">0</strong></div>
+            <div class="ex-kpi" style="--kpi-color:#46D369"><span>Tugas</span><strong id="ex-kpi-tasks">0</strong></div>
+            <div class="ex-kpi" style="--kpi-color:#4A90D9"><span>Penyelesaian</span><strong id="ex-kpi-completion">0%</strong></div>
+            <div class="ex-kpi" style="--kpi-color:#F5A623"><span>Jadwal</span><strong id="ex-kpi-schedules">0</strong></div>
+            <div class="ex-kpi" style="--kpi-color:#9b59b6"><span>PB Rata-rata</span><strong id="ex-kpi-pb-avg">—</strong></div>
+            <div class="ex-kpi" style="--kpi-color:#1abc9c"><span>OTP Progress</span><strong id="ex-kpi-otp">—</strong></div>
+            <div class="ex-kpi" style="--kpi-color:#e67e22"><span>LL On Track</span><strong id="ex-kpi-ll">—</strong></div>
+            <div class="ex-kpi" style="--kpi-color:#3498db"><span>Rekaman PB</span><strong id="ex-kpi-pb-records">0</strong></div>
         </div>
 
-        <!-- Task Status Donut Chart -->
-        <div onclick="navigateTo('tasks')"
-            style="background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px; cursor: pointer;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <div style="font-size: 16px; font-weight: 600;" data-i18n="taskStatusDistribution">Task Status
-                    Distribution</div>
-                <span style="font-size: 11px; color: var(--text-muted);" data-i18n="tapToView">Tap to view →</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 24px;">
-                <div id="task-donut-chart" style="width: 120px; height: 120px; position: relative;">
-                    <!-- SVG donut chart will be inserted here -->
-                </div>
-                <div id="task-legend-new" style="flex: 1;">
-                    <!-- Legend items -->
-                </div>
-            </div>
+        <div class="ex-chart-card ex-chart-wide">
+            <h3>📈 Ringkasan Executive — Aktivitas Bulanan</h3>
+            <p class="ex-chart-desc">Gabungan Proyek, Jadwal, dan Audit PB (mixed bar + line)</p>
+            <div class="ex-chart-wrap ex-chart-tall"><canvas id="chart-executive-mixed"></canvas></div>
         </div>
 
-        <!-- Project Completion Progress -->
-        <div onclick="navigateTo('projects')"
-            style="background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px; cursor: pointer;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <div style="font-size: 16px; font-weight: 600;" data-i18n="projectTaskCompletion">Project Task
-                    Completion</div>
-                <span style="font-size: 11px; color: var(--text-muted);" data-i18n="tapToView">Tap to view →</span>
-            </div>
-            <div id="project-completion-bars" style="max-height: 300px; overflow-y: auto;">
-                <!-- Progress bars will be inserted here -->
-            </div>
+        <h3 class="ex-section-title" onclick="navigateTo('projects')">📁 Proyek <span>→</span></h3>
+        <div class="ex-stats-grid">
+            <div class="ex-chart-card"><h4>Status Proyek</h4><p class="ex-chart-desc">Doughnut — distribusi status</p><div class="ex-chart-wrap"><canvas id="chart-projects-status"></canvas></div></div>
+            <div class="ex-chart-card"><h4>Proyek per Client</h4><p class="ex-chart-desc">Polar Area — portfolio client</p><div class="ex-chart-wrap"><canvas id="chart-projects-client"></canvas></div></div>
+            <div class="ex-chart-card ex-chart-wide"><h4>Penyelesaian Tugas per Proyek</h4><p class="ex-chart-desc">Horizontal Bar — % completion</p><div class="ex-chart-wrap"><canvas id="chart-projects-completion"></canvas></div></div>
         </div>
 
-        <!-- Schedule Quick Stats - All Meeting Types -->
-        <div onclick="navigateTo('schedule')"
-            style="background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px; cursor: pointer;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <div style="font-size: 16px; font-weight: 600;" data-i18n="scheduleOverview">📅 Schedule Overview - All
-                    Meeting Types</div>
-                <span style="font-size: 11px; color: var(--text-muted);" data-i18n="tapToView">Tap to view →</span>
-            </div>
-            <div
-                style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: center; margin-bottom: 12px;">
-                <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700; color: #3498db;" id="stat-upcoming-mwt-count">0</div>
-                    <div style="font-size: 10px; color: var(--text-muted);" data-i18n="mwtPlan">📅 MWT Plan</div>
-                </div>
-                <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700; color: #9b59b6;" id="stat-upcoming-hse-count">0</div>
-                    <div style="font-size: 10px; color: var(--text-muted);" data-i18n="hseCommittee">🏢 HSE Committee
-                    </div>
-                </div>
-                <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700; color: #27ae60;" id="stat-upcoming-csms-count">0
-                    </div>
-                    <div style="font-size: 10px; color: var(--text-muted);" data-i18n="csmsPb">✅ CSMS PB</div>
-                </div>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; text-align: center;">
-                <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700; color: #e67e22;" id="stat-upcoming-hseplan-count">0
-                    </div>
-                    <div style="font-size: 10px; color: var(--text-muted);" data-i18n="hsePlan">📋 HSE Plan</div>
-                </div>
-                <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700; color: #1abc9c;" id="stat-upcoming-spr-count">0</div>
-                    <div style="font-size: 10px; color: var(--text-muted);" data-i18n="sprMeeting">📊 SPR Meeting</div>
-                </div>
-                <div style="background: var(--bg-tertiary); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700; color: #e74c3c;" id="stat-upcoming-hazid-count">0
-                    </div>
-                    <div style="font-size: 10px; color: var(--text-muted);" data-i18n="hazidHazop">⚠️ HAZID/HAZOP</div>
-                </div>
-            </div>
-            <div
-                style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--bg-tertiary); display: flex; justify-content: center; gap: 24px;">
-                <div style="text-align: center;">
-                    <div style="font-size: 28px; font-weight: 700; color: var(--netflix-red);"
-                        id="stat-total-schedules">0</div>
-                    <div style="font-size: 11px; color: var(--text-muted);" data-i18n="totalSchedules">Total Schedules
-                    </div>
-                </div>
-                <div style="text-align: center;">
-                    <div style="font-size: 28px; font-weight: 700; color: var(--success);" id="stat-this-month">0</div>
-                    <div style="font-size: 11px; color: var(--text-muted);" data-i18n="thisMonth">This Month</div>
-                </div>
-            </div>
+        <h3 class="ex-section-title" onclick="navigateTo('tasks')">✅ Tugas <span>→</span></h3>
+        <div class="ex-stats-grid">
+            <div class="ex-chart-card"><h4>Status Tugas</h4><p class="ex-chart-desc">Pie Chart — upcoming / progress / done</p><div class="ex-chart-wrap"><canvas id="chart-tasks-status"></canvas></div></div>
+            <div class="ex-chart-card"><h4>Kategori Tugas</h4><p class="ex-chart-desc">Radar — volume per kategori</p><div class="ex-chart-wrap"><canvas id="chart-tasks-radar"></canvas></div></div>
+            <div class="ex-chart-card"><h4>Tugas Selesai per Bulan</h4><p class="ex-chart-desc">Area Line — tren penyelesaian</p><div class="ex-chart-wrap"><canvas id="chart-tasks-monthly"></canvas></div></div>
         </div>
 
-        <!-- CSMS PB Audit Statistics -->
-        <div onclick="navigateTo('csms-pb')"
-            style="background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px; cursor: pointer;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                <div style="font-size: 16px; font-weight: 600;" data-i18n="csmsPbAuditScores">📋 CSMS PB Audit Scores
-                </div>
-                <span style="font-size: 11px; color: var(--text-muted);" data-i18n="tapToView">Tap to view →</span>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center;">
-                <div
-                    style="background: linear-gradient(135deg, #9b59b6 0%, #7d3a9c 100%); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-pb-total">0</div>
-                    <div style="font-size: 10px; opacity: 0.8;" data-i18n="totalRecords">Total Records</div>
-                </div>
-                <div
-                    style="background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-pb-lowest">0</div>
-                    <div style="font-size: 10px; opacity: 0.8;" data-i18n="lowestScore">Lowest Score</div>
-                </div>
-                <div
-                    style="background: linear-gradient(135deg, #27ae60 0%, #1e8449 100%); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-pb-highest">0</div>
-                    <div style="font-size: 10px; opacity: 0.8;" data-i18n="highestScore">Highest Score</div>
-                </div>
-                <div
-                    style="background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); border-radius: 8px; padding: 12px;">
-                    <div style="font-size: 24px; font-weight: 700;" id="stat-pb-average">0</div>
-                    <div style="font-size: 10px; opacity: 0.8;" data-i18n="average">Average</div>
-                </div>
-            </div>
-            <div style="font-size: 12px; color: var(--text-muted); margin-top: 12px;" data-i18n="pbScoresByWell">PB
-                Scores by Well</div>
-            <div id="pb-score-chart"
-                style="margin-top: 8px; height: 120px; display: flex; align-items: flex-end; gap: 6px;">
-                <!-- Score bar chart will be inserted here -->
-            </div>
+        <h3 class="ex-section-title" onclick="navigateTo('schedule')">📅 Jadwal <span>→</span></h3>
+        <div class="ex-stats-grid">
+            <div class="ex-chart-card"><h4>Jenis Jadwal</h4><p class="ex-chart-desc">Polar Area — semua tipe meeting</p><div class="ex-chart-wrap"><canvas id="chart-schedule-types"></canvas></div></div>
+            <div class="ex-chart-card"><h4>Distribusi Jenis</h4><p class="ex-chart-desc">Bubble — volume per kategori</p><div class="ex-chart-wrap"><canvas id="chart-schedule-bubble"></canvas></div></div>
+            <div class="ex-chart-card ex-chart-wide"><h4>Jadwal per Bulan</h4><p class="ex-chart-desc">Line Chart — tren jadwal</p><div class="ex-chart-wrap"><canvas id="chart-schedule-monthly"></canvas></div></div>
         </div>
 
-        <!-- Analytics Charts Section -->
-        <div style="background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
-            <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px;" data-i18n="analyticsDashboard">📊
-                Analytics Dashboard</div>
-
-            <!-- Schedule Types Bar Chart -->
-            <div onclick="navigateTo('schedule')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; transition: background 0.2s;"
-                onmouseover="this.style.background='var(--bg-tertiary)'"
-                onmouseout="this.style.background='transparent'">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div style="font-size: 13px; color: var(--text-muted);" data-i18n="scheduleTypesDistribution">
-                        Schedule Types Distribution</div>
-                    <span style="font-size: 10px; color: var(--netflix-red);">→</span>
-                </div>
-                <div id="schedule-bar-chart"
-                    style="height: 180px; display: flex; align-items: flex-end; justify-content: space-around; gap: 8px; padding: 0 10px;">
-                    <!-- Bar chart will be inserted here -->
-                </div>
-            </div>
-
-            <!-- Task Progress Overview Chart -->
-            <div onclick="navigateTo('tasks')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; transition: background 0.2s;"
-                onmouseover="this.style.background='var(--bg-tertiary)'"
-                onmouseout="this.style.background='transparent'">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div style="font-size: 13px; color: var(--text-muted);" data-i18n="taskStatusOverview">Task Status
-                        Overview</div>
-                    <span style="font-size: 10px; color: var(--netflix-red);">→</span>
-                </div>
-                <div id="task-progress-chart" style="height: 100px; display: flex; align-items: flex-end; gap: 12px;">
-                    <!-- Task status bars will be inserted here -->
-                </div>
-            </div>
-
-            <!-- Project Status Area Chart -->
-            <div onclick="navigateTo('projects')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; transition: background 0.2s;"
-                onmouseover="this.style.background='var(--bg-tertiary)'"
-                onmouseout="this.style.background='transparent'">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div style="font-size: 13px; color: var(--text-muted);" data-i18n="projectProgressOverview">Project
-                        Progress Overview</div>
-                    <span style="font-size: 10px; color: var(--netflix-red);">→</span>
-                </div>
-                <div id="progress-area-chart"
-                    style="height: 120px; position: relative; background: linear-gradient(180deg, rgba(70, 211, 105, 0.1) 0%, transparent 100%); border-radius: 8px; overflow: hidden;">
-                    <!-- Area chart will be inserted here -->
-                </div>
-            </div>
-
-            <!-- PB Score Chart -->
-            <div onclick="navigateTo('csms-pb')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; transition: background 0.2s;"
-                onmouseover="this.style.background='var(--bg-tertiary)'"
-                onmouseout="this.style.background='transparent'">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div style="font-size: 13px; color: var(--text-muted);" data-i18n="pbScoresByWell">CSMS PB Scores by
-                        Well</div>
-                    <span style="font-size: 10px; color: var(--netflix-red);">→</span>
-                </div>
-                <div id="pb-analytics-chart" style="height: 120px; display: flex; align-items: flex-end; gap: 6px;">
-                    <!-- PB score bars will be inserted here -->
-                </div>
-            </div>
-
-            <!-- Monthly Trend -->
-            <div onclick="navigateTo('schedule')"
-                style="cursor: pointer; padding: 10px; border-radius: 8px; transition: background 0.2s;"
-                onmouseover="this.style.background='var(--bg-tertiary)'"
-                onmouseout="this.style.background='transparent'">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div style="font-size: 13px; color: var(--text-muted);" data-i18n="monthlyActivityTrend">Monthly
-                        Activity Trend</div>
-                    <span style="font-size: 10px; color: var(--netflix-red);">→</span>
-                </div>
-                <div id="monthly-trend-chart"
-                    style="height: 100px; display: flex; align-items: flex-end; justify-content: space-between; gap: 4px;">
-                    <!-- Line/bar chart will be inserted here -->
-                </div>
-            </div>
+        <h3 class="ex-section-title" onclick="navigateTo('csms-pb')">📋 CSMS PB <span>→</span></h3>
+        <div class="ex-stats-grid">
+            <div class="ex-chart-card"><h4>Skor per Proyek</h4><p class="ex-chart-desc">Bar — skor audit terbaru</p><div class="ex-chart-wrap"><canvas id="chart-pb-projects"></canvas></div></div>
+            <div class="ex-chart-card"><h4>Band Skor PB</h4><p class="ex-chart-desc">Doughnut — kritis / peringatan / baik</p><div class="ex-chart-wrap"><canvas id="chart-pb-bands"></canvas></div></div>
+            <div class="ex-chart-card"><h4>Tren Skor Bulanan</h4><p class="ex-chart-desc">Line — rata-rata skor PB</p><div class="ex-chart-wrap"><canvas id="chart-pb-trend"></canvas></div></div>
         </div>
 
-        <!-- Monthly Charts Gallery -->
-        <div style="background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
-            <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px;" data-i18n="monthlyChartsGallery">📈
-                Monthly Charts Gallery</div>
-            <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 16px;" data-i18n="janDecTrends">Jan -
-                Dec trends across all data
-            </p>
-
-            <!-- MWT Schedule by Month -->
-            <div onclick="navigateTo('schedule')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #3498db; margin-bottom: 8px;"
-                    data-i18n="mwtPlanScheduleByMonth">📅 MWT Plan Schedule by Month</div>
-                <div id="monthly-mwt-chart"
-                    style="height: 80px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px;">
-                </div>
-                <div
-                    style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
-                    <span data-i18n="jan">Jan</span><span data-i18n="feb">Feb</span><span
-                        data-i18n="mar">Mar</span><span data-i18n="apr">Apr</span><span data-i18n="may">May</span><span
-                        data-i18n="jun">Jun</span><span data-i18n="jul">Jul</span><span data-i18n="aug">Aug</span><span
-                        data-i18n="sep">Sep</span><span data-i18n="oct">Oct</span><span data-i18n="nov">Nov</span><span
-                        data-i18n="dec">Dec</span>
-                </div>
-            </div>
-
-            <!-- HSE Committee by Month -->
-            <div onclick="navigateTo('schedule')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #9b59b6; margin-bottom: 8px;"
-                    data-i18n="hseCommitteeMeetingByMonth">🏢 HSE Committee
-                    Meeting by Month</div>
-                <div id="monthly-hse-chart"
-                    style="height: 80px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px;">
-                </div>
-                <div
-                    style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
-                    <span data-i18n="jan">Jan</span><span data-i18n="feb">Feb</span><span
-                        data-i18n="mar">Mar</span><span data-i18n="apr">Apr</span><span data-i18n="may">May</span><span
-                        data-i18n="jun">Jun</span><span data-i18n="jul">Jul</span><span data-i18n="aug">Aug</span><span
-                        data-i18n="sep">Sep</span><span data-i18n="oct">Oct</span><span data-i18n="nov">Nov</span><span
-                        data-i18n="dec">Dec</span>
-                </div>
-            </div>
-
-            <!-- HSE Plan by Month -->
-            <div onclick="navigateTo('schedule')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #e67e22; margin-bottom: 8px;"
-                    data-i18n="hsePlanMeetingByMonth">📋 HSE Plan Meeting
-                    by Month</div>
-                <div id="monthly-hseplan-chart"
-                    style="height: 80px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px;">
-                </div>
-                <div
-                    style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
-                    <span data-i18n="jan">Jan</span><span data-i18n="feb">Feb</span><span
-                        data-i18n="mar">Mar</span><span data-i18n="apr">Apr</span><span data-i18n="may">May</span><span
-                        data-i18n="jun">Jun</span><span data-i18n="jul">Jul</span><span data-i18n="aug">Aug</span><span
-                        data-i18n="sep">Sep</span><span data-i18n="oct">Oct</span><span data-i18n="nov">Nov</span><span
-                        data-i18n="dec">Dec</span>
-                </div>
-            </div>
-
-            <!-- SPR Meeting by Month -->
-            <div onclick="navigateTo('schedule')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #1abc9c; margin-bottom: 8px;"
-                    data-i18n="sprMeetingByMonth">📊 SPR Meeting by
-                    Month</div>
-                <div id="monthly-spr-chart"
-                    style="height: 80px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px;">
-                </div>
-                <div
-                    style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
-                    <span data-i18n="jan">Jan</span><span data-i18n="feb">Feb</span><span
-                        data-i18n="mar">Mar</span><span data-i18n="apr">Apr</span><span data-i18n="may">May</span><span
-                        data-i18n="jun">Jun</span><span data-i18n="jul">Jul</span><span data-i18n="aug">Aug</span><span
-                        data-i18n="sep">Sep</span><span data-i18n="oct">Oct</span><span data-i18n="nov">Nov</span><span
-                        data-i18n="dec">Dec</span>
-                </div>
-            </div>
-
-            <!-- HAZID/HAZOP by Month -->
-            <div onclick="navigateTo('schedule')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #e74c3c; margin-bottom: 8px;"
-                    data-i18n="hazidHazopMeetingByMonth">⚠️ HAZID/HAZOP
-                    Meeting by Month</div>
-                <div id="monthly-hazid-chart"
-                    style="height: 80px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px;">
-                </div>
-                <div
-                    style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
-                    <span data-i18n="jan">Jan</span><span data-i18n="feb">Feb</span><span
-                        data-i18n="mar">Mar</span><span data-i18n="apr">Apr</span><span data-i18n="may">May</span><span
-                        data-i18n="jun">Jun</span><span data-i18n="jul">Jul</span><span data-i18n="aug">Aug</span><span
-                        data-i18n="sep">Sep</span><span data-i18n="oct">Oct</span><span data-i18n="nov">Nov</span><span
-                        data-i18n="dec">Dec</span>
-                </div>
-            </div>
-
-            <!-- CSMS PB Audit by Month -->
-            <div onclick="navigateTo('schedule')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #27ae60; margin-bottom: 8px;"
-                    data-i18n="csmsPbAuditByMonth">✅ CSMS PB Audit by
-                    Month</div>
-                <div id="monthly-csms-chart"
-                    style="height: 80px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px;">
-                </div>
-                <div
-                    style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
-                    <span data-i18n="jan">Jan</span><span data-i18n="feb">Feb</span><span
-                        data-i18n="mar">Mar</span><span data-i18n="apr">Apr</span><span data-i18n="may">May</span><span
-                        data-i18n="jun">Jun</span><span data-i18n="jul">Jul</span><span data-i18n="aug">Aug</span><span
-                        data-i18n="sep">Sep</span><span data-i18n="oct">Oct</span><span data-i18n="nov">Nov</span><span
-                        data-i18n="dec">Dec</span>
-                </div>
-            </div>
-
-            <!-- Projects by Month -->
-            <div onclick="navigateTo('projects')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: var(--netflix-red); margin-bottom: 8px;"
-                    data-i18n="projectsCreatedByMonth">📁
-                    Projects Created by Month</div>
-                <div id="monthly-projects-chart"
-                    style="height: 80px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px;">
-                </div>
-                <div
-                    style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
-                    <span data-i18n="jan">Jan</span><span data-i18n="feb">Feb</span><span
-                        data-i18n="mar">Mar</span><span data-i18n="apr">Apr</span><span data-i18n="may">May</span><span
-                        data-i18n="jun">Jun</span><span data-i18n="jul">Jul</span><span data-i18n="aug">Aug</span><span
-                        data-i18n="sep">Sep</span><span data-i18n="oct">Oct</span><span data-i18n="nov">Nov</span><span
-                        data-i18n="dec">Dec</span>
-                </div>
-            </div>
-
-            <!-- Task Completion by Month -->
-            <div onclick="navigateTo('tasks')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #46D369; margin-bottom: 8px;"
-                    data-i18n="taskCompletionRateByMonth">✓ Task Completion
-                    Rate by Month</div>
-                <div id="monthly-tasks-chart"
-                    style="height: 80px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2px;">
-                </div>
-                <div
-                    style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
-                    <span data-i18n="jan">Jan</span><span data-i18n="feb">Feb</span><span
-                        data-i18n="mar">Mar</span><span data-i18n="apr">Apr</span><span data-i18n="may">May</span><span
-                        data-i18n="jun">Jun</span><span data-i18n="jul">Jul</span><span data-i18n="aug">Aug</span><span
-                        data-i18n="sep">Sep</span><span data-i18n="oct">Oct</span><span data-i18n="nov">Nov</span><span
-                        data-i18n="dec">Dec</span>
-                </div>
-            </div>
-
-            <!-- PB Scores by Month (Scatter/Dot Chart) -->
-            <div onclick="navigateTo('csms-pb')"
-                style="cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #9b59b6; margin-bottom: 8px;"
-                    data-i18n="pbScoresByMonth">📋 PB Scores by
-                    Month</div>
-                <div style="font-size: 9px; color: var(--text-muted); margin-bottom: 4px;" data-i18n="yAxisScoreLabel">
-                    Y-axis: Score (0-100) | Dots
-                    colored by project</div>
-                <div id="monthly-pb-scores-chart"
-                    style="height: 100px; position: relative; background: linear-gradient(to top, var(--bg-tertiary) 0%, transparent 100%); border-radius: 4px; overflow: visible;">
-                </div>
-                <div
-                    style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px;">
-                    <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
-                </div>
-            </div>
+        <h3 class="ex-section-title" onclick="navigateTo('otp')">🎯 OTP <span>→</span></h3>
+        <div class="ex-stats-grid">
+            <div class="ex-chart-card"><h4>Lagging vs Leading</h4><p class="ex-chart-desc">Doughnut — komposisi program</p><div class="ex-chart-wrap"><canvas id="chart-otp-category"></canvas></div></div>
+            <div class="ex-chart-card"><h4>Distribusi Progress</h4><p class="ex-chart-desc">Bar — bucket progress 0-100%</p><div class="ex-chart-wrap"><canvas id="chart-otp-progress"></canvas></div></div>
+            <div class="ex-chart-card ex-chart-wide"><h4>Top Program OTP</h4><p class="ex-chart-desc">Horizontal Bar — progress tertinggi</p><div class="ex-chart-wrap"><canvas id="chart-otp-top"></canvas></div></div>
         </div>
 
-        <!-- Project Chart Gallery -->
-        <div style="background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
-            <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px;" data-i18n="projectChartGallery">📁
-                Project Chart Gallery</div>
-            <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 16px;"
-                data-i18n="xAxisProjectsYAxisValues">X-axis: Projects | Y-axis: Values
-            </p>
-
-            <!-- Tasks per Project -->
-            <div onclick="navigateTo('tasks')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #F5A623; margin-bottom: 8px;"
-                    data-i18n="tasksPerProject">📋 Tasks per Project
-                </div>
-                <div id="project-tasks-chart"
-                    style="height: 100px; display: flex; align-items: flex-end; gap: 4px; overflow-x: auto;"></div>
-            </div>
-
-            <!-- Schedules per Project -->
-            <div onclick="navigateTo('schedule')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #3498db; margin-bottom: 8px;"
-                    data-i18n="schedulesPerProject">📅 Schedules per
-                    Project</div>
-                <div id="project-schedules-chart"
-                    style="height: 100px; display: flex; align-items: flex-end; gap: 4px; overflow-x: auto;"></div>
-            </div>
-
-            <!-- PB Records per Project -->
-            <div onclick="navigateTo('csms-pb')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #27ae60; margin-bottom: 8px;"
-                    data-i18n="pbRecordsPerProject">📋 PB Records per
-                    Project</div>
-                <div id="project-pb-chart"
-                    style="height: 100px; display: flex; align-items: flex-end; gap: 4px; overflow-x: auto;"></div>
-            </div>
-
-            <!-- Task Completion Rate per Project -->
-            <div onclick="navigateTo('projects')"
-                style="margin-bottom: 20px; cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #46D369; margin-bottom: 8px;"
-                    data-i18n="taskCompletionRatePerProject">✓ Task Completion
-                    Rate per Project (%)</div>
-                <div id="project-completion-chart"
-                    style="height: 100px; display: flex; align-items: flex-end; gap: 4px; overflow-x: auto;"></div>
-            </div>
-
-            <!-- PB Score per Project -->
-            <div onclick="navigateTo('csms-pb')"
-                style="cursor: pointer; padding: 10px; border-radius: 8px; border: 1px solid var(--border);">
-                <div style="font-size: 12px; font-weight: 600; color: #9b59b6; margin-bottom: 8px;"
-                    data-i18n="averagePbScorePerProject">📊 Average PB Score
-                    per Project</div>
-                <div style="font-size: 9px; color: var(--text-muted); margin-bottom: 4px;"
-                    data-i18n="pbScoreColorLegend">Color: 🟢 ≥80 | 🟡 ≥60 | 🔴
-                    &lt;60</div>
-                <div id="project-pb-score-chart"
-                    style="height: 100px; display: flex; align-items: flex-end; gap: 4px; overflow-x: auto;"></div>
-            </div>
+        <h3 class="ex-section-title" onclick="navigateTo('ll-indicator')">📊 LL Indicator <span>→</span></h3>
+        <div class="ex-stats-grid">
+            <div class="ex-chart-card"><h4>On Track vs Off Track</h4><p class="ex-chart-desc">Bar — performa indikator</p><div class="ex-chart-wrap"><canvas id="chart-ll-track"></canvas></div></div>
+            <div class="ex-chart-card"><h4>Lagging vs Leading</h4><p class="ex-chart-desc">Polar Area — jumlah indikator</p><div class="ex-chart-wrap"><canvas id="chart-ll-category"></canvas></div></div>
         </div>
 
-        <!-- Quick Actions -->
-        <div style="background: var(--bg-secondary); border-radius: 12px; padding: 20px; margin-bottom: 16px;">
-            <div style="font-size: 16px; font-weight: 600; margin-bottom: 16px;" data-i18n="quickActions">Quick Actions
-            </div>
-            <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <button onclick="checkReminders()" class="btn btn-save" style="flex: 1; min-width: 120px;">
-                    📧 <span data-i18n="checkReminders">Check Reminders</span>
-                </button>
-                <button onclick="loadDashboardStats()" class="btn btn-cancel" style="flex: 1; min-width: 120px;">
-                    🔄 <span data-i18n="refreshStats">Refresh Stats</span>
-                </button>
-            </div>
+        <div style="margin: 24px 0 40px; display: flex; gap: 12px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-save" onclick="checkReminders()">📧 Cek Reminder</button>
+            <button type="button" class="btn btn-cancel" onclick="loadDashboardStats()">🔄 Muat Ulang Statistik</button>
         </div>
     </section>
 
@@ -7967,81 +7589,45 @@
         fileInput.value = '';
     }
 
-    // ===== MODERN DASHBOARD =====
+    // ===== EXECUTIVE STATISTICS DASHBOARD =====
+    function initExStatsYearFilter() {
+        const sel = document.getElementById('ex-filter-year');
+        if (!sel || sel.options.length > 1) return;
+        const y = new Date().getFullYear();
+        for (let i = y; i >= y - 4; i--) {
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = String(i);
+            if (i === y) opt.selected = true;
+            sel.appendChild(opt);
+        }
+        const m = document.getElementById('ex-filter-month');
+        if (m && !m.value) m.value = String(new Date().getMonth() + 1);
+    }
+
     async function loadDashboardStats() {
         try {
-            const res = await fetch(`${API_BASE}/statistics`);
-            if (!res.ok) return;
-
+            initExStatsYearFilter();
+            const q = typeof getStatisticsQueryParams === 'function' ? getStatisticsQueryParams() : '';
+            const url = `${API_BASE}/statistics${q}${q ? '&' : '?'}t=${Date.now()}`;
+            const res = await fetch(url);
+            if (!res.ok) {
+                showToast('Gagal memuat statistik', 'error');
+                return;
+            }
             const stats = await res.json();
 
-            // Update KPI cards
-            document.getElementById('stat-total-projects').textContent = stats.projects.total;
-            document.getElementById('stat-total-tasks').textContent = stats.tasks.total;
-            document.getElementById('stat-completion-rate').textContent = `${stats.tasks.completion_rate.toFixed(0)}%`;
-            document.getElementById('stat-upcoming-mwt').textContent = stats.schedules.upcoming_mwt;
-
-            // Update schedule stats
-            document.getElementById('stat-total-schedules').textContent = stats.schedules.total;
-            document.getElementById('stat-this-month').textContent = stats.schedules.this_month;
-
-            // Render Project Donut Chart
-            const projectColors = { 'Upcoming': '#F5A623', 'InProgress': '#46D369', 'Completed': '#4A90D9', 'OnHold': '#9B59B6' };
-            createDonutChart('project-donut-chart', 'project-legend-new', stats.projects.by_status, projectColors, stats.projects.total);
-
-            // Render Task Donut Chart
-            const taskColors = { 'Upcoming': '#F5A623', 'In Progress': '#46D369', 'Completed': '#4A90D9' };
-            createDonutChart('task-donut-chart', 'task-legend-new', stats.tasks.by_status, taskColors, stats.tasks.total);
-
-            // Render Project Completion Bars
-            const barsContainer = document.getElementById('project-completion-bars');
-            if (barsContainer) {
-                if (stats.project_completion.length === 0) {
-                    barsContainer.innerHTML = '<p style="color: var(--text-muted); text-align: center;">No projects yet</p>';
-                } else {
-                    barsContainer.innerHTML = stats.project_completion.map(p => `
-                            <div style="margin-bottom: 12px;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                    <span style="font-size: 13px;">${p.name}</span>
-                                    <span style="font-size: 12px; color: ${p.percentage >= 95 ? 'var(--success)' : p.percentage >= 50 ? 'var(--warning)' : '#E50914'};">
-                                        ${p.completed}/${p.total} (${p.percentage.toFixed(0)}%)
-                                    </span>
-                                </div>
-                                <div style="background: var(--bg-tertiary); border-radius: 4px; height: 8px; overflow: hidden;">
-                                    <div style="background: ${p.percentage >= 95 ? '#46D369' : p.percentage >= 50 ? '#F5A623' : '#E50914'}; 
-                                         height: 100%; width: ${p.percentage}%; transition: width 0.5s ease;"></div>
-                                </div>
-                            </div>
-                        `).join('');
-                }
-            }
-
-            // Always load fresh schedule data for accurate stats
             try {
                 const schedRes = await fetch(`${API_BASE}/schedules?t=${Date.now()}`);
                 if (schedRes.ok) allSchedules = await schedRes.json();
             } catch (e) { console.error('Error loading schedules:', e); }
 
-            // Update schedule type counts
-            updateScheduleTypeCounts();
-
-            // Render analytics charts
-            renderScheduleBarChart();
-            renderProgressAreaChart();
-            renderMonthlyTrendChart();
-            renderTaskProgressChart();
-
-            // Render monthly charts gallery
-            renderMonthlyChartsGallery();
-
-            // Render project charts gallery
-            renderProjectChartsGallery();
-
-            // Load PB statistics
-            loadPBStats();
-
+            if (typeof renderExecutiveStatistics === 'function') {
+                renderExecutiveStatistics(stats);
+            }
         } catch (error) {
             console.error('Error loading dashboard stats:', error);
+            showToast('Error loading statistics', 'error');
         }
     }
 
@@ -8084,10 +7670,11 @@
             const highest = scores.length > 0 ? Math.max(...scores) : 0;
             const average = scores.length > 0 ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
-            document.getElementById('stat-pb-total').textContent = total;
-            document.getElementById('stat-pb-lowest').textContent = lowest.toFixed(0);
-            document.getElementById('stat-pb-highest').textContent = highest.toFixed(0);
-            document.getElementById('stat-pb-average').textContent = average.toFixed(1);
+            const setPbStat = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            setPbStat('stat-pb-total', total);
+            setPbStat('stat-pb-lowest', lowest.toFixed(0));
+            setPbStat('stat-pb-highest', highest.toFixed(0));
+            setPbStat('stat-pb-average', average.toFixed(1));
 
             // Render PB score chart by well name
             const wellScores = {};
@@ -10424,6 +10011,8 @@
         }
     }
 </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="/static/exec-stats.js"></script>
 </body>
 
 </html>

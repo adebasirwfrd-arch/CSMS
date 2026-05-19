@@ -1982,11 +1982,25 @@ def like_comment_route(comment_id: str):
 # --- Statistics API ---
 
 @app.get("/statistics")
-def get_statistics():
-    """Get comprehensive statistics for dashboard"""
+def get_statistics(year: Optional[int] = None, month: Optional[int] = None):
+    """Get comprehensive statistics for dashboard and monthly executive report."""
     projects = db.get_projects()
     tasks = db.get_tasks()
     schedules = get_schedules()
+    pb_records = get_csms_pb_records()
+    from database import SUPABASE_ENABLED
+    report_year = int(year) if year else datetime.now().year
+    report_month = int(month) if month else None
+
+    SCHEDULE_DATE_FIELDS = [
+        'mwt_plan_date', 'hse_meeting_date', 'csms_pb_date', 'hseplan_date', 'spr_date', 'hazid_date',
+        'csms_psb_date', 'stratim_date', 'risk_register_date',
+    ]
+    SCHEDULE_TYPE_LABELS = {
+        'mwt': 'MWT Plan', 'hse': 'HSE Committee', 'csms': 'CSMS PB Audit', 'hseplan': 'HSE Plan',
+        'spr': 'SPR Meeting', 'hazid': 'HAZID/HAZOP', 'csmspsb': 'CSMS PSB', 'stratim': 'STRATIM',
+        'riskregister': 'Risk Register',
+    }
     
     # Project stats
     project_stats = {
@@ -2037,31 +2051,227 @@ def get_statistics():
                 this_month_count += 1
                 break
     
+    schedule_by_type = {k: 0 for k in SCHEDULE_TYPE_LABELS}
+    for s in schedules:
+        st = s.get('schedule_type') or 'mwt'
+        if st in schedule_by_type:
+            schedule_by_type[st] += 1
+        else:
+            schedule_by_type[st] = schedule_by_type.get(st, 0) + 1
+
     schedule_stats = {
         "total": len(schedules),
         "upcoming_mwt": len(upcoming_mwt),
         "upcoming_hse": len(upcoming_hse),
-        "this_month": this_month_count
+        "this_month": this_month_count,
+        "by_type": schedule_by_type,
     }
-    
-    # Project completion breakdown by project
+
+    def in_report_period(date_str):
+        d = safe_parse_date(date_str)
+        if not d:
+            return False
+        if d.year != report_year:
+            return False
+        if report_month and d.month != report_month:
+            return False
+        return True
+
+    month_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    monthly_projects = [0] * 12
+    monthly_tasks_done = [0] * 12
+    monthly_schedules = [0] * 12
+    monthly_pb = [0] * 12
+    monthly_pb_scores = [[] for _ in range(12)]
+
+    for p in projects:
+        created = p.get('created_at') or p.get('updated_at')
+        if created:
+            try:
+                d = datetime.fromisoformat(str(created).replace('Z', '+00:00')).date()
+                if d.year == report_year:
+                    monthly_projects[d.month - 1] += 1
+            except Exception:
+                pass
+
+    for t in tasks:
+        if t.get('status') != 'Completed':
+            continue
+        created = t.get('created_at') or t.get('updated_at')
+        if created:
+            try:
+                d = datetime.fromisoformat(str(created).replace('Z', '+00:00')).date()
+                if d.year == report_year:
+                    monthly_tasks_done[d.month - 1] += 1
+            except Exception:
+                pass
+
+    for s in schedules:
+        for field in SCHEDULE_DATE_FIELDS:
+            if s.get(field) and in_report_period(s[field]):
+                monthly_schedules[datetime.strptime(s[field], '%Y-%m-%d').month - 1] += 1
+                break
+
+    pb_scores = []
+    pb_by_band = {'critical': 0, 'warning': 0, 'good': 0}
+    pb_by_project = {}
+    for rec in pb_records:
+        score = float(rec.get('score') or 0)
+        if score <= 0:
+            continue
+        pb_scores.append(score)
+        if score < 60:
+            pb_by_band['critical'] += 1
+        elif score < 80:
+            pb_by_band['warning'] += 1
+        else:
+            pb_by_band['good'] += 1
+        pname = rec.get('project_name') or 'Unknown'
+        pb_by_project.setdefault(pname, []).append(score)
+        pb_date = rec.get('pb_date') or rec.get('created_at')
+        if pb_date:
+            try:
+                d = datetime.fromisoformat(str(pb_date).replace('Z', '+00:00')).date() if 'T' in str(pb_date) else safe_parse_date(str(pb_date)[:10])
+                if d and d.year == report_year:
+                    idx = d.month - 1
+                    monthly_pb[idx] += 1
+                    monthly_pb_scores[idx].append(score)
+            except Exception:
+                pass
+
+    pb_monthly_avg = [round(sum(v) / len(v), 1) if v else 0 for v in monthly_pb_scores]
+    pb_project_avg = [
+        {'name': (n[:18] + '…') if len(n) > 18 else n, 'score': round(sum(sc) / len(sc), 1)}
+        for n, sc in sorted(pb_by_project.items(), key=lambda x: -len(x[1]))[:12]
+    ]
+
+    clients_map = {}
+    for p in projects:
+        cid = p.get('client_id')
+        key = str(cid) if cid is not None else 'unknown'
+        clients_map[key] = clients_map.get(key, 0) + 1
+    client_names = {}
+    if SUPABASE_ENABLED and supabase_service:
+        for c in supabase_service.get_clients():
+            client_names[str(c.get('id'))] = c.get('name', 'Client')
+    clients_breakdown = [
+        {'name': client_names.get(k, f'Client {k}'), 'count': v}
+        for k, v in sorted(clients_map.items(), key=lambda x: -x[1])
+    ][:10]
+
+    ll_stats = {'total': 0, 'lagging': 0, 'leading': 0, 'on_track': 0, 'off_track': 0, 'on_track_pct': 0}
+    otp_stats = {
+        'total_programs': 0, 'avg_progress': 0, 'lagging': 0, 'leading': 0,
+        'progress_buckets': [0, 0, 0, 0], 'top_programs': [],
+    }
+    try:
+        flat_ll = []
+        if SUPABASE_ENABLED and supabase_service:
+            flat_ll = supabase_service.get_ll_indicators(None, report_year, report_month)
+        for item in flat_ll:
+            ll_stats['total'] += 1
+            cat = item.get('category') or 'Leading'
+            if cat == 'Lagging':
+                ll_stats['lagging'] += 1
+            else:
+                ll_stats['leading'] += 1
+            try:
+                target = float(str(item.get('target') or '0').replace(',', '') or 0)
+                actual = float(str(item.get('actual') or '0').replace(',', '') or 0)
+            except ValueError:
+                target, actual = 0.0, 0.0
+            if cat == 'Lagging':
+                on_track = actual <= target if target > 0 else actual == 0
+            else:
+                on_track = actual >= target if target > 0 else actual > 0
+            if on_track:
+                ll_stats['on_track'] += 1
+            else:
+                ll_stats['off_track'] += 1
+        if ll_stats['total']:
+            ll_stats['on_track_pct'] = round((ll_stats['on_track'] / ll_stats['total']) * 100, 1)
+
+        otp_programs = []
+        if SUPABASE_ENABLED and supabase_service:
+            for p in projects:
+                otp_programs.extend(supabase_service.get_otp_programs(p['id'], report_year, None) or [])
+        seen_otp = set()
+        unique_otp = []
+        for prog in otp_programs:
+            key = (prog.get('id'), prog.get('name'))
+            if key in seen_otp:
+                continue
+            seen_otp.add(key)
+            unique_otp.append(prog)
+        progress_vals = []
+        for prog in unique_otp:
+            otp_stats['total_programs'] += 1
+            if prog.get('category') == 'Lagging':
+                otp_stats['lagging'] += 1
+            else:
+                otp_stats['leading'] += 1
+            pr = float(prog.get('progress') or 0)
+            progress_vals.append(pr)
+            bi = min(3, int(pr // 25)) if pr < 100 else 3
+            otp_stats['progress_buckets'][bi] += 1
+        if progress_vals:
+            otp_stats['avg_progress'] = round(sum(progress_vals) / len(progress_vals), 1)
+        otp_stats['top_programs'] = sorted(
+            [{'name': (p.get('name') or '')[:24], 'progress': float(p.get('progress') or 0)} for p in unique_otp],
+            key=lambda x: -x['progress'],
+        )[:8]
+    except Exception as e:
+        print(f"[STATS] LL/OTP aggregation error: {e}")
+
     project_completion = []
-    for p in projects[:10]:  # Top 10
+    for p in projects[:15]:
         proj_tasks = [t for t in tasks if t.get('project_id') == p['id']]
         completed = len([t for t in proj_tasks if t.get('status') == 'Completed'])
         total = len(proj_tasks)
         project_completion.append({
-            "name": p['name'][:20],
+            "name": (p.get('name') or 'Unknown')[:22],
             "completed": completed,
             "total": total,
-            "percentage": (completed / max(total, 1)) * 100
+            "percentage": round((completed / max(total, 1)) * 100, 1)
         })
-    
+    project_completion.sort(key=lambda x: -x['percentage'])
+
+    tasks_by_category = {}
+    for t in tasks:
+        cat = t.get('category') or t.get('code') or 'General'
+        tasks_by_category[cat] = tasks_by_category.get(cat, 0) + 1
+    top_task_categories = sorted(
+        [{'name': k[:16], 'count': v} for k, v in tasks_by_category.items()],
+        key=lambda x: -x['count'],
+    )[:8]
+
     return {
+        "report_year": report_year,
+        "report_month": report_month,
         "projects": project_stats,
         "tasks": task_stats,
         "schedules": schedule_stats,
-        "project_completion": project_completion
+        "project_completion": project_completion,
+        "pb": {
+            "total": len(pb_records),
+            "average": round(sum(pb_scores) / len(pb_scores), 1) if pb_scores else 0,
+            "lowest": round(min(pb_scores), 1) if pb_scores else 0,
+            "highest": round(max(pb_scores), 1) if pb_scores else 0,
+            "by_band": pb_by_band,
+            "monthly_avg": pb_monthly_avg,
+            "by_project": pb_project_avg,
+        },
+        "ll": ll_stats,
+        "otp": otp_stats,
+        "clients": clients_breakdown,
+        "tasks_by_category": top_task_categories,
+        "monthly_executive": {
+            "labels": month_labels,
+            "projects": monthly_projects,
+            "tasks_completed": monthly_tasks_done,
+            "schedules": monthly_schedules,
+            "pb_audits": monthly_pb,
+        },
     }
 
 
