@@ -2907,6 +2907,7 @@
                 </div>
                 <button type="button" class="btn btn-save" onclick="generateDriveTemplate()" style="white-space: nowrap;">Buat Folder Template</button>
                 <button type="button" class="btn btn-secondary" onclick="propagateTemplateToProjects()" style="white-space: nowrap;">Sinkron ke Proyek</button>
+                <button type="button" class="btn btn-cancel" onclick="loadMasterDataPage()" style="white-space: nowrap;">Muat Ulang</button>
             </div>
             <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">Setelah mengubah folder modal, klik <strong>Sinkron ke Proyek</strong>. File upload aplikasi tidak dihapus.</p>
             <div id="templates-list" style="margin-top: 16px; font-size: 12px; color: var(--text-secondary);"></div>
@@ -3684,6 +3685,8 @@
             closeAdminLoginModal();
             showToast('Admin login successful!', 'success');
             console.log('[CSMS] Admin logged in');
+            loadMasterDataPage();
+            populateClientProductLineDropdowns();
         } else {
             // Login failed
             errorDiv.textContent = 'Invalid username or password';
@@ -3709,6 +3712,11 @@
 
     // Check admin status on page load
     checkAdminStatus();
+    document.addEventListener('DOMContentLoaded', () => {
+        if (document.body.classList.contains('admin-mode')) {
+            loadMasterDataPage();
+        }
+    });
 
     // ===== SETTINGS SYSTEM =====
     let currentLanguage = localStorage.getItem('csms_language') || 'id';
@@ -4638,28 +4646,41 @@
     }
 
     async function fetchClients() {
-        const res = await fetch(`${API_BASE}/clients`);
+        const res = await fetch(`${API_BASE}/clients?t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
         if (!res.ok) throw new Error('Gagal memuat clients');
-        return res.json();
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
     }
 
     async function fetchProductLines() {
-        const res = await fetch(`${API_BASE}/product-lines`);
+        const res = await fetch(`${API_BASE}/product-lines?t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
         if (!res.ok) throw new Error('Gagal memuat product lines');
-        return res.json();
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
     }
 
     async function fetchClientProductTemplates() {
-        const res = await fetch(`${API_BASE}/client-product-templates`);
+        const res = await fetch(`${API_BASE}/client-product-templates?t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
         if (!res.ok) return [];
-        return res.json();
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
     }
 
     function fillSelectOptions(selectEl, items, placeholder) {
         if (!selectEl) return;
+        const list = Array.isArray(items) ? items : [];
         const current = selectEl.value;
         selectEl.innerHTML = `<option value="">${placeholder}</option>` +
-            items.map(i => `<option value="${i.id}">${i.name}</option>`).join('');
+            list.map(i => `<option value="${i.id}">${i.name || i.id}</option>`).join('');
         if (current) selectEl.value = current;
     }
 
@@ -4677,13 +4698,19 @@
     }
 
     async function loadMasterDataPage() {
-        if (!document.body.classList.contains('admin-mode')) return;
         try {
             cachedClients = await fetchClients();
             cachedProductLines = await fetchProductLines();
             const templates = await fetchClientProductTemplates();
+            console.log('[MasterData] loaded', cachedClients.length, 'clients,', cachedProductLines.length, 'product lines');
 
-            document.getElementById('clients-table-wrap').innerHTML = renderMasterTable(
+            fillSelectOptions(document.getElementById('tpl-client-select'), cachedClients, 'Pilih Client');
+            fillSelectOptions(document.getElementById('tpl-product-line-select'), cachedProductLines, 'Pilih Product Line');
+            fillSelectOptions(document.getElementById('project-client-select'), cachedClients, 'Pilih Client');
+            fillSelectOptions(document.getElementById('project-product-line-select'), cachedProductLines, 'Pilih Product Line');
+
+            const clientsWrap = document.getElementById('clients-table-wrap');
+            if (clientsWrap) clientsWrap.innerHTML = renderMasterTable(
                 cachedClients,
                 [
                     { label: 'Nama', render: i => i.name },
@@ -4693,7 +4720,8 @@
                 'deleteClientRow'
             );
 
-            document.getElementById('product-lines-table-wrap').innerHTML = renderMasterTable(
+            const plWrap = document.getElementById('product-lines-table-wrap');
+            if (plWrap) plWrap.innerHTML = renderMasterTable(
                 cachedProductLines,
                 [
                     { label: 'Nama', render: i => i.name },
@@ -4702,9 +4730,6 @@
                 'editProductLine',
                 'deleteProductLineRow'
             );
-
-            fillSelectOptions(document.getElementById('tpl-client-select'), cachedClients, 'Pilih Client');
-            fillSelectOptions(document.getElementById('tpl-product-line-select'), cachedProductLines, 'Pilih Product Line');
 
             const tplList = document.getElementById('templates-list');
             if (templates.length) {
@@ -4719,7 +4744,7 @@
             }
         } catch (e) {
             console.error('[MasterData] load:', e);
-            showToast('Gagal memuat Master Data', 'error');
+            showToast('Gagal memuat Master Data: ' + (e.message || e), 'error');
         }
     }
 
