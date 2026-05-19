@@ -291,6 +291,61 @@ class GoogleDriveService:
                 
         return success_count[0]
 
+    @staticmethod
+    def _folder_matches_segment(folder_name: str, segment_code: str) -> bool:
+        """
+        True when folder_name is exactly the code or code + space + title.
+        Prevents 4.3.2 matching 4.3.2.1 OFFICE (must be 4.3.2 or 4.3.2 PROGRAM..., not 4.3.2.1).
+        """
+        fn = (folder_name or "").strip()
+        sc = (segment_code or "").strip()
+        if not sc:
+            return False
+        if fn == sc:
+            return True
+        if fn.startswith(sc + " "):
+            return True
+        return False
+
+    def _list_subfolders(self, parent_id: str) -> List[Dict[str, Any]]:
+        if not parent_id:
+            return []
+        items = self.fetch_files_in_folder(parent_id)
+        return [
+            i
+            for i in items
+            if i.get("mimeType") == "application/vnd.google-apps.folder"
+        ]
+
+    def _find_child_for_segment(self, parent_id: str, segment_code: str) -> Optional[str]:
+        """Find a direct child folder for a task code segment (strict boundary)."""
+        folders = self._list_subfolders(parent_id)
+        candidates = [
+            f
+            for f in folders
+            if self._folder_matches_segment(f.get("name", ""), segment_code)
+        ]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda f: (f["name"] != segment_code, len(f["name"])))
+        chosen = candidates[0]
+        log_info(
+            "DRIVE",
+            f"Segment '{segment_code}' matched folder '{chosen['name']}' under parent {parent_id[:12]}...",
+        )
+        return chosen["id"]
+
+    def _find_element_folder(self, project_folder_id: str, element_num: str) -> Optional[str]:
+        """Match template ELEMENT folders (ELEMENT 4), not a duplicate Element 4 tree."""
+        folders = self._list_subfolders(project_folder_id)
+        element_upper = f"ELEMENT {element_num}".upper()
+        for f in folders:
+            name = (f.get("name") or "").strip()
+            name_upper = name.upper()
+            if name_upper == element_upper or name_upper.startswith(element_upper + " "):
+                return f["id"]
+        return None
+
     def find_folder(self, folder_name: str, parent_id: str = None, prefix_search: bool = False) -> Optional[str]:
         """Find an existing folder by name without creating one. Returns folder id or None."""
         if not self.enabled or not self.service:
@@ -298,16 +353,11 @@ class GoogleDriveService:
         try:
             parent_id = parent_id or self.folder_id
             if prefix_search:
-                query = (
-                    f"(name = '{folder_name}' or name contains '{folder_name} ') "
-                    f"and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' "
-                    f"and trashed=false"
-                )
-            else:
-                query = (
-                    f"name='{folder_name}' and '{parent_id}' in parents "
-                    f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
-                )
+                return self._find_child_for_segment(parent_id, folder_name)
+            query = (
+                f"name='{folder_name}' and '{parent_id}' in parents "
+                f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
+            )
             search_request = self.service.files().list(
                 q=query,
                 spaces="drive",
@@ -343,35 +393,32 @@ class GoogleDriveService:
                 print(f"[CACHE] Using cached folder: {folder_name}")
                 return self.folders_cache[cache_key]
             
-            # Search Query
             if prefix_search:
-                # Find folders starting with "Name " (with space) or exactly "Name" to avoid 2.1 matching 2.10
-                query = f"(name = '{folder_name}' or name contains '{folder_name} ') and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+                folder_id = self._find_child_for_segment(parent_id, folder_name)
+                if folder_id:
+                    print(f"[FOUND] Segment folder for: {folder_name}")
+                    return folder_id
             else:
-                query = f"name='{folder_name}' and '{parent_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
-            
-            search_request = self.service.files().list(
-                q=query, 
-                spaces='drive', 
-                fields='files(id, name)',
-                pageSize=100,  # Should be enough for folders in one parent
-                supportsAllDrives=True
-            )
-            results = self._execute_with_retry(search_request, f"FIND_FOLDER_{folder_name[:15]}")
-            files = results.get('files', [])
-            
-            if files:
-                # If multiple matches, pick the best one (prefer exact match or shortest/first)
-                # Sort: exact match first, then others
-                files.sort(key=lambda x: (x['name'] != folder_name, x['name']))
-                folder_id = files[0]['id']
-                
-                # Update cache only if exact match
-                if files[0]['name'] == folder_name:
-                    self.folders_cache[cache_key] = folder_id
-                
-                print(f"[FOUND] Existing folder: {files[0]['name']}")
-                return folder_id
+                query = (
+                    f"name='{folder_name}' and '{parent_id}' in parents "
+                    f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
+                )
+                search_request = self.service.files().list(
+                    q=query,
+                    spaces="drive",
+                    fields="files(id, name)",
+                    pageSize=100,
+                    supportsAllDrives=True,
+                )
+                results = self._execute_with_retry(search_request, f"FIND_FOLDER_{folder_name[:15]}")
+                files = results.get("files", [])
+                if files:
+                    files.sort(key=lambda x: (x["name"] != folder_name, x["name"]))
+                    folder_id = files[0]["id"]
+                    if files[0]["name"] == folder_name:
+                        self.folders_cache[cache_key] = folder_id
+                    print(f"[FOUND] Existing folder: {files[0]['name']}")
+                    return folder_id
             
             # Create new folder (Only if not searching with prefix)
             # If we are in prefix mode and didn't find it, we usually want to CREATE the base name
@@ -399,68 +446,90 @@ class GoogleDriveService:
 
     def create_nested_task_folder(self, project_name: str, task_code: str, task_title: str = "") -> str:
         """Create nested folder structure based on task code hierarchy.
-        
-        Structure: Project → Element X → X.Y → X.Y.Z → ... → Final TaskCode Title
-        Creates full hierarchy for ALL levels in the task code.
-        
-        Examples:
-        - "1.1.1" → Project/Element 1/1.1/1.1.1 MWT REPORT
-        - "4.3.2.2.1" → Project/Element 4/4.3/4.3.2/4.3.2.2/4.3.2.2.1 FOTO_OBSERVATION_CARD
+
+        Walks template folders using strict segment matching so 4.3.2.2.5 lands under
+        4.3.2.2 SITE, not under 4.3.2.1 OFFICE. Supports flat template layouts where
+        4.3.2.1 / 4.3.2.2 are direct children of 4.3 PROGRAM (no empty 4.3.2 folder).
         """
         if not self.enabled or not self.service:
             log_warning("DRIVE", "Drive not enabled for nested folder creation")
             return None
-        
+
         if not task_code:
             log_warning("DRIVE", "No task code provided, falling back to project folder")
             return self.find_or_create_folder(project_name)
-        
+
         try:
-            # 1. Create/find project folder
             project_folder_id = self.find_or_create_folder(project_name)
             if not project_folder_id:
                 log_error("DRIVE", "Could not create project folder", send_email=False)
                 return None
-            
-            # 2. Parse task code (e.g., "4.3.2.2.1" → ["4", "3", "2", "2", "1"])
-            parts = task_code.split('.')
+
+            parts = [p for p in task_code.split(".") if p]
             if not parts:
                 return project_folder_id
-            
-            # 3. Create Element folder (first part, e.g., "Element 4")
-            element_folder_name = f"Element {parts[0]}"
-            current_parent_id = self.find_or_create_folder(element_folder_name, project_folder_id)
+
+            # Prefer ELEMENT N from template clone (not a parallel "Element N" tree)
+            current_parent_id = self._find_element_folder(project_folder_id, parts[0])
             if not current_parent_id:
-                log_error("DRIVE", f"Could not create element folder: {element_folder_name}", send_email=False)
+                current_parent_id = self.find_or_create_folder(
+                    f"ELEMENT {parts[0]}", project_folder_id
+                )
+            if not current_parent_id:
+                log_error("DRIVE", f"Could not find ELEMENT {parts[0]}", send_email=False)
                 return project_folder_id
-            
-            log_drive_operation("NESTED", f"Created/found: {project_name}/{element_folder_name}")
-            
-            # 4. Create ALL intermediate folders for each level
-            # e.g., "4.3.2.2.1" → create "4.3", "4.3.2", "4.3.2.2", then "4.3.2.2.1 Title"
+
+            log_drive_operation("NESTED", f"Element folder for {project_name}")
+
             for i in range(1, len(parts)):
-                folder_code = '.'.join(parts[:i+1])  # "4.3", "4.3.2", "4.3.2.2", "4.3.2.2.1"
-                is_final = (folder_code == task_code)
-                
+                folder_code = ".".join(parts[: i + 1])
+                is_final = folder_code == task_code
+
                 if is_final:
-                    # Final folder: include title
                     if task_title:
-                        safe_title = "".join(x for x in task_title if (x.isalnum() or x in "._- "))
-                        folder_name = f"{folder_code} {safe_title}"
+                        safe_title = "".join(
+                            x for x in task_title if (x.isalnum() or x in "._- ")
+                        ).strip()
+                        folder_name = (
+                            f"{folder_code} {safe_title}" if safe_title else folder_code
+                        )
                     else:
                         folder_name = folder_code
-                    current_parent_id = self.find_or_create_folder(folder_name, current_parent_id)
+
+                    child_id = self._find_child_for_segment(
+                        current_parent_id, folder_code
+                    )
+                    if child_id:
+                        current_parent_id = child_id
+                    else:
+                        current_parent_id = self.find_or_create_folder(
+                            folder_name, current_parent_id
+                        )
                 else:
-                    # Intermediate folder: use prefix search to find "4.3" or "4.3 SomeTitle"
-                    current_parent_id = self.find_or_create_folder(folder_code, current_parent_id, prefix_search=True)
-                
+                    child_id = self._find_child_for_segment(
+                        current_parent_id, folder_code
+                    )
+                    if child_id:
+                        current_parent_id = child_id
+                    else:
+                        # Flat template: skip missing intermediate (e.g. no "4.3.2" folder)
+                        log_info(
+                            "DRIVE",
+                            f"Segment {folder_code} not found; trying deeper segments at same level",
+                        )
+                        continue
+
                 if not current_parent_id:
-                    log_error("DRIVE", f"Could not create folder: {folder_code}", send_email=False)
+                    log_error(
+                        "DRIVE",
+                        f"Could not resolve folder for segment: {folder_code}",
+                        send_email=False,
+                    )
                     return None
-                log_drive_operation("NESTED", f"Created/found: .../{folder_code}")
-            
+                log_drive_operation("NESTED", f"Resolved segment: {folder_code}")
+
             return current_parent_id
-            
+
         except Exception as e:
             log_drive_error("NESTED_FOLDER", e)
             return None
