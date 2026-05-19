@@ -2597,52 +2597,83 @@ def get_otp_programs_route(project_id: str, year: Optional[int] = 2025, month: O
 
 @app.post("/api/otp-programs/{project_id}")
 def create_otp_program_route(project_id: str, data: dict):
-    """Create a new OTP program (ll_indicators row) for project/year/month."""
+    """Create a new OTP program (ll_indicators row) for project/year."""
     try:
         if not (supabase_service and supabase_service.enabled):
             raise HTTPException(status_code=503, detail="Supabase not enabled")
-        payload = {
+        if not data.get("name"):
+            raise HTTPException(status_code=400, detail="name is required")
+        intent = data.get("intent") or ("negative" if data.get("category") == "Lagging" else "positive")
+        created = supabase_service.create_otp_program(project_id, {
             "name": data.get("name"),
             "category": data.get("category", "Leading"),
             "target": data.get("target", "0"),
-            "actual": "0",
             "icon": data.get("icon", "📊"),
-            "intent": data.get("intent", "positive"),
+            "intent": intent,
             "year": int(data.get("year") or 2025),
-            "month": int(data.get("month")) if data.get("month") is not None else None,
             "sort_order": int(data.get("sort_order") or 0),
-        }
-        if not payload.get("name"):
-            raise HTTPException(status_code=400, detail="name is required")
-        # OTP program row is per project+year; monthly values go to otp_month_data
-        payload["month"] = None
-        success = save_ll_indicator(project_id, payload)
-        if not success:
+        })
+        if not created:
             raise HTTPException(status_code=500, detail="Failed to create OTP program")
-        return {"status": "success"}
+        return {"status": "success", "program": created}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
+@app.put("/api/otp-programs/{project_id}/{program_id}")
+def update_otp_program_route(project_id: str, program_id: str, data: dict):
+    """Update OTP program metadata (name, target, category, etc.)."""
+    try:
+        if not (supabase_service and supabase_service.enabled):
+            raise HTTPException(status_code=503, detail="Supabase not enabled")
+        success = supabase_service.update_otp_program(project_id, program_id, data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update OTP program")
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/otp-programs/{project_id}/{program_id}")
+def delete_otp_program_route(project_id: str, program_id: str):
+    """Delete an OTP program and its monthly data."""
+    try:
+        if not (supabase_service and supabase_service.enabled):
+            raise HTTPException(status_code=503, detail="Supabase not enabled")
+        success = supabase_service.delete_otp_program(program_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete OTP program")
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.put("/api/otp-programs/{project_id}/{indicator_id}/month/{month}")
 def update_otp_month_route(project_id: str, indicator_id: str, month: int, data: dict):
     """Update monthly data for an OTP indicator."""
     try:
-        if supabase_service and supabase_service.enabled:
-            success = supabase_service.save_otp_month_data(indicator_id, month, data)
+        if not (supabase_service and supabase_service.enabled):
+            raise HTTPException(status_code=503, detail="Supabase not enabled")
+        success = supabase_service.save_otp_month_data(indicator_id, month, data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save month data")
 
-            # Send email reminder if requested
-            if data.get('send_email') and data.get('pic_email') and data.get('plan_date'):
-                month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                               'July', 'August', 'September', 'October', 'November', 'December']
-                month_name = month_names[month] if 1 <= month <= 12 else f"Month {month}"
-                program_name = data.get('program_name', 'OTP Program')
-                email_service.send_otp_reminder(program_name, month_name, data)
+        if data.get('send_email') and data.get('pic_email') and data.get('plan_date'):
+            month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                           'July', 'August', 'September', 'October', 'November', 'December']
+            month_name = month_names[month] if 1 <= month <= 12 else f"Month {month}"
+            program_name = data.get('program_name', 'OTP Program')
+            email_service.send_otp_reminder(program_name, month_name, data)
 
-            return {"status": "success" if success else "failed"}
-        return {"status": "failed", "message": "Supabase not enabled"}
+        return {"status": "success"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 

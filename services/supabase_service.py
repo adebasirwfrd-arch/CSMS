@@ -575,6 +575,72 @@ class SupabaseService:
             traceback.print_exc()
             return []
 
+    def update_otp_program(self, project_id: str, program_id: str, data: Dict) -> bool:
+        """Update OTP program metadata (ll_indicators row)."""
+        if not self.enabled:
+            return False
+        try:
+            allowed = ('name', 'target', 'category', 'icon', 'intent', 'sort_order', 'year')
+            update_data = {'updated_at': datetime.now().isoformat()}
+            for key in allowed:
+                if key not in data:
+                    continue
+                val = data[key]
+                if key in ('target',):
+                    update_data[key] = '' if val is None else str(val)
+                elif val is not None and str(val).strip() != '':
+                    update_data[key] = val
+            if not update_data.get('category') and data.get('intent'):
+                intent = str(data.get('intent')).lower()
+                update_data['category'] = 'Lagging' if 'negative' in intent else 'Leading'
+            result = (
+                self.client.table('ll_indicators')
+                .update(update_data)
+                .eq('id', program_id)
+                .eq('project_id', project_id)
+                .execute()
+            )
+            return bool(result.data)
+        except Exception as e:
+            print(f"[ERROR] Error updating OTP program: {e}")
+            return False
+
+    def delete_otp_program(self, program_id: str) -> bool:
+        """Delete OTP program and its monthly data."""
+        if not self.enabled:
+            return False
+        try:
+            self.client.table('otp_month_data').delete().eq('indicator_id', program_id).execute()
+            self.client.table('ll_indicators').delete().eq('id', program_id).execute()
+            return True
+        except Exception as e:
+            print(f"[ERROR] Error deleting OTP program: {e}")
+            return False
+
+    def create_otp_program(self, project_id: str, data: Dict) -> Optional[Dict]:
+        """Insert a new OTP program row and return created record."""
+        if not self.enabled:
+            return None
+        try:
+            payload = {
+                "project_id": project_id,
+                "name": data.get("name"),
+                "category": data.get("category", "Leading"),
+                "target": str(data.get("target", "0") or "0"),
+                "actual": "0",
+                "icon": data.get("icon", "📊"),
+                "intent": data.get("intent", "positive"),
+                "year": int(data.get("year") or 2025),
+                "month": None,
+                "sort_order": int(data.get("sort_order") or 0),
+                "updated_at": datetime.now().isoformat(),
+            }
+            result = self.client.table('ll_indicators').insert(payload).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            print(f"[ERROR] Error creating OTP program: {e}")
+            return None
+
     def save_otp_month_data(self, indicator_id: str, month: int, data: Dict) -> bool:
         """Upsert monthly data for an OTP indicator."""
         if not self.enabled:

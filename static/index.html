@@ -1150,6 +1150,50 @@
             opacity: 0.7;
         }
 
+        .otp-inline-input {
+            width: 100%;
+            min-width: 140px;
+            padding: 6px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 12px;
+        }
+
+        .otp-month-cell {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            padding: 4px;
+            min-width: 72px;
+        }
+
+        .otp-cell-input {
+            width: 100%;
+            padding: 3px 4px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 10px;
+            text-align: center;
+        }
+
+        .otp-cell-detail {
+            font-size: 10px;
+            padding: 2px 4px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            cursor: pointer;
+            text-decoration: underline;
+        }
+
+        .otp-cell-detail:hover {
+            color: var(--netflix-red);
+        }
+
         .ll-btn-add {
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.3);
@@ -3392,6 +3436,7 @@
     </div>
     <div class="modal-body">
         <form id="otp-add-form">
+            <input type="hidden" id="otp-add-category" value="Leading">
             <div class="form-group">
                 <label class="form-label">Program Name <span>*</span></label>
                 <input type="text" class="form-input" id="otp-add-name" placeholder="Enter program name" required>
@@ -6097,6 +6142,113 @@
         return result.programs || [];
     }
 
+    const otpSaveTimers = {};
+
+    function getOTPProjectContext(requireMonth) {
+        const ctx = getOtpLlSaveContext('otp', requireMonth);
+        if (!ctx) return null;
+        return ctx;
+    }
+
+    async function saveOTPProgramMeta(programId, field, value) {
+        const ctx = getOTPProjectContext(false);
+        if (!ctx || !programId) return;
+
+        const key = `meta-${programId}-${field}`;
+        clearTimeout(otpSaveTimers[key]);
+        otpSaveTimers[key] = setTimeout(async () => {
+            try {
+                const payload = { [field]: value, year: ctx.year };
+                const prog = otpProgramsCache.find(p => p.id === programId);
+                if (prog) {
+                    payload.category = prog.category;
+                    payload.intent = prog.intent || (prog.category === 'Lagging' ? 'negative' : 'positive');
+                }
+                const res = await fetch(`${API_BASE}/api/otp-programs/${ctx.projectId}/${programId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const body = await res.json().catch(() => ({}));
+                if (res.ok && body.status === 'success') {
+                    showToast('Program disimpan', 'success');
+                    const p = otpProgramsCache.find(x => x.id === programId);
+                    if (p) p[field] = value;
+                } else {
+                    showToast(body.detail || 'Gagal simpan program', 'error');
+                }
+            } catch (e) {
+                showToast('Gagal simpan: ' + e.message, 'error');
+            }
+        }, 400);
+    }
+    window.saveOTPProgramMeta = saveOTPProgramMeta;
+
+    async function saveOTPCellFromEl(inputEl) {
+        const cell = inputEl.closest('.otp-month-cell');
+        if (!cell) return;
+        const programId = cell.dataset.progId;
+        const month = parseInt(cell.dataset.month, 10);
+        const plan = parseInt(cell.querySelector('[data-field="plan"]')?.value) || 0;
+        const actual = parseInt(cell.querySelector('[data-field="actual"]')?.value) || 0;
+
+        const ctx = getOTPProjectContext(false);
+        if (!ctx || !programId || !month) return;
+
+        const key = `cell-${programId}-${month}`;
+        clearTimeout(otpSaveTimers[key]);
+        otpSaveTimers[key] = setTimeout(async () => {
+            try {
+                const prog = otpProgramsCache.find(p => p.id === programId);
+                const res = await fetch(`${API_BASE}/api/otp-programs/${ctx.projectId}/${programId}/month/${month}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        plan,
+                        actual,
+                        program_name: prog?.name || ''
+                    })
+                });
+                const body = await res.json().catch(() => ({}));
+                if (res.ok && body.status === 'success') {
+                    if (prog) {
+                        if (!prog.months) prog.months = {};
+                        prog.months[month] = { ...(prog.months[month] || {}), plan, actual };
+                    }
+                    showToast(`Bulan ${OTP_MONTH_LABELS[month - 1]} tersimpan`, 'success');
+                } else {
+                    showToast(body.detail || 'Gagal simpan sel', 'error');
+                }
+            } catch (e) {
+                showToast('Gagal simpan: ' + e.message, 'error');
+            }
+        }, 500);
+    }
+    window.saveOTPCellFromEl = saveOTPCellFromEl;
+
+    async function deleteOTPProgramRow(programId, programName) {
+        const ctx = getOTPProjectContext(false);
+        if (!ctx) return;
+        if (!confirm(`Hapus program "${programName}"? Data bulanan ikut terhapus.`)) return;
+
+        try {
+            showToast('Menghapus...', 'info');
+            const res = await fetch(`${API_BASE}/api/otp-programs/${ctx.projectId}/${programId}`, {
+                method: 'DELETE'
+            });
+            const body = await res.json().catch(() => ({}));
+            if (res.ok && body.status === 'success') {
+                showToast('Program dihapus', 'success');
+                renderOTPScreen();
+            } else {
+                showToast(body.detail || 'Gagal menghapus', 'error');
+            }
+        } catch (e) {
+            showToast('Gagal menghapus: ' + e.message, 'error');
+        }
+    }
+    window.deleteOTPProgramRow = deleteOTPProgramRow;
+
     function getOTPCellStyle(plan, actual) {
         plan = parseInt(plan) || 0;
         actual = parseInt(actual) || 0;
@@ -6128,15 +6280,10 @@
             content.innerHTML = '<div class="ll-empty">Pilih proyek terlebih dahulu untuk melihat OTP.</div>';
             return;
         }
-        if (!month) {
-            content.innerHTML = '<div class="ll-empty">Pilih bulan (Januari–Desember) untuk melihat dan menyimpan data OTP.</div>';
-            return;
-        }
-
         content.innerHTML = '<div class="ll-empty">Memuat data OTP...</div>';
 
         try {
-            const filterMonth = parseInt(month, 10);
+            const filterMonth = month ? parseInt(month, 10) : 0;
             let programs = await fetchOtpPrograms(projectId, year);
             if (!programs.length) {
                 await fetch(`${API_BASE}/api/ll-indicators/${projectId}?year=${year}&month=${filterMonth}`);
@@ -6155,77 +6302,84 @@
             document.getElementById('otp-stat-progress').textContent = inProgress;
             document.getElementById('otp-stat-avg').textContent = avgProgress + '%';
 
-            if (programs.length === 0) {
-                content.innerHTML = '<div class="ll-empty">Belum ada program OTP untuk proyek dan tahun ini. Buka halaman <b>LL Indicator</b> dengan filter yang sama lalu tambah indikator, atau pilih tahun lain.</div>';
-                return;
-            }
-
             // Split by category and sort
             const lagging = programs.filter(p => p.category === 'Lagging').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
             const leading = programs.filter(p => p.category !== 'Lagging').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
             function renderOTPCategoryTable(items, catLabel, catColor) {
-                if (items.length === 0) return '';
+                const catKey = catLabel;
                 let h = `<div style="margin-bottom:20px;">
-                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
+                        <div style="display:flex;align-items:center;gap:10px;">
                         <div style="width:4px;height:24px;background:${catColor};border-radius:2px;"></div>
                         <h3 style="margin:0;font-size:15px;font-weight:600;">${catLabel} Indicators</h3>
                         <span style="font-size:12px;color:var(--text-muted);">(${items.length})</span>
+                        </div>
+                        <button type="button" class="ll-btn-add" onclick="openOTPAddProgram('${catKey}')">+ Tambah Baris</button>
                     </div>
+                    <p style="font-size:11px;color:var(--text-muted);margin:0 0 8px;">Edit langsung di tabel — perubahan tersimpan otomatis. Klik Detail untuk PIC & tanggal.</p>
                     <div style="overflow-x:auto; border-radius:12px; border:1px solid var(--border);">
-                    <table class="ll-table" style="min-width:1200px; border-collapse: separate; border-spacing: 0;">
+                    <table class="ll-table" style="min-width:1280px; border-collapse: separate; border-spacing: 0;">
                         <thead><tr>
                             <th style="width:40px; position:sticky;left:0;z-index:10;background:#1f1f1f; border-bottom: 1px solid var(--border);">#</th>
-                            <th style="min-width:200px; position:sticky;left:40px;z-index:10;background:#1f1f1f; border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.3); border-bottom: 1px solid var(--border);">Indicator</th>
-                            <th style="width:70px; border-bottom: 1px solid var(--border);">Target</th>
+                            <th style="min-width:180px; position:sticky;left:40px;z-index:10;background:#1f1f1f; border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.3); border-bottom: 1px solid var(--border);">Indicator</th>
+                            <th style="width:90px; position:sticky;left:220px;z-index:10;background:#1f1f1f; border-right: 2px solid var(--border); border-bottom: 1px solid var(--border);">Target</th>
                             ${OTP_MONTH_LABELS.map((m, i) => {
                                 const colMonth = i + 1;
-                                const isFilterCol = colMonth === filterMonth;
-                                return '<th style="width:70px;text-align:center;border-bottom:1px solid var(--border);' +
-                                    (isFilterCol ? 'background:rgba(229,9,20,0.25);color:var(--netflix-red);' : '') + '">' + m + '</th>';
+                                const isFilterCol = filterMonth && colMonth === filterMonth;
+                                return '<th style="width:76px;text-align:center;border-bottom:1px solid var(--border);' +
+                                    (isFilterCol ? 'background:rgba(229,9,20,0.25);color:var(--netflix-red);' : '') + '">' + m + '<br><span style="font-size:9px;font-weight:400;">A/P</span></th>';
                             }).join('')}
-                            <th style="width:100px;text-align:center; border-bottom: 1px solid var(--border);">Progress</th>
+                            <th style="width:72px;text-align:center; border-bottom: 1px solid var(--border);">Progress</th>
+                            <th style="width:56px;text-align:center; border-bottom: 1px solid var(--border);">Aksi</th>
                         </tr></thead>
                         <tbody>`;
 
+                if (items.length === 0) {
+                    h += `<tr><td colspan="16" style="text-align:center;padding:16px;color:var(--text-muted);border-bottom:1px solid var(--border);">Belum ada baris. Klik <b>+ Tambah Baris</b>.</td></tr>`;
+                }
+
                 items.forEach((prog, idx) => {
                     const progColor = (prog.progress || 0) >= 100 ? '#27ae60' : (prog.progress || 0) >= 50 ? '#f39c12' : '#e74c3c';
-                    h += `<tr>
-                        <td style="position:sticky;left:0;background:#1f1f1f;z-index:5;text-align:center;font-weight:600; border-bottom: 1px solid var(--border);">${idx + 1}</td>
-                        <td style="position:sticky;left:40px;background:#1f1f1f;z-index:5;border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.3); border-bottom: 1px solid var(--border);">
-                            <div style="display:flex;align-items:center;gap:6px;">
-                                <span style="font-size:16px;">${prog.icon || '📊'}</span>
-                                <div style="font-weight:500;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(prog.name || '').replace(/"/g, '&quot;')}">${prog.name || '-'}</div>
-                            </div>
+                    const safeName = (prog.name || '').replace(/"/g, '&quot;');
+                    const pid = prog.id;
+                    h += `<tr data-otp-id="${pid}">
+                        <td style="position:sticky;left:0;background:#1f1f1f;z-index:5;text-align:center;font-weight:600;border-bottom:1px solid var(--border);">${idx + 1}</td>
+                        <td style="position:sticky;left:40px;background:#1f1f1f;z-index:5;border-right:2px solid var(--border);box-shadow:4px 0 8px rgba(0,0,0,0.3);border-bottom:1px solid var(--border);padding:4px;">
+                            <input class="otp-inline-input" type="text" value="${safeName}" title="${safeName}"
+                                onblur="saveOTPProgramMeta('${pid}', 'name', this.value)" onclick="event.stopPropagation();">
                         </td>
-                        <td style="text-align:center;font-weight:500;font-size:12px; border-bottom: 1px solid var(--border);">${prog.target || '-'}</td>`;
+                        <td style="position:sticky;left:220px;background:#1f1f1f;z-index:5;border-right:2px solid var(--border);border-bottom:1px solid var(--border);padding:4px;">
+                            <input class="otp-inline-input" type="text" value="${(prog.target || '').replace(/"/g, '&quot;')}"
+                                onblur="saveOTPProgramMeta('${pid}', 'target', this.value)" onclick="event.stopPropagation();">
+                        </td>`;
 
                     for (let m = 1; m <= 12; m++) {
                         const md = prog.months?.[m] || prog.months?.[String(m)] || { plan: 0, actual: 0 };
-                        const plan = parseInt(md.plan) || 0, actual = parseInt(md.actual) || 0;
-                        const style = getOTPCellStyle(plan, actual);
-                        const isEmpty = plan === 0 && actual === 0;
-                        const wpts = md.wpts_id || '';
-                        const isFilterCol = m === filterMonth;
-                        const cellBorder = isFilterCol ? '2px solid var(--netflix-red)' : style.border;
-                        h += `<td style="padding:4px;border-bottom:1px solid var(--border);${isFilterCol ? 'background:rgba(229,9,20,0.08);' : ''}">
-                            <div onclick="openOTPEditModal('${prog.id}', ${m}, '${(prog.name || '').replace(/'/g, "\\'")}')"
-                                 style="cursor:pointer;width:60px;height:44px;margin:auto;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:600;font-size:10px;background:${style.bg};color:${style.color};border:${cellBorder};transition:transform 0.15s;"
-                                 onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"
-                                 title="Plan: ${plan} | Actual: ${actual}${md.plan_date ? ' | Date: ' + md.plan_date : ''}">
-                                <span>${isEmpty ? '-' : actual + '/' + plan}</span>
-                                ${wpts ? '<span style="font-size:7px;color:#27ae60;">' + wpts + '</span>' : ''}
+                        const plan = parseInt(md.plan) || 0;
+                        const actual = parseInt(md.actual) || 0;
+                        const isFilterCol = filterMonth && m === filterMonth;
+                        h += `<td style="padding:2px;border-bottom:1px solid var(--border);vertical-align:top;${isFilterCol ? 'background:rgba(229,9,20,0.08);' : ''}">
+                            <div class="otp-month-cell" data-prog-id="${pid}" data-month="${m}" onclick="event.stopPropagation();">
+                                <input type="number" min="0" class="otp-cell-input" data-field="actual" value="${actual}" placeholder="A"
+                                    onchange="saveOTPCellFromEl(this)">
+                                <input type="number" min="0" class="otp-cell-input" data-field="plan" value="${plan}" placeholder="P"
+                                    onchange="saveOTPCellFromEl(this)">
+                                <button type="button" class="otp-cell-detail" onclick="openOTPEditModal('${pid}', ${m}, '${(prog.name || '').replace(/'/g, "\\'")}')">Detail</button>
                             </div>
                         </td>`;
                     }
 
-                    h += `<td style="padding:8px; border-bottom: 1px solid var(--border);">
+                    h += `<td style="padding:8px;border-bottom:1px solid var(--border);vertical-align:middle;">
                         <div style="display:flex;align-items:center;gap:4px;">
                             <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;">
-                                <div style="width:${prog.progress || 0}%;height:100%;background:${progColor};border-radius:3px;transition:width 0.5s;"></div>
+                                <div style="width:${prog.progress || 0}%;height:100%;background:${progColor};border-radius:3px;"></div>
                             </div>
-                            <span style="font-size:10px;font-weight:600;width:32px;text-align:right;">${prog.progress || 0}%</span>
+                            <span style="font-size:10px;font-weight:600;">${prog.progress || 0}%</span>
                         </div>
+                    </td>
+                    <td style="text-align:center;border-bottom:1px solid var(--border);vertical-align:middle;">
+                        <button type="button" class="ll-action-btn" title="Hapus" onclick="event.stopPropagation();deleteOTPProgramRow('${pid}', '${(prog.name || '').replace(/'/g, "\\'")}')">🗑️</button>
                     </td></tr>`;
                 });
 
@@ -6233,10 +6387,8 @@
                 return h;
             }
 
-            let html = renderOTPCategoryTable(lagging, 'Lagging', '#e74c3c');
-            html += renderOTPCategoryTable(leading, 'Leading', '#3498db');
-
-            content.innerHTML = html;
+            content.innerHTML = renderOTPCategoryTable(lagging, 'Lagging', '#e74c3c') +
+                renderOTPCategoryTable(leading, 'Leading', '#3498db');
         } catch (e) {
             console.error('Error rendering OTP screen:', e);
             content.innerHTML = '<div class="ll-empty">Gagal memuat data OTP.</div>';
@@ -6271,6 +6423,7 @@
 
         document.getElementById('otp-edit-modal').classList.add('active');
     }
+    window.openOTPEditModal = openOTPEditModal;
 
     function updateOTPEmailCheckbox() {
         const planDate = document.getElementById('otp-edit-plan-date').value;
@@ -6329,35 +6482,39 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            if (res.ok) {
+            const body = await res.json().catch(() => ({}));
+            if (res.ok && body.status === 'success') {
                 showToast(payload.send_email ? 'Tersimpan & email terkirim' : 'Tersimpan', 'success');
                 closeOTPEditModal();
                 renderOTPScreen();
             } else {
-                showToast('Gagal simpan', 'error');
+                showToast(body.detail || 'Gagal simpan', 'error');
             }
         } catch (e) {
-            showToast('Gagal simpan', 'error');
+            showToast('Gagal simpan: ' + e.message, 'error');
         }
     }
 
-    function openOTPAddProgram() {
+    function openOTPAddProgram(category) {
+        document.getElementById('otp-add-category').value = category || 'Leading';
         document.getElementById('otp-add-name').value = '';
         document.getElementById('otp-add-guidance').value = '';
         document.getElementById('otp-add-plan-type').value = 'Annually';
         document.getElementById('otp-add-due-date').value = '';
         document.getElementById('otp-add-modal').classList.add('active');
     }
+    window.openOTPAddProgram = openOTPAddProgram;
 
     function closeOTPAddModal() {
         document.getElementById('otp-add-modal').classList.remove('active');
     }
 
     async function submitOTPAddProgram() {
-        const ctx = getOtpLlSaveContext('otp', true);
+        const ctx = getOtpLlSaveContext('otp', false);
         if (!ctx) return;
         const projectId = ctx.projectId;
-        const name = document.getElementById('otp-add-name').value;
+        const name = document.getElementById('otp-add-name').value.trim();
+        const category = document.getElementById('otp-add-category').value || 'Leading';
 
         if (!name) {
             showToast('Masukkan nama program', 'error');
@@ -6365,12 +6522,11 @@
         }
 
         const payload = {
-            name: name,
-            guidance: document.getElementById('otp-add-guidance').value,
-            plan_type: document.getElementById('otp-add-plan-type').value,
-            due_date: document.getElementById('otp-add-due-date').value,
+            name,
+            category,
+            intent: category === 'Lagging' ? 'negative' : 'positive',
+            target: '0',
             year: ctx.year,
-            month: ctx.month,
             sort_order: otpProgramsCache.length
         };
 
@@ -6381,32 +6537,20 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            if (res.ok) {
+            const body = await res.json().catch(() => ({}));
+            if (res.ok && body.status === 'success') {
                 showToast('Program ditambahkan', 'success');
                 closeOTPAddModal();
                 renderOTPScreen();
             } else {
-                showToast('Gagal menambah', 'error');
+                showToast(body.detail || 'Gagal menambah', 'error');
             }
         } catch (e) {
-            showToast('Gagal menambah', 'error');
+            showToast('Gagal menambah: ' + e.message, 'error');
         }
     }
 
-    async function deleteOTPProgram(programId, programName) {
-        if (!confirm(`Hapus program "${programName}"? Semua data bulanan akan ikut terhapus.`)) return;
-        try {
-            const res = await fetch(`${API_BASE}/api/otp-programs/${programId}`, { method: 'DELETE' });
-            if (res.ok) {
-                showToast('Program terhapus', 'success');
-                renderOTPScreen();
-            } else {
-                showToast('Gagal menghapus', 'error');
-            }
-        } catch (e) {
-            showToast('Gagal menghapus', 'error');
-        }
-    }
+    window.deleteOTPProgram = deleteOTPProgramRow;
 
     function exportOTPCSV() {
         const ctx = getOtpLlSaveContext('otp', true);
