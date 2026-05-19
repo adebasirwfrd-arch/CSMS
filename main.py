@@ -476,6 +476,8 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
 
     if client_id and product_line_id:
         from services.master_data_drive import resolve_template_source_folder
+        from database import get_client, get_product_line
+        from services.template_naming import build_project_display_name
 
         tpl_id, tpl_name = resolve_template_source_folder(client_id, product_line_id)
         if not tpl_id:
@@ -486,6 +488,19 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
                     f"halaman Master Data (Client + Product Line → Buat Folder Template). "
                     f"Expected folder: {tpl_name or 'CLIENTNAME_PRODUCTLINE'}"
                 ),
+            )
+
+        # List + Drive folder use CLIENT_PRODUCTLINE_PROJECT (not short code alone)
+        short_name = (payload.get("name") or "").strip()
+        client = get_client(client_id)
+        pl = get_product_line(product_line_id)
+        if client and pl and short_name:
+            payload["name"] = build_project_display_name(
+                client["name"], pl["name"], short_name
+            )
+            log_info(
+                "MAIN",
+                f"Project display name: {payload['name']} (from short '{short_name}')",
             )
 
     # 1. Create in DB (fast local write + background Supabase sync)
