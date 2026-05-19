@@ -172,10 +172,18 @@ class ScheduleCreate(BaseModel):
     project_id: str
     project_name: str
     well_name: str
-    schedule_type: str = "mwt"  # mwt, hse, or csms
+    schedule_type: str = "mwt"
+    client_id: Optional[int] = None
+    product_line_id: Optional[int] = None
     mwt_plan_date: Optional[str] = None
     hse_meeting_date: Optional[str] = None
     csms_pb_date: Optional[str] = None
+    hseplan_date: Optional[str] = None
+    spr_date: Optional[str] = None
+    hazid_date: Optional[str] = None
+    csms_psb_date: Optional[str] = None
+    stratim_date: Optional[str] = None
+    risk_register_date: Optional[str] = None
     pic_name: str
     assigned_to_email: str
 
@@ -2020,7 +2028,10 @@ def get_statistics():
     # Count all schedule types for this month
     this_month_count = 0
     for s in schedules:
-        for field in ['mwt_plan_date', 'hse_meeting_date', 'csms_pb_date', 'hseplan_date', 'spr_date', 'hazid_date']:
+        for field in [
+            'mwt_plan_date', 'hse_meeting_date', 'csms_pb_date', 'hseplan_date', 'spr_date', 'hazid_date',
+            'csms_psb_date', 'stratim_date', 'risk_register_date',
+        ]:
             date_val = safe_parse_date(s.get(field))
             if date_val and date_val.month == today.month and date_val.year == today.year:
                 this_month_count += 1

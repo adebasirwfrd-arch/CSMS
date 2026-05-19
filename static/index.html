@@ -2331,17 +2331,39 @@
                         <div class="schedule-type-chip" data-type="hazid" onclick="selectScheduleType('hazid')">
                             <span data-i18n="hazidHazop">⚠️ HAZID/HAZOP</span>
                         </div>
+                        <div class="schedule-type-chip" data-type="csmspsb" onclick="selectScheduleType('csmspsb')">
+                            <span>✅ CSMS PSB</span>
+                        </div>
+                        <div class="schedule-type-chip" data-type="stratim" onclick="selectScheduleType('stratim')">
+                            <span>📋 STRATIM Meeting</span>
+                        </div>
+                        <div class="schedule-type-chip" data-type="riskregister" onclick="selectScheduleType('riskregister')">
+                            <span>📊 Risk Register Meeting</span>
+                        </div>
                     </div>
                     <input type="hidden" name="schedule_type" id="schedule-type-input" value="mwt">
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label"><span data-i18n="client">Client</span> <span>*</span></label>
+                    <select class="form-input" id="schedule-form-client-select" onchange="onScheduleFormFilterChange()" required>
+                        <option value="">Pilih Client</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Product Line <span>*</span></label>
+                    <select class="form-input" id="schedule-form-product-line-select" onchange="onScheduleFormFilterChange()" required>
+                        <option value="">Pilih Product Line</option>
+                    </select>
+                </div>
                 <!-- Project Name - Dropdown -->
                 <div class="form-group">
                     <label class="form-label"><span data-i18n="projectName">Project Name</span> <span>*</span></label>
                     <select class="form-input" name="project_id" id="schedule-project-select" required
-                        style="cursor: pointer;">
+                        onchange="onScheduleProjectChange(this.value)" style="cursor: pointer;">
                         <option value="" data-i18n="selectAProject">Select a project</option>
                     </select>
+                    <p id="schedule-project-filter-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;"></p>
                 </div>
 
                 <!-- Well Name -->
@@ -2422,6 +2444,39 @@
                         <svg viewBox="0 0 24 24" fill="currentColor">
                             <path
                                 d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- CSMS PSB Date -->
+                <div class="form-group schedule-date-field" id="csmspsb-date-group" style="display: none;">
+                    <label class="form-label">CSMS PSB Date <span>*</span></label>
+                    <div class="date-input-wrap">
+                        <input type="date" class="form-input" name="csms_psb_date" id="csmspsb-date-input">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- STRATIM Meeting Date -->
+                <div class="form-group schedule-date-field" id="stratim-date-group" style="display: none;">
+                    <label class="form-label">STRATIM Meeting Date <span>*</span></label>
+                    <div class="date-input-wrap">
+                        <input type="date" class="form-input" name="stratim_date" id="stratim-date-input">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Risk Register Meeting Date -->
+                <div class="form-group schedule-date-field" id="riskregister-date-group" style="display: none;">
+                    <label class="form-label">Risk Register Meeting Date <span>*</span></label>
+                    <div class="date-input-wrap">
+                        <input type="date" class="form-input" name="risk_register_date" id="riskregister-date-input">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11z" />
                         </svg>
                     </div>
                 </div>
@@ -2754,10 +2809,24 @@
 
             <form id="related-doc-form">
                 <div class="form-group">
+                    <label class="form-label"><span data-i18n="client">Client</span> <span>*</span></label>
+                    <select class="form-input" id="doc-form-client-select" onchange="onDocFormFilterChange()" required>
+                        <option value="">Pilih Client</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Product Line <span>*</span></label>
+                    <select class="form-input" id="doc-form-product-line-select" onchange="onDocFormFilterChange()" required>
+                        <option value="">Pilih Product Line</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label class="form-label"><span data-i18n="projectName">Project Name</span> <span>*</span></label>
-                    <select class="form-input" name="project_id" id="doc-project-select" required>
+                    <select class="form-input" name="project_id" id="doc-project-select"
+                        onchange="onDocProjectChange(this.value)" required>
                         <option value="">Select Project</option>
                     </select>
+                    <p id="doc-project-filter-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;"></p>
                 </div>
 
                 <div class="form-group">
@@ -5866,6 +5935,8 @@
                 populateProjectListFilters();
                 populateOtpLlFormFilters('otp').catch(e => console.error('[loadData] otp filters:', e));
                 populateOtpLlFormFilters('ll').catch(e => console.error('[loadData] ll filters:', e));
+                populateDocFormFilters().catch(e => console.error('[loadData] doc filters:', e));
+                populateScheduleFormFilters().catch(e => console.error('[loadData] schedule filters:', e));
             } else {
                 console.error('[loadData] Projects fetch failed:', projectsRes.status);
             }
@@ -7975,20 +8046,15 @@
     }
 
     function updateScheduleTypeCounts() {
-        const typeCounts = {
-            mwt: 0, hse: 0, csms: 0, hseplan: 0, spr: 0, hazid: 0
-        };
+        const typeCounts = Object.fromEntries(Object.keys(SCHEDULE_TYPE_REGISTRY).map(k => [k, 0]));
         const today = new Date();
 
         allSchedules.forEach(s => {
             const type = s.schedule_type || 'mwt';
-            const dateField = {
-                mwt: 'mwt_plan_date', hse: 'hse_meeting_date', csms: 'csms_pb_date',
-                hseplan: 'hseplan_date', spr: 'spr_date', hazid: 'hazid_date'
-            }[type];
-
+            const dateField = SCHEDULE_TYPE_REGISTRY[type]?.dateField;
+            if (!dateField) return;
             const date = new Date(s[dateField] || s.mwt_plan_date);
-            if (date >= today) {
+            if (date >= today && typeCounts[type] !== undefined) {
                 typeCounts[type]++;
             }
         });
@@ -8333,14 +8399,11 @@
         const container = document.getElementById('schedule-bar-chart');
         if (!container) return;
 
-        const types = [
-            { key: 'mwt', labelKey: 'mwtShort', color: '#3498db' },
-            { key: 'hse', labelKey: 'hseShort', color: '#9b59b6' },
-            { key: 'csms', labelKey: 'csmsShort', color: '#27ae60' },
-            { key: 'hseplan', labelKey: 'hsePlanShort', color: '#e67e22' },
-            { key: 'spr', labelKey: 'sprShort', color: '#1abc9c' },
-            { key: 'hazid', labelKey: 'hazidShort', color: '#e74c3c' }
-        ];
+        const types = Object.entries(SCHEDULE_TYPE_REGISTRY).map(([key, cfg]) => ({
+            key,
+            label: cfg.label.replace(/^[^\s]+\s/, ''),
+            color: cfg.color
+        }));
 
         const counts = types.map(t => ({
             ...t,
@@ -8355,7 +8418,7 @@
                 <div style="width: 100%; max-width: 40px; background: linear-gradient(180deg, ${item.color}, ${item.color}88); 
                      border-radius: 4px 4px 0 0; height: ${(item.count / maxCount) * 140}px; min-height: 8px; 
                      transition: height 0.5s; box-shadow: 0 2px 8px ${item.color}44;"></div>
-                <div style="font-size: 9px; color: var(--text-muted); margin-top: 6px; text-align: center;">${t(item.labelKey)}</div>
+                <div style="font-size: 9px; color: var(--text-muted); margin-top: 6px; text-align: center;">${item.label}</div>
             </div>
         `).join('');
     }
@@ -8413,7 +8476,7 @@
 
         // Count schedules per month
         allSchedules.forEach(s => {
-            const dateFields = ['mwt_plan_date', 'hse_meeting_date', 'csms_pb_date', 'hseplan_date', 'spr_date', 'hazid_date'];
+            const dateFields = Object.values(SCHEDULE_TYPE_REGISTRY).map(c => c.dateField);
             for (const field of dateFields) {
                 if (s[field]) {
                     const d = new Date(s[field]);
@@ -8739,6 +8802,18 @@
     // ===== SCHEDULES =====
     let allSchedules = [];
 
+    const SCHEDULE_TYPE_REGISTRY = {
+        mwt: { label: '📅 MWT Plan', dateField: 'mwt_plan_date', color: '#3498db', formLabel: 'MWT Plan Date' },
+        hse: { label: '🏢 HSE Committee', dateField: 'hse_meeting_date', color: '#9b59b6', formLabel: 'HSE Committee Meeting Date' },
+        csms: { label: '✅ CSMS PB Audit', dateField: 'csms_pb_date', color: '#27ae60', formLabel: 'CSMS PB Audit Date' },
+        hseplan: { label: '📋 HSE Plan Meeting', dateField: 'hseplan_date', color: '#e67e22', formLabel: 'HSE Plan Meeting Date' },
+        spr: { label: '📊 SPR Meeting', dateField: 'spr_date', color: '#1abc9c', formLabel: 'SPR Meeting Date' },
+        hazid: { label: '⚠️ HAZID/HAZOP', dateField: 'hazid_date', color: '#e74c3c', formLabel: 'HAZID/HAZOP Meeting Date' },
+        csmspsb: { label: '✅ CSMS PSB', dateField: 'csms_psb_date', color: '#16a085', formLabel: 'CSMS PSB Date' },
+        stratim: { label: '📋 STRATIM Meeting', dateField: 'stratim_date', color: '#8e44ad', formLabel: 'STRATIM Meeting Date' },
+        riskregister: { label: '📊 Risk Register Meeting', dateField: 'risk_register_date', color: '#c0392b', formLabel: 'Risk Register Meeting Date' }
+    };
+
     async function loadSchedules() {
         try {
             const res = await fetch(`${API_BASE}/schedules`);
@@ -8757,14 +8832,9 @@
         const container = document.getElementById('upcoming-schedules-list');
         if (!container) return;
 
-        const typeConfig = {
-            mwt: { label: '📅 MWT Plan', field: 'mwt_plan_date', color: '#3498db' },
-            hse: { label: '🏢 HSE Committee', field: 'hse_meeting_date', color: '#9b59b6' },
-            csms: { label: '✅ CSMS PB Audit', field: 'csms_pb_date', color: '#27ae60' },
-            hseplan: { label: '📋 HSE Plan Meeting', field: 'hseplan_date', color: '#e67e22' },
-            spr: { label: '📊 SPR Meeting', field: 'spr_date', color: '#1abc9c' },
-            hazid: { label: '⚠️ HAZID/HAZOP', field: 'hazid_date', color: '#e74c3c' }
-        };
+        const typeConfig = Object.fromEntries(
+            Object.entries(SCHEDULE_TYPE_REGISTRY).map(([k, v]) => [k, { label: v.label, field: v.dateField, color: v.color }])
+        );
 
         if (allSchedules.length === 0) {
             container.innerHTML = '<p style="color: var(--text-muted); text-align: center;">No schedules created yet</p>';
@@ -8815,32 +8885,110 @@
         container.innerHTML = html || '<p style="color: var(--text-muted); text-align: center;">No schedules created yet</p>';
     }
 
-    function populateProjectDropdown() {
+    function getScheduleFormFilterValues() {
+        return {
+            clientId: document.getElementById('schedule-form-client-select')?.value || '',
+            productLineId: document.getElementById('schedule-form-product-line-select')?.value || ''
+        };
+    }
+
+    function getProjectsForScheduleForm() {
+        const { clientId, productLineId } = getScheduleFormFilterValues();
+        let list = [...allProjects];
+        if (clientId) list = list.filter(p => String(p.client_id) === String(clientId));
+        if (productLineId) list = list.filter(p => String(p.product_line_id) === String(productLineId));
+        return sortProjectsNewestFirst(list);
+    }
+
+    function refreshScheduleProjectSelect(keepProjectId) {
         const select = document.getElementById('schedule-project-select');
+        const hint = document.getElementById('schedule-project-filter-hint');
         if (!select) return;
 
-        // Clear existing options except first
-        select.innerHTML = '<option value="">Select a project</option>';
+        const { clientId, productLineId } = getScheduleFormFilterValues();
+        const list = getProjectsForScheduleForm();
+        const placeholder = t('selectProject') || 'Pilih Proyek';
 
-        // Add projects
-        allProjects.forEach(p => {
-            const option = document.createElement('option');
-            option.value = p.id;
-            option.textContent = p.name;
-            option.dataset.projectName = p.name;
-            select.appendChild(option);
-        });
+        select.innerHTML = `<option value="">${placeholder}</option>` +
+            list.map(p => `<option value="${p.id}" data-project-name="${(p.name || '').replace(/"/g, '&quot;')}">${p.name}</option>`).join('');
+
+        const preserveId = keepProjectId || select.value;
+        if (preserveId && list.some(p => p.id === preserveId)) {
+            select.value = preserveId;
+        }
+
+        if (hint) {
+            if (!clientId || !productLineId) {
+                hint.textContent = 'Pilih Client dan Product Line untuk memfilter daftar proyek.';
+            } else if (list.length === 0) {
+                hint.textContent = 'Tidak ada proyek untuk kombinasi Client + Product Line ini.';
+            } else {
+                hint.textContent = `${list.length} proyek tersedia (terbaru di atas).`;
+            }
+        }
     }
+
+    async function populateScheduleFormFilters() {
+        try {
+            await reloadMasterDataCaches();
+            fillSelectOptions(document.getElementById('schedule-form-client-select'), cachedClients, 'Pilih Client');
+            fillSelectOptions(document.getElementById('schedule-form-product-line-select'), cachedProductLines, 'Pilih Product Line');
+        } catch (e) {
+            console.error('[Schedule] populate filters:', e);
+        }
+    }
+
+    function onScheduleFormFilterChange() {
+        refreshScheduleProjectSelect();
+        const select = document.getElementById('schedule-project-select');
+        if (select && select.value) {
+            onScheduleProjectChange(select.value);
+        } else {
+            const wellInput = document.querySelector('#schedule-form [name="well_name"]');
+            if (wellInput) wellInput.value = '';
+        }
+    }
+    window.onScheduleFormFilterChange = onScheduleFormFilterChange;
+
+    function onScheduleProjectChange(projectId) {
+        const project = allProjects.find(p => p.id === projectId);
+        const wellInput = document.querySelector('#schedule-form [name="well_name"]');
+        if (wellInput) {
+            wellInput.value = project ? (project.well_name || project.well || '') : '';
+        }
+        if (project) {
+            const clientSel = document.getElementById('schedule-form-client-select');
+            const plSel = document.getElementById('schedule-form-product-line-select');
+            if (clientSel && project.client_id != null) clientSel.value = String(project.client_id);
+            if (plSel && project.product_line_id != null) plSel.value = String(project.product_line_id);
+            refreshScheduleProjectSelect(projectId);
+        }
+    }
+    window.onScheduleProjectChange = onScheduleProjectChange;
 
     async function createSchedule() {
         const form = document.getElementById('schedule-form');
         const selectEl = document.getElementById('schedule-project-select');
         const selectedOption = selectEl.options[selectEl.selectedIndex];
         const scheduleType = document.getElementById('schedule-type-input').value;
+        const { clientId, productLineId } = getScheduleFormFilterValues();
 
-        // Validate required fields
+        if (!clientId || !productLineId) {
+            showToast('Pilih Client dan Product Line', 'error');
+            return;
+        }
         if (!form.project_id.value) {
-            showToast('Please select a project', 'error');
+            showToast('Pilih proyek untuk kombinasi Client + Product Line ini', 'error');
+            return;
+        }
+
+        const project = allProjects.find(p => p.id === form.project_id.value);
+        if (
+            project &&
+            (String(project.client_id) !== String(clientId) ||
+                String(project.product_line_id) !== String(productLineId))
+        ) {
+            showToast('Proyek tidak sesuai dengan Client / Product Line yang dipilih', 'error');
             return;
         }
         if (!form.well_name.value) {
@@ -8856,20 +9004,10 @@
             return;
         }
 
-        // Date field mapping
-        const dateFieldMap = {
-            mwt: { field: 'mwt_plan_date', label: 'MWT Plan Date' },
-            hse: { field: 'hse_meeting_date', label: 'HSE Committee Meeting Date' },
-            csms: { field: 'csms_pb_date', label: 'CSMS PB Audit Date' },
-            hseplan: { field: 'hseplan_date', label: 'HSE Plan Meeting Date' },
-            spr: { field: 'spr_date', label: 'SPR Meeting Date' },
-            hazid: { field: 'hazid_date', label: 'HAZID/HAZOP Meeting Date' }
-        };
-
-        // Validate the selected date field
-        const dateConfig = dateFieldMap[scheduleType];
-        if (dateConfig && !form[dateConfig.field]?.value) {
-            showToast(`Please select ${dateConfig.label}`, 'error');
+        const typeMeta = SCHEDULE_TYPE_REGISTRY[scheduleType];
+        const dateField = typeMeta?.dateField;
+        if (dateField && !form[dateField]?.value) {
+            showToast(`Please select ${typeMeta.formLabel}`, 'error');
             return;
         }
 
@@ -8878,26 +9016,16 @@
             project_name: selectedOption.dataset.projectName || selectedOption.text,
             well_name: form.well_name.value,
             schedule_type: scheduleType,
-            mwt_plan_date: form.mwt_plan_date?.value || null,
-            hse_meeting_date: form.hse_meeting_date?.value || null,
-            csms_pb_date: form.csms_pb_date?.value || null,
-            hseplan_date: form.hseplan_date?.value || null,
-            spr_date: form.spr_date?.value || null,
-            hazid_date: form.hazid_date?.value || null,
+            client_id: clientId ? parseInt(clientId, 10) : null,
+            product_line_id: productLineId ? parseInt(productLineId, 10) : null,
             pic_name: form.pic_name.value,
             assigned_to_email: form.assigned_to_email.value
         };
+        Object.values(SCHEDULE_TYPE_REGISTRY).forEach(cfg => {
+            data[cfg.dateField] = form[cfg.dateField]?.value || null;
+        });
 
-        // Get the schedule type label for the success message
-        const typeLabels = {
-            mwt: 'MWT Plan',
-            hse: 'HSE Committee Meeting',
-            csms: 'CSMS PB Audit',
-            hseplan: 'HSE Plan Meeting',
-            spr: 'SPR Meeting',
-            hazid: 'HAZID/HAZOP Meeting'
-        };
-        const typeLabel = typeLabels[scheduleType] || scheduleType;
+        const typeLabel = typeMeta?.label?.replace(/^[^\s]+\s/, '') || scheduleType;
 
         try {
             const res = await fetch(`${API_BASE}/schedules`, {
@@ -8910,8 +9038,11 @@
                 showToast(`${typeLabel} schedule created successfully!`, 'success');
                 form.reset();
                 form.pic_name.value = 'ADE';
-                // Reset to MWT type
+                const hint = document.getElementById('schedule-project-filter-hint');
+                if (hint) hint.textContent = '';
                 selectScheduleType('mwt');
+                await populateScheduleFormFilters();
+                refreshScheduleProjectSelect();
                 await loadSchedules(); // Wait for schedules to reload
                 renderUpcomingSchedules(); // Update upcoming schedules list
                 updateStatistics(); // Refresh statistics dashboard
@@ -9072,7 +9203,7 @@
         // Load specific screen data
         if (screen === 'statistics') updateStatistics();
         if (screen === 'schedule') {
-            populateProjectDropdown();
+            populateScheduleFormFilters().then(() => refreshScheduleProjectSelect());
             loadSchedules();
         }
         if (screen === 'csms-pb') {
@@ -9080,7 +9211,7 @@
             loadPBRecords();
         }
         if (screen === 'related-docs') {
-            populateDocProjectDropdown();
+            populateDocFormFilters().then(() => refreshDocProjectSelect());
             loadRelatedDocs();
         }
     }
@@ -9460,24 +9591,130 @@
     }
 
     // ===== Related Docs Functions =====
-    function populateDocProjectDropdown() {
-        const select = document.getElementById('doc-project-select');
-        select.innerHTML = '<option value="">Select Project</option>' +
-            allProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    function getDocFormFilterValues() {
+        return {
+            clientId: document.getElementById('doc-form-client-select')?.value || '',
+            productLineId: document.getElementById('doc-form-product-line-select')?.value || ''
+        };
     }
+
+    function getProjectsForDocForm() {
+        const { clientId, productLineId } = getDocFormFilterValues();
+        let list = [...allProjects];
+        if (clientId) {
+            list = list.filter(p => String(p.client_id) === String(clientId));
+        }
+        if (productLineId) {
+            list = list.filter(p => String(p.product_line_id) === String(productLineId));
+        }
+        return sortProjectsNewestFirst(list);
+    }
+
+    function refreshDocProjectSelect(keepProjectId) {
+        const select = document.getElementById('doc-project-select');
+        const hint = document.getElementById('doc-project-filter-hint');
+        if (!select) return;
+
+        const { clientId, productLineId } = getDocFormFilterValues();
+        const list = getProjectsForDocForm();
+        const placeholder = t('selectProject') || 'Pilih Proyek';
+
+        select.innerHTML = `<option value="">${placeholder}</option>` +
+            list.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+        const preserveId = keepProjectId || select.value;
+        if (preserveId && list.some(p => p.id === preserveId)) {
+            select.value = preserveId;
+        }
+
+        if (hint) {
+            if (!clientId || !productLineId) {
+                hint.textContent = 'Pilih Client dan Product Line untuk memfilter daftar proyek.';
+            } else if (list.length === 0) {
+                hint.textContent = 'Tidak ada proyek untuk kombinasi Client + Product Line ini.';
+            } else {
+                hint.textContent = `${list.length} proyek tersedia (terbaru di atas).`;
+            }
+        }
+    }
+
+    async function populateDocFormFilters() {
+        try {
+            await reloadMasterDataCaches();
+            fillSelectOptions(
+                document.getElementById('doc-form-client-select'),
+                cachedClients,
+                'Pilih Client'
+            );
+            fillSelectOptions(
+                document.getElementById('doc-form-product-line-select'),
+                cachedProductLines,
+                'Pilih Product Line'
+            );
+        } catch (e) {
+            console.error('[Related Docs] populate filters:', e);
+        }
+    }
+
+    function onDocFormFilterChange() {
+        refreshDocProjectSelect();
+        const select = document.getElementById('doc-project-select');
+        if (select && select.value) {
+            onDocProjectChange(select.value);
+        } else {
+            const wellInput = document.getElementById('doc-well-name');
+            if (wellInput) wellInput.value = '';
+        }
+    }
+    window.onDocFormFilterChange = onDocFormFilterChange;
 
     function onDocProjectChange(projectId) {
         const project = allProjects.find(p => p.id === projectId);
-        document.getElementById('doc-well-name').value = project ? (project.well_name || project.well || '') : '';
+        const wellInput = document.getElementById('doc-well-name');
+        if (wellInput) {
+            wellInput.value = project ? (project.well_name || project.well || '') : '';
+        }
+        if (project) {
+            const clientSel = document.getElementById('doc-form-client-select');
+            const plSel = document.getElementById('doc-form-product-line-select');
+            if (clientSel && project.client_id != null) {
+                clientSel.value = String(project.client_id);
+            }
+            if (plSel && project.product_line_id != null) {
+                plSel.value = String(project.product_line_id);
+            }
+            refreshDocProjectSelect(projectId);
+        }
     }
+    window.onDocProjectChange = onDocProjectChange;
 
     async function submitRelatedDoc() {
         const form = document.getElementById('related-doc-form');
+        const { clientId, productLineId } = getDocFormFilterValues();
         const projectId = form.project_id.value;
         const docName = form.doc_name.value;
         const fileInput = document.getElementById('doc-file');
 
-        if (!projectId || !docName || fileInput.files.length === 0) {
+        if (!clientId || !productLineId) {
+            showToast('Pilih Client dan Product Line', 'error');
+            return;
+        }
+        if (!projectId) {
+            showToast('Pilih proyek untuk kombinasi Client + Product Line ini', 'error');
+            return;
+        }
+
+        const project = allProjects.find(p => p.id === projectId);
+        if (
+            project &&
+            (String(project.client_id) !== String(clientId) ||
+                String(project.product_line_id) !== String(productLineId))
+        ) {
+            showToast('Proyek tidak sesuai dengan Client / Product Line yang dipilih', 'error');
+            return;
+        }
+
+        if (!docName || fileInput.files.length === 0) {
             showToast('Please fill all required fields and select a file', 'error');
             return;
         }
@@ -9542,6 +9779,10 @@
                     showToast('Document uploaded successfully!', 'success');
                     form.reset();
                     document.getElementById('doc-file-name').textContent = 'No file selected';
+                    const hint = document.getElementById('doc-project-filter-hint');
+                    if (hint) hint.textContent = '';
+                    await populateDocFormFilters();
+                    refreshDocProjectSelect();
                     loadRelatedDocs();
                     return;
                 }
@@ -9713,7 +9954,7 @@
         });
 
         // Show/hide date fields - hide all first
-        const dateGroups = ['mwt', 'hse', 'csms', 'hseplan', 'spr', 'hazid'];
+        const dateGroups = Object.keys(SCHEDULE_TYPE_REGISTRY);
         dateGroups.forEach(t => {
             const el = document.getElementById(`${t}-date-group`);
             if (el) el.style.display = t === type ? 'block' : 'none';
@@ -9875,19 +10116,9 @@
         const titleEl = document.getElementById('meeting-calendar-month-title');
         if (!grid || !titleEl) return;
 
-        // Schedule type config
-        const typeColors = {
-            mwt: '#3498db', hse: '#9b59b6', csms: '#27ae60',
-            hseplan: '#e67e22', spr: '#1abc9c', hazid: '#e74c3c'
-        };
-        const typeLabels = {
-            mwt: 'MWT', hse: 'HSE', csms: 'CSMS PB',
-            hseplan: 'HSE Plan', spr: 'SPR', hazid: 'HAZID'
-        };
-        const typeFields = {
-            mwt: 'mwt_plan_date', hse: 'hse_meeting_date', csms: 'csms_pb_date',
-            hseplan: 'hseplan_date', spr: 'spr_date', hazid: 'hazid_date'
-        };
+        const typeColors = Object.fromEntries(Object.entries(SCHEDULE_TYPE_REGISTRY).map(([k, v]) => [k, v.color]));
+        const typeLabels = Object.fromEntries(Object.entries(SCHEDULE_TYPE_REGISTRY).map(([k, v]) => [k, v.label.replace(/^[^\s]+\s/, '')]));
+        const typeFields = Object.fromEntries(Object.entries(SCHEDULE_TYPE_REGISTRY).map(([k, v]) => [k, v.dateField]));
 
         const renderMeetingCard = (s, dateStr) => {
             const type = s.schedule_type || 'mwt';

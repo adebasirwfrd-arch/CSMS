@@ -67,11 +67,14 @@ class EmailService:
         # Map schedule type to display name and get the relevant date
         type_config = {
             'mwt': {'name': 'MWT Plan', 'date_field': 'mwt_plan_date', 'color': '#3498db'},
-            'hse_committee': {'name': 'HSE Committee Meeting', 'date_field': 'hse_meeting_date', 'color': '#9b59b6'},
-            'csms_pb': {'name': 'CSMS PB Audit', 'date_field': 'csms_pb_date', 'color': '#27ae60'},
-            'hse_plan': {'name': 'HSE Plan', 'date_field': 'hse_plan_date', 'color': '#e67e22'},
-            'spr': {'name': 'SPR Review', 'date_field': 'spr_date', 'color': '#1abc9c'},
-            'hazid_hazop': {'name': 'HAZID/HAZOP', 'date_field': 'hazid_hazop_date', 'color': '#e74c3c'},
+            'hse': {'name': 'HSE Committee Meeting', 'date_field': 'hse_meeting_date', 'color': '#9b59b6'},
+            'csms': {'name': 'CSMS PB Audit', 'date_field': 'csms_pb_date', 'color': '#27ae60'},
+            'hseplan': {'name': 'HSE Plan Meeting', 'date_field': 'hseplan_date', 'color': '#e67e22'},
+            'spr': {'name': 'SPR Meeting', 'date_field': 'spr_date', 'color': '#1abc9c'},
+            'hazid': {'name': 'HAZID/HAZOP', 'date_field': 'hazid_date', 'color': '#e74c3c'},
+            'csmspsb': {'name': 'CSMS PSB', 'date_field': 'csms_psb_date', 'color': '#16a085'},
+            'stratim': {'name': 'STRATIM Meeting', 'date_field': 'stratim_date', 'color': '#8e44ad'},
+            'riskregister': {'name': 'Risk Register Meeting', 'date_field': 'risk_register_date', 'color': '#c0392b'},
         }
         
         config = type_config.get(schedule_type, type_config['mwt'])
