@@ -3520,12 +3520,25 @@
     <div class="modal-body">
         <form id="create-task-form">
             <div class="form-group">
+                <label class="form-label"><span data-i18n="client">Client</span> <span>*</span></label>
+                <select class="form-input" id="task-form-client-select" onchange="onTaskFormFilterChange()" required>
+                    <option value="">Pilih Client</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Product Line <span>*</span></label>
+                <select class="form-input" id="task-form-product-line-select" onchange="onTaskFormFilterChange()" required>
+                    <option value="">Pilih Product Line</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label class="form-label"><span data-i18n="project">Project</span> <span>*</span></label>
                 <select class="form-input" id="task-project-select" name="project_id"
                     onchange="onTaskProjectChange(this.value)" required>
                     <option value="" data-i18n="selectProject">Select Project</option>
                     <!-- Filled by JS -->
                 </select>
+                <p id="task-project-filter-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;"></p>
             </div>
 
             <div class="form-group">
@@ -6871,27 +6884,116 @@
     }
 
     // ===== TASK MODAL =====
-    function showTaskModal() {
-        const modal = document.getElementById('create-task-modal');
+    function getTaskFormFilterValues() {
+        return {
+            clientId: document.getElementById('task-form-client-select')?.value || '',
+            productLineId: document.getElementById('task-form-product-line-select')?.value || ''
+        };
+    }
+
+    function getProjectsForTaskForm() {
+        const { clientId, productLineId } = getTaskFormFilterValues();
+        let list = [...allProjects];
+        if (clientId) {
+            list = list.filter(p => String(p.client_id) === String(clientId));
+        }
+        if (productLineId) {
+            list = list.filter(p => String(p.product_line_id) === String(productLineId));
+        }
+        return sortProjectsNewestFirst(list);
+    }
+
+    function refreshTaskProjectSelect(keepProjectId) {
         const select = document.getElementById('task-project-select');
+        const hint = document.getElementById('task-project-filter-hint');
+        if (!select) return;
 
-        // Populate projects
-        select.innerHTML = `<option value="">${t('selectProject')}</option>` +
-            allProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+        const { clientId, productLineId } = getTaskFormFilterValues();
+        const list = getProjectsForTaskForm();
+        const placeholder = t('selectProject') || 'Pilih Proyek';
 
+        select.innerHTML = `<option value="">${placeholder}</option>` +
+            list.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+        const preserveId = keepProjectId || select.value;
+        if (preserveId && list.some(p => p.id === preserveId)) {
+            select.value = preserveId;
+        }
+
+        if (hint) {
+            if (!clientId || !productLineId) {
+                hint.textContent = 'Pilih Client dan Product Line untuk memfilter daftar proyek.';
+            } else if (list.length === 0) {
+                hint.textContent = 'Tidak ada proyek untuk kombinasi Client + Product Line ini.';
+            } else {
+                hint.textContent = `${list.length} proyek tersedia (terbaru di atas).`;
+            }
+        }
+    }
+
+    async function populateTaskCreateFilters() {
+        try {
+            if (!cachedClients.length) cachedClients = await fetchClients();
+            if (!cachedProductLines.length) cachedProductLines = await fetchProductLines();
+            fillSelectOptions(
+                document.getElementById('task-form-client-select'),
+                cachedClients,
+                'Pilih Client'
+            );
+            fillSelectOptions(
+                document.getElementById('task-form-product-line-select'),
+                cachedProductLines,
+                'Pilih Product Line'
+            );
+        } catch (e) {
+            console.error('[TaskForm] populate filters:', e);
+        }
+    }
+
+    function onTaskFormFilterChange() {
+        refreshTaskProjectSelect();
+        const select = document.getElementById('task-project-select');
+        if (select && select.value) {
+            onTaskProjectChange(select.value);
+        } else {
+            document.getElementById('task-well-name').value = '';
+        }
+    }
+    window.onTaskFormFilterChange = onTaskFormFilterChange;
+
+    async function showTaskModal() {
+        const modal = document.getElementById('create-task-modal');
+        await populateTaskCreateFilters();
+        refreshTaskProjectSelect();
         modal.classList.add('active');
         applyAllTranslations();
     }
+    window.showTaskModal = showTaskModal;
 
     function closeCreateTaskModal() {
         document.getElementById('create-task-modal').classList.remove('active');
         document.getElementById('create-task-form').reset();
         document.getElementById('task-well-name').value = '';
+        const hint = document.getElementById('task-project-filter-hint');
+        if (hint) hint.textContent = '';
     }
 
     function onTaskProjectChange(projectId) {
         const project = allProjects.find(p => p.id == projectId);
-        document.getElementById('task-well-name').value = project ? (project.well_name || project.well || '') : '';
+        document.getElementById('task-well-name').value = project
+            ? (project.well_name || project.well || '')
+            : '';
+        if (project) {
+            const clientSel = document.getElementById('task-form-client-select');
+            const plSel = document.getElementById('task-form-product-line-select');
+            if (clientSel && project.client_id != null) {
+                clientSel.value = String(project.client_id);
+            }
+            if (plSel && project.product_line_id != null) {
+                plSel.value = String(project.product_line_id);
+            }
+            refreshTaskProjectSelect(projectId);
+        }
     }
 
     // Make selectTaskStatus globally accessible (needed for onclick in dynamic HTML)
@@ -6911,8 +7013,27 @@
 
     async function createNewTask() {
         const form = document.getElementById('create-task-form');
+        const { clientId, productLineId } = getTaskFormFilterValues();
         const projectId = form.project_id.value;
-        if (!projectId) { showToast('Please select a project', 'error'); return; }
+
+        if (!clientId || !productLineId) {
+            showToast('Pilih Client dan Product Line', 'error');
+            return;
+        }
+        if (!projectId) {
+            showToast('Pilih proyek untuk kombinasi Client + Product Line ini', 'error');
+            return;
+        }
+
+        const project = allProjects.find(p => p.id === projectId);
+        if (
+            project &&
+            (String(project.client_id) !== String(clientId) ||
+                String(project.product_line_id) !== String(productLineId))
+        ) {
+            showToast('Proyek tidak sesuai dengan Client / Product Line yang dipilih', 'error');
+            return;
+        }
 
         if (!form.code.value.trim()) { showToast('Please enter Task ID/Code', 'error'); return; }
         if (!form.title.value.trim()) { showToast('Please enter Task Description', 'error'); return; }
