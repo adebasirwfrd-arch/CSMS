@@ -2593,10 +2593,24 @@
 
             <form id="csms-pb-form">
                 <div class="form-group">
+                    <label class="form-label"><span data-i18n="client">Client</span> <span>*</span></label>
+                    <select class="form-input" id="pb-form-client-select" onchange="onPbFormFilterChange()" required>
+                        <option value="">Pilih Client</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Product Line <span>*</span></label>
+                    <select class="form-input" id="pb-form-product-line-select" onchange="onPbFormFilterChange()" required>
+                        <option value="">Pilih Product Line</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label class="form-label"><span data-i18n="projectName">Project Name</span> <span>*</span></label>
-                    <select class="form-input" name="project_id" id="pb-project-select" required>
+                    <select class="form-input" name="project_id" id="pb-project-select"
+                        onchange="onPBProjectChange(this.value)" required>
                         <option value="">Select Project</option>
                     </select>
+                    <p id="pb-project-filter-hint" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;"></p>
                 </div>
 
                 <div class="form-group">
@@ -8679,6 +8693,84 @@
     }
 
     // ===== CSMS PB Functions =====
+    function getPbFormFilterValues() {
+        return {
+            clientId: document.getElementById('pb-form-client-select')?.value || '',
+            productLineId: document.getElementById('pb-form-product-line-select')?.value || ''
+        };
+    }
+
+    function getProjectsForPbForm() {
+        const { clientId, productLineId } = getPbFormFilterValues();
+        let list = [...allProjects];
+        if (clientId) {
+            list = list.filter(p => String(p.client_id) === String(clientId));
+        }
+        if (productLineId) {
+            list = list.filter(p => String(p.product_line_id) === String(productLineId));
+        }
+        return sortProjectsNewestFirst(list);
+    }
+
+    function refreshPbProjectSelect(keepProjectId) {
+        const select = document.getElementById('pb-project-select');
+        const hint = document.getElementById('pb-project-filter-hint');
+        if (!select) return;
+
+        const { clientId, productLineId } = getPbFormFilterValues();
+        const list = getProjectsForPbForm();
+        const placeholder = t('selectProject') || 'Pilih Proyek';
+
+        select.innerHTML = `<option value="">${placeholder}</option>` +
+            list.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+        const preserveId = keepProjectId || select.value;
+        if (preserveId && list.some(p => p.id === preserveId)) {
+            select.value = preserveId;
+        }
+
+        if (hint) {
+            if (!clientId || !productLineId) {
+                hint.textContent = 'Pilih Client dan Product Line untuk memfilter daftar proyek.';
+            } else if (list.length === 0) {
+                hint.textContent = 'Tidak ada proyek untuk kombinasi Client + Product Line ini.';
+            } else {
+                hint.textContent = `${list.length} proyek tersedia (terbaru di atas).`;
+            }
+        }
+    }
+
+    async function populatePbFormFilters() {
+        try {
+            if (!cachedClients.length) cachedClients = await fetchClients();
+            if (!cachedProductLines.length) cachedProductLines = await fetchProductLines();
+            fillSelectOptions(
+                document.getElementById('pb-form-client-select'),
+                cachedClients,
+                'Pilih Client'
+            );
+            fillSelectOptions(
+                document.getElementById('pb-form-product-line-select'),
+                cachedProductLines,
+                'Pilih Product Line'
+            );
+        } catch (e) {
+            console.error('[CSMS PB] populate filters:', e);
+        }
+    }
+
+    function onPbFormFilterChange() {
+        refreshPbProjectSelect();
+        const select = document.getElementById('pb-project-select');
+        if (select && select.value) {
+            onPBProjectChange(select.value);
+        } else {
+            const wellInput = document.getElementById('pb-well-name');
+            if (wellInput) wellInput.value = '';
+        }
+    }
+    window.onPbFormFilterChange = onPbFormFilterChange;
+
     function updatePBAttachmentName(input) {
         const nameSpan = document.getElementById('pb-attachment-name');
         if (input.files && input.files.length > 0) {
@@ -8692,13 +8784,33 @@
 
     async function submitPBRecord() {
         const form = document.getElementById('csms-pb-form');
+        const { clientId, productLineId } = getPbFormFilterValues();
         const projectId = form.project_id.value;
         const pbDate = form.pb_date.value;
         const picName = form.pic_name.value;
         const score = parseFloat(form.score.value);
         const fileInput = document.getElementById('pb-attachment');
 
-        if (!projectId || !pbDate || !picName || isNaN(score)) {
+        if (!clientId || !productLineId) {
+            showToast('Pilih Client dan Product Line', 'error');
+            return;
+        }
+        if (!projectId) {
+            showToast('Pilih proyek untuk kombinasi Client + Product Line ini', 'error');
+            return;
+        }
+
+        const project = allProjects.find(p => p.id === projectId);
+        if (
+            project &&
+            (String(project.client_id) !== String(clientId) ||
+                String(project.product_line_id) !== String(productLineId))
+        ) {
+            showToast('Proyek tidak sesuai dengan Client / Product Line yang dipilih', 'error');
+            return;
+        }
+
+        if (!pbDate || !picName || isNaN(score)) {
             showToast('Please fill all required fields', 'error');
             return;
         }
@@ -8789,6 +8901,10 @@
             form.reset();
             document.getElementById('pb-attachment-name').textContent = 'No file selected';
             document.getElementById('pb-attachment-name').style.color = 'var(--text-muted)';
+            const hint = document.getElementById('pb-project-filter-hint');
+            if (hint) hint.textContent = '';
+            await populatePbFormFilters();
+            refreshPbProjectSelect();
             loadPBRecords();
             updateStatistics();
         } catch (error) {
@@ -8797,11 +8913,9 @@
         }
     }
 
-    function populatePBProjectDropdown() {
-        const select = document.getElementById('pb-project-select');
-        if (!select) return;
-        select.innerHTML = '<option value="">Select Project</option>' +
-            allProjects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    async function populatePBProjectDropdown() {
+        await populatePbFormFilters();
+        refreshPbProjectSelect();
     }
 
     function onPBProjectChange(projectId) {
@@ -8809,6 +8923,17 @@
         const wellInput = document.getElementById('pb-well-name');
         if (wellInput) {
             wellInput.value = project ? (project.well_name || project.well || '') : '';
+        }
+        if (project) {
+            const clientSel = document.getElementById('pb-form-client-select');
+            const plSel = document.getElementById('pb-form-product-line-select');
+            if (clientSel && project.client_id != null) {
+                clientSel.value = String(project.client_id);
+            }
+            if (plSel && project.product_line_id != null) {
+                plSel.value = String(project.product_line_id);
+            }
+            refreshPbProjectSelect(projectId);
         }
     }
 
