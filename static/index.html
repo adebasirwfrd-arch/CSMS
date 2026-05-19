@@ -1684,6 +1684,19 @@
             </div>
         </div>
 
+        <div class="project-list-toolbar" style="display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 16px; align-items: center;">
+            <input type="search" id="project-search-input" class="form-input" placeholder="Cari nama proyek, well, kontrak..."
+                style="flex: 2; min-width: 200px;" oninput="onProjectListFilterChange()" autocomplete="off">
+            <select id="project-filter-client" class="form-input" style="flex: 1; min-width: 150px;" onchange="onProjectListFilterChange()">
+                <option value="">Semua Client</option>
+            </select>
+            <select id="project-filter-product-line" class="form-input" style="flex: 1; min-width: 140px;" onchange="onProjectListFilterChange()">
+                <option value="">Semua Product Line</option>
+            </select>
+            <button type="button" class="btn btn-cancel" onclick="clearProjectListFilters()" style="white-space: nowrap; padding: 10px 14px;">Reset</button>
+        </div>
+        <p id="project-list-result-hint" style="font-size: 11px; color: var(--text-muted); margin: -8px 0 12px;"></p>
+
         <div id="projects-container"></div>
     </section>
 
@@ -5693,6 +5706,7 @@
         if (screen === 'matrix') renderMatrixScreen();
         if (screen === 'll-indicator') renderLLScreen();
         if (screen === 'master-data') loadMasterDataPage();
+        if (screen === 'projects') populateProjectListFilters();
     }
 
     function toggleDrawer() {
@@ -5733,6 +5747,7 @@
                 updateCounts();
                 renderProjects();
                 populateAllProjectDropdowns();
+                populateProjectListFilters();
             } else {
                 console.error('[loadData] Projects fetch failed:', projectsRes.status);
             }
@@ -6601,6 +6616,89 @@
     // Note: createPost function is defined earlier with full attachment support
 
     // ===== PROJECTS =====
+    function getClientNameById(clientId) {
+        if (clientId == null || clientId === '') return '';
+        const c = cachedClients.find(x => String(x.id) === String(clientId));
+        return c ? c.name : '';
+    }
+
+    function getProductLineNameById(productLineId) {
+        if (productLineId == null || productLineId === '') return '';
+        const pl = cachedProductLines.find(x => String(x.id) === String(productLineId));
+        return pl ? pl.name : '';
+    }
+
+    function sortProjectsNewestFirst(projects) {
+        return [...projects].sort((a, b) => {
+            const ta = Date.parse(a.created_at || '') || 0;
+            const tb = Date.parse(b.created_at || '') || 0;
+            if (tb !== ta) return tb - ta;
+            return (b.name || '').localeCompare(a.name || '', undefined, { sensitivity: 'base' });
+        });
+    }
+
+    function getProjectListFilterValues() {
+        return {
+            search: (document.getElementById('project-search-input')?.value || '').trim().toLowerCase(),
+            clientId: document.getElementById('project-filter-client')?.value || '',
+            productLineId: document.getElementById('project-filter-product-line')?.value || ''
+        };
+    }
+
+    function projectMatchesListFilters(project) {
+        const { search, clientId, productLineId } = getProjectListFilterValues();
+        if (clientId && String(project.client_id) !== String(clientId)) return false;
+        if (productLineId && String(project.product_line_id) !== String(productLineId)) return false;
+        if (!search) return true;
+        const haystack = [
+            project.name,
+            project.well_name,
+            project.well,
+            project.kontrak_no,
+            project.description,
+            getClientNameById(project.client_id),
+            getProductLineNameById(project.product_line_id)
+        ].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(search);
+    }
+
+    async function populateProjectListFilters() {
+        try {
+            if (!cachedClients.length) cachedClients = await fetchClients();
+            if (!cachedProductLines.length) cachedProductLines = await fetchProductLines();
+            const clientSel = document.getElementById('project-filter-client');
+            const plSel = document.getElementById('project-filter-product-line');
+            if (clientSel) {
+                const cur = clientSel.value;
+                fillSelectOptions(clientSel, cachedClients, 'Semua Client');
+                if (cur) clientSel.value = cur;
+            }
+            if (plSel) {
+                const cur = plSel.value;
+                fillSelectOptions(plSel, cachedProductLines, 'Semua Product Line');
+                if (cur) plSel.value = cur;
+            }
+        } catch (e) {
+            console.error('[Projects] populate filters:', e);
+        }
+    }
+
+    function onProjectListFilterChange() {
+        renderProjects();
+    }
+    window.onProjectListFilterChange = onProjectListFilterChange;
+
+    function clearProjectListFilters() {
+        const search = document.getElementById('project-search-input');
+        const clientSel = document.getElementById('project-filter-client');
+        const plSel = document.getElementById('project-filter-product-line');
+        if (search) search.value = '';
+        if (clientSel) clientSel.value = '';
+        if (plSel) plSel.value = '';
+        renderProjects();
+    }
+    window.clearProjectListFilters = clearProjectListFilters;
+
     function filterProjects(status) {
         currentProjectFilter = status;
         document.querySelectorAll('#project-status-filters .status-dot').forEach(d => {
@@ -6614,12 +6712,18 @@
             ? allProjects
             : allProjects.filter(p => projectStatusMatches(p, currentProjectFilter));
 
-        // Sort by canonical name: Client_ProductLine_Project
-        filtered = [...filtered].sort((a, b) =>
-            (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })
-        );
+        filtered = filtered.filter(p => projectMatchesListFilters(p));
+        filtered = sortProjectsNewestFirst(filtered);
 
         const container = document.getElementById('projects-container');
+        const hint = document.getElementById('project-list-result-hint');
+        if (hint) {
+            const { search, clientId, productLineId } = getProjectListFilterValues();
+            const hasExtra = search || clientId || productLineId;
+            hint.textContent = hasExtra
+                ? `Menampilkan ${filtered.length} proyek (terbaru di atas)`
+                : `${filtered.length} proyek — terbaru di atas`;
+        }
 
         if (filtered.length === 0) {
             const statusKey = currentProjectFilter === 'all' ? 'allProjects' : currentProjectFilter.toLowerCase();
@@ -6639,6 +6743,13 @@
             const pTasks = allTasks.filter(t => t.project_id === p.id);
             const completed = pTasks.filter(t => t.status === 'Completed').length;
             const progress = pTasks.length > 0 ? Math.round((completed / pTasks.length) * 100) : 0;
+            const clientLabel = getClientNameById(p.client_id);
+            const plLabel = getProductLineNameById(p.product_line_id);
+            const metaParts = [];
+            if (clientLabel) metaParts.push(clientLabel);
+            if (plLabel) metaParts.push(plLabel);
+            if (p.well_name || p.well) metaParts.push(p.well_name || p.well);
+            if (p.kontrak_no) metaParts.push(p.kontrak_no);
 
             return `
                     <div class="project-card" onclick="showProjectDetail('${p.id}')">
@@ -6646,7 +6757,7 @@
                             <span class="project-card-title">${p.name}</span>
                             <span class="project-card-badge badge-${p.status.toLowerCase()}">${t(p.status.toLowerCase()) || p.status}</span>
                         </div>
-                        <div class="project-card-meta">${p.well_name || p.well || ''} ${p.kontrak_no ? '• ' + p.kontrak_no : ''}</div>
+                        <div class="project-card-meta">${metaParts.join(' • ') || '-'}</div>
                         <div style="margin-top: 12px;">
                             <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; color: var(--text-secondary);">
                                 <span>${t('progress')}</span>
