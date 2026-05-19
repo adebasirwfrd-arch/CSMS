@@ -2607,8 +2607,8 @@ def create_otp_program_route(project_id: str, data: dict):
         }
         if not payload.get("name"):
             raise HTTPException(status_code=400, detail="name is required")
-        if payload.get("month") is None:
-            raise HTTPException(status_code=400, detail="month is required")
+        # OTP program row is per project+year; monthly values go to otp_month_data
+        payload["month"] = None
         success = save_ll_indicator(project_id, payload)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to create OTP program")

@@ -6080,6 +6080,23 @@
     const OTP_MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     let otpProgramsCache = [];
 
+    async function fetchOtpPrograms(projectId, year) {
+        const res = await fetch(`${API_BASE}/api/otp-programs/${projectId}?year=${year}&t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (!res.ok) {
+            let errDetail = res.statusText;
+            try {
+                const errJson = await res.json();
+                errDetail = errJson.detail || errDetail;
+            } catch (e) { /* ignore */ }
+            throw new Error(errDetail || `HTTP ${res.status}`);
+        }
+        const result = await res.json();
+        return result.programs || [];
+    }
+
     function getOTPCellStyle(plan, actual) {
         plan = parseInt(plan) || 0;
         actual = parseInt(actual) || 0;
@@ -6119,16 +6136,12 @@
         content.innerHTML = '<div class="ll-empty">Memuat data OTP...</div>';
 
         try {
-            const res = await fetch(`${API_BASE}/api/otp-programs/${projectId}?year=${year}&month=${month}`);
-            if (!res.ok) {
-                let errDetail = res.statusText;
-                try { const errJson = await res.json(); errDetail = errJson.detail || errDetail; } catch (e) { }
-                content.innerHTML = `<div class="ll-empty">Gagal memuat data (Error ${res.status}): ${errDetail}</div>`;
-                return;
+            const filterMonth = parseInt(month, 10);
+            let programs = await fetchOtpPrograms(projectId, year);
+            if (!programs.length) {
+                await fetch(`${API_BASE}/api/ll-indicators/${projectId}?year=${year}&month=${filterMonth}`);
+                programs = await fetchOtpPrograms(projectId, year);
             }
-
-            const result = await res.json();
-            const programs = result.programs || [];
             otpProgramsCache = programs;
 
             // Update stats
@@ -6143,7 +6156,7 @@
             document.getElementById('otp-stat-avg').textContent = avgProgress + '%';
 
             if (programs.length === 0) {
-                content.innerHTML = '<div class="ll-empty">Belum ada indicator. Tambah indicator di halaman <b>LL Indicator</b>.</div>';
+                content.innerHTML = '<div class="ll-empty">Belum ada program OTP untuk proyek dan tahun ini. Buka halaman <b>LL Indicator</b> dengan filter yang sama lalu tambah indikator, atau pilih tahun lain.</div>';
                 return;
             }
 
@@ -6165,7 +6178,12 @@
                             <th style="width:40px; position:sticky;left:0;z-index:10;background:#1f1f1f; border-bottom: 1px solid var(--border);">#</th>
                             <th style="min-width:200px; position:sticky;left:40px;z-index:10;background:#1f1f1f; border-right: 2px solid var(--border); box-shadow: 4px 0 8px rgba(0,0,0,0.3); border-bottom: 1px solid var(--border);">Indicator</th>
                             <th style="width:70px; border-bottom: 1px solid var(--border);">Target</th>
-                            ${OTP_MONTH_LABELS.map(m => '<th style="width:70px;text-align:center; border-bottom: 1px solid var(--border);">' + m + '</th>').join('')}
+                            ${OTP_MONTH_LABELS.map((m, i) => {
+                                const colMonth = i + 1;
+                                const isFilterCol = colMonth === filterMonth;
+                                return '<th style="width:70px;text-align:center;border-bottom:1px solid var(--border);' +
+                                    (isFilterCol ? 'background:rgba(229,9,20,0.25);color:var(--netflix-red);' : '') + '">' + m + '</th>';
+                            }).join('')}
                             <th style="width:100px;text-align:center; border-bottom: 1px solid var(--border);">Progress</th>
                         </tr></thead>
                         <tbody>`;
@@ -6188,9 +6206,11 @@
                         const style = getOTPCellStyle(plan, actual);
                         const isEmpty = plan === 0 && actual === 0;
                         const wpts = md.wpts_id || '';
-                        h += `<td style="padding:4px; border-bottom: 1px solid var(--border);">
+                        const isFilterCol = m === filterMonth;
+                        const cellBorder = isFilterCol ? '2px solid var(--netflix-red)' : style.border;
+                        h += `<td style="padding:4px;border-bottom:1px solid var(--border);${isFilterCol ? 'background:rgba(229,9,20,0.08);' : ''}">
                             <div onclick="openOTPEditModal('${prog.id}', ${m}, '${(prog.name || '').replace(/'/g, "\\'")}')"
-                                 style="cursor:pointer;width:60px;height:44px;margin:auto;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:600;font-size:10px;background:${style.bg};color:${style.color};border:${style.border};transition:transform 0.15s;"
+                                 style="cursor:pointer;width:60px;height:44px;margin:auto;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:600;font-size:10px;background:${style.bg};color:${style.color};border:${cellBorder};transition:transform 0.15s;"
                                  onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'"
                                  title="Plan: ${plan} | Actual: ${actual}${md.plan_date ? ' | Date: ' + md.plan_date : ''}">
                                 <span>${isEmpty ? '-' : actual + '/' + plan}</span>
@@ -6225,7 +6245,7 @@
 
     // ===== OTP MODAL FUNCTIONS =====
     function openOTPEditModal(programId, month, programName) {
-        // Reset form
+        // Reset form — month comes from the clicked grid cell
         document.getElementById('otp-edit-program-id').value = programId;
         document.getElementById('otp-edit-month').value = month;
         document.getElementById('otp-edit-program-name').value = programName;
@@ -6286,10 +6306,6 @@
         const projectId = ctx.projectId;
         const programId = document.getElementById('otp-edit-program-id').value;
         const month = parseInt(document.getElementById('otp-edit-month').value, 10);
-        if (month !== ctx.month) {
-            showToast('Bulan sel tidak sesuai dengan filter bulan yang dipilih', 'error');
-            return;
-        }
         const programName = document.getElementById('otp-edit-program-name').value;
 
         const payload = {

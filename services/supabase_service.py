@@ -487,44 +487,63 @@ class SupabaseService:
 
     # ===== OTP (uses ll_indicators table + otp_month_data) =====
     def get_otp_programs(self, project_id: str, year: int = 2025, month: int = None) -> List[Dict]:
-        """Get LL indicators as OTP programs with their monthly data."""
+        """Get LL indicators as OTP programs with their monthly data.
+
+        OTP programs are scoped by project+year. Monthly plan/actual lives in
+        otp_month_data; toolbar month filter is UI-only (not ll_indicators.month).
+        """
         if not self.enabled:
             return []
         try:
-            # Fetch indicators from ll_indicators for this project/year
+            # Fetch all indicators for this project/year (ignore ll_indicators.month)
             query = self.client.table('ll_indicators').select("*").eq('project_id', project_id).eq('year', year)
-            if month is not None:
-                query = query.eq('month', int(month))
             query = query.order('sort_order', desc=False)
             result = query.execute()
             indicators = result.data or []
+            if not indicators:
+                return []
 
-            # Fetch month data for all indicators
             indicator_ids = [ind['id'] for ind in indicators]
-            if indicator_ids:
-                month_result = self.client.table('otp_month_data').select("*").in_('indicator_id', indicator_ids).execute()
-                month_data = month_result.data or []
+            month_result = self.client.table('otp_month_data').select("*").in_('indicator_id', indicator_ids).execute()
+            month_data = month_result.data or []
 
-                # Group month data by indicator_id
-                month_map = {}
-                for md in month_data:
-                    iid = md['indicator_id']
-                    if iid not in month_map:
-                        month_map[iid] = {}
-                    month_map[iid][md['month']] = md
+            month_map = {}
+            for md in month_data:
+                iid = md['indicator_id']
+                if iid not in month_map:
+                    month_map[iid] = {}
+                month_map[iid][md['month']] = md
 
-                # Attach month data to indicators and calculate progress
-                for ind in indicators:
-                    ind['months'] = month_map.get(ind['id'], {})
-                    total_plan = 0
-                    total_actual = 0
-                    for m in range(1, 13):
-                        md = ind['months'].get(m, ind['months'].get(str(m), {}))
-                        total_plan += int(md.get('plan', 0) or 0)
-                        total_actual += int(md.get('actual', 0) or 0)
-                    ind['progress'] = min(100, round((total_actual / total_plan * 100) if total_plan > 0 else 0))
+            # Merge LL rows that share the same program name (one row per month in LL)
+            merged = {}
+            for ind in indicators:
+                key = (str(ind.get('category') or ''), ind.get('name') or '')
+                if key not in merged:
+                    merged[key] = {
+                        **ind,
+                        '_merge_ids': [ind['id']],
+                        'months': dict(month_map.get(ind['id'], {})),
+                    }
+                else:
+                    merged[key]['_merge_ids'].append(ind['id'])
+                    for m_key, md in month_map.get(ind['id'], {}).items():
+                        if m_key not in merged[key]['months']:
+                            merged[key]['months'][m_key] = md
 
-            return indicators
+            programs = []
+            for prog in merged.values():
+                prog.pop('_merge_ids', None)
+                total_plan = 0
+                total_actual = 0
+                for m in range(1, 13):
+                    md = prog['months'].get(m, prog['months'].get(str(m), {}))
+                    total_plan += int(md.get('plan', 0) or 0)
+                    total_actual += int(md.get('actual', 0) or 0)
+                prog['progress'] = min(100, round((total_actual / total_plan * 100) if total_plan > 0 else 0))
+                programs.append(prog)
+
+            programs.sort(key=lambda p: p.get('sort_order', 0) or 0)
+            return programs
         except Exception as e:
             print(f"[ERROR] Error fetching OTP programs: {e}")
             import traceback
