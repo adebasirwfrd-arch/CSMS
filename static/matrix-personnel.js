@@ -17,8 +17,10 @@
         sidebarTab: PROFILE_SHEET_ID,
         filterClientId: 'ALL',
         filterProductLineId: '',
+        filterProjectId: 'ALL',
         clients: [],
         productLines: [],
+        projects: [],
     };
 
     const STANDARD_COLUMN_SPECS = [
@@ -26,6 +28,7 @@
         { label: 'Position*', type: 'text', match: /position/i },
         { label: 'Product Line*', type: 'select', match: /product line/i },
         { label: 'Client', type: 'text', match: /^client$/i },
+        { label: 'Project', type: 'text', match: /^project$/i },
     ];
 
     const HISTORY = { undo: [], redo: [] };
@@ -127,6 +130,10 @@
         return getColByLabel(sheet, /^client/i);
     }
 
+    function getProjectCol(sheet) {
+        return getColByLabel(sheet, /^project/i);
+    }
+
     function isAllClients() {
         return !MATRIX_STATE.filterClientId || MATRIX_STATE.filterClientId === 'ALL';
     }
@@ -141,9 +148,36 @@
         return (c?.name || '').trim();
     }
 
+    function isAllProjects() {
+        return !MATRIX_STATE.filterProjectId || MATRIX_STATE.filterProjectId === 'ALL';
+    }
+
+    function getSelectedProjectName() {
+        const p = MATRIX_STATE.projects.find(x => String(x.id) === String(MATRIX_STATE.filterProjectId));
+        return (p?.name || '').trim();
+    }
+
+    function getFilteredProjects() {
+        let list = [...(MATRIX_STATE.projects || [])];
+        if (!isAllClients()) {
+            list = list.filter(p => String(p.client_id) === String(MATRIX_STATE.filterClientId));
+        }
+        if (MATRIX_STATE.filterProductLineId) {
+            list = list.filter(p => String(p.product_line_id) === String(MATRIX_STATE.filterProductLineId));
+        }
+        return list.sort((a, b) => {
+            const da = new Date(a.created_at || a.updated_at || 0).getTime();
+            const db = new Date(b.created_at || b.updated_at || 0).getTime();
+            return db - da;
+        });
+    }
+
     function getDisplayColumns(sheet) {
         let cols = [...(sheet.columns || [])];
-        cols = cols.filter(c => !/^client$/i.test(c.label.replace(/\*/g, '').trim()));
+        cols = cols.filter(c => {
+            const label = c.label.replace(/\*/g, '').trim().toLowerCase();
+            return label !== 'client' && label !== 'project';
+        });
 
         const nameCol = getPersonnelNameCol(sheet);
         const posCol = getPositionCol(sheet);
@@ -347,7 +381,14 @@
             const clientCol = getClientCol(sheet);
             const clientName = getSelectedClientName();
             if (!clientCol || !clientName) return false;
-            return (row.cells?.[clientCol.id] || '').trim() === clientName;
+            if ((row.cells?.[clientCol.id] || '').trim() !== clientName) return false;
+        }
+
+        if (!isAllProjects()) {
+            const projectCol = getProjectCol(sheet);
+            const projectName = getSelectedProjectName();
+            if (!projectCol || !projectName) return false;
+            if ((row.cells?.[projectCol.id] || '').trim() !== projectName) return false;
         }
 
         return true;
@@ -367,20 +408,33 @@
 
     async function loadMasterFilters() {
         try {
-            const [clientsRes, plRes] = await Promise.all([
+            const [clientsRes, plRes, projectsRes] = await Promise.all([
                 fetch(`${apiBase()}/clients?t=${Date.now()}`, { cache: 'no-store' }),
                 fetch(`${apiBase()}/product-lines?t=${Date.now()}`, { cache: 'no-store' }),
+                fetch(`${apiBase()}/projects?t=${Date.now()}`, { cache: 'no-store' }),
             ]);
             MATRIX_STATE.clients = clientsRes.ok ? await clientsRes.json() : [];
             MATRIX_STATE.productLines = plRes.ok ? await plRes.json() : [];
+            MATRIX_STATE.projects = projectsRes.ok ? await projectsRes.json() : [];
             if (!Array.isArray(MATRIX_STATE.clients)) MATRIX_STATE.clients = [];
             if (!Array.isArray(MATRIX_STATE.productLines)) MATRIX_STATE.productLines = [];
+            if (!Array.isArray(MATRIX_STATE.projects)) MATRIX_STATE.projects = [];
             if (!MATRIX_STATE.filterClientId) MATRIX_STATE.filterClientId = 'ALL';
+            if (!MATRIX_STATE.filterProjectId) MATRIX_STATE.filterProjectId = 'ALL';
             if (!MATRIX_STATE.filterProductLineId && MATRIX_STATE.productLines.length) {
                 MATRIX_STATE.filterProductLineId = String(MATRIX_STATE.productLines[0].id);
             }
+            syncProjectFilterSelection();
         } catch (e) {
             console.warn('loadMasterFilters:', e.message);
+        }
+    }
+
+    function syncProjectFilterSelection() {
+        if (isAllProjects()) return;
+        const allowed = getFilteredProjects();
+        if (!allowed.some(p => String(p.id) === String(MATRIX_STATE.filterProjectId))) {
+            MATRIX_STATE.filterProjectId = 'ALL';
         }
     }
 
@@ -471,6 +525,8 @@
             const labelKey = col.label.replace(/\*/g, '').trim().toLowerCase();
             if (getClientCol(sheet)?.id === col.id) {
                 cells[col.id] = clientName;
+            } else if (getProjectCol(sheet)?.id === col.id) {
+                cells[col.id] = isAllProjects() ? '' : getSelectedProjectName();
             } else if (getProductLineCol(sheet)?.id === col.id) {
                 cells[col.id] = plName;
             } else if (getPersonnelNameCol(sheet)?.id === col.id) {
@@ -645,11 +701,18 @@
                 `<option value="${esc(String(pl.id))}"${String(pl.id) === String(MATRIX_STATE.filterProductLineId) ? ' selected' : ''}>${esc(pl.name)}</option>`
             ).join('');
 
+        const filteredProjects = getFilteredProjects();
+        const projectOptions = `<option value="ALL"${MATRIX_STATE.filterProjectId === 'ALL' ? ' selected' : ''}>ALL</option>` +
+            filteredProjects.map(p =>
+                `<option value="${esc(String(p.id))}"${String(p.id) === String(MATRIX_STATE.filterProjectId) ? ' selected' : ''}>${esc(p.name)}</option>`
+            ).join('');
+
         return `
         <div class="mx-toolbar-card">
             <div class="mx-toolbar-row mx-toolbar-filters">
                 <select id="mx-filter-client" class="form-input mx-select" title="Client" onchange="matrixOnClientFilterChange(this.value)">${clientOptions}</select>
                 <select id="mx-filter-product-line" class="form-input mx-select" title="Product Line" onchange="matrixOnProductLineFilterChange(this.value)">${plOptions}</select>
+                <select id="mx-filter-project" class="form-input mx-select" title="Project" onchange="matrixOnProjectFilterChange(this.value)"${MATRIX_STATE.filterProductLineId ? '' : ' disabled'}>${projectOptions}</select>
             </div>
             <div class="mx-toolbar-row">
                 <select id="mx-tab-select" class="form-input mx-select" onchange="matrixOnTabChange(this.value)">${tabOptions}</select>
@@ -1059,12 +1122,22 @@
 
     window.matrixOnClientFilterChange = function (clientId) {
         MATRIX_STATE.filterClientId = clientId || 'ALL';
+        MATRIX_STATE.filterProjectId = 'ALL';
+        syncProjectFilterSelection();
         MATRIX_STATE.selectedRowId = null;
         paintMatrixScreen();
     };
 
     window.matrixOnProductLineFilterChange = function (plId) {
         MATRIX_STATE.filterProductLineId = plId || '';
+        MATRIX_STATE.filterProjectId = 'ALL';
+        syncProjectFilterSelection();
+        MATRIX_STATE.selectedRowId = null;
+        paintMatrixScreen();
+    };
+
+    window.matrixOnProjectFilterChange = function (projectId) {
+        MATRIX_STATE.filterProjectId = projectId || 'ALL';
         MATRIX_STATE.selectedRowId = null;
         paintMatrixScreen();
     };
@@ -1172,9 +1245,11 @@
         const initCells = {};
         const clientCol = getClientCol(sheet);
         const plCol = getProductLineCol(sheet);
+        const projectCol = getProjectCol(sheet);
         const plName = getSelectedProductLineName();
         if (clientCol && !isAllClients()) initCells[clientCol.id] = getSelectedClientName();
         if (plCol && plName) initCells[plCol.id] = plName;
+        if (projectCol && !isAllProjects()) initCells[projectCol.id] = getSelectedProjectName();
         try {
             const row = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/rows`, { cells: initCells });
             sheet.rows.push(row);
