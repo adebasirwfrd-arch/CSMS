@@ -1,9 +1,14 @@
 """HSE Personnel Matrix workbook API (admin UI)."""
+import os
+import re
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+import requests
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from services.google_drive import drive_service
 from services.matrix_store import (
     add_column,
     add_row,
@@ -17,6 +22,24 @@ from services.matrix_store import (
 )
 
 router = APIRouter(tags=["matrix"])
+
+MATRIX_PROFILE_ROOT = os.getenv(
+    "MATRIX_PROFILE_PHOTOS_FOLDER_ID",
+    "1FXk8egsOPNfNpclsis4tjL_QHazXcxwU",
+)
+
+
+def _sanitize_folder_name(name: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|]+', "-", (name or "").strip())
+    return (cleaned[:120] or "Unknown Personnel")
+
+
+def _personnel_photo_folder(personnel_name: str) -> str:
+    folder_name = _sanitize_folder_name(personnel_name)
+    parent_id = drive_service.find_or_create_folder(folder_name, parent_id=MATRIX_PROFILE_ROOT)
+    if not parent_id:
+        raise HTTPException(status_code=500, detail="Gagal membuat folder personel di Google Drive")
+    return parent_id
 
 
 class RowCellsBody(BaseModel):
@@ -125,3 +148,107 @@ def matrix_delete_column(sheet_id: str, col_id: str):
         return {"ok": True}
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.get("/matrix/profile-photo/view/{file_id}")
+async def matrix_view_profile_photo(file_id: str):
+    """Stream profile photo inline (for img tags)."""
+    if not drive_service.enabled or not drive_service.service:
+        raise HTTPException(status_code=503, detail="Google Drive not configured")
+    try:
+        import io
+        from googleapiclient.http import MediaIoBaseDownload
+
+        meta = drive_service.service.files().get(fileId=file_id, fields="name,mimeType").execute()
+        request = drive_service.service.files().get_media(fileId=file_id)
+        buf = io.BytesIO()
+        downloader = MediaIoBaseDownload(buf, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type=meta.get("mimeType", "image/jpeg"),
+            headers={"Content-Disposition": f'inline; filename="{meta.get("name", "photo")}"'},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Photo not found: {e}")
+
+
+@router.post("/matrix/profile-photo/initiate-upload")
+def matrix_initiate_profile_upload(
+    filename: str = Form(...),
+    mime_type: str = Form(default="image/jpeg"),
+    personnel_name: str = Form(...),
+):
+    if not drive_service.enabled:
+        raise HTTPException(status_code=503, detail="Google Drive not configured")
+    parent_id = _personnel_photo_folder(personnel_name)
+    upload_url, _ = drive_service.get_resumable_upload_session(filename, mime_type, parent_id=parent_id)
+    if not upload_url:
+        raise HTTPException(status_code=500, detail="Gagal memulai upload ke Google Drive")
+    return {"upload_url": upload_url}
+
+
+@router.post("/matrix/profile-photo/upload-chunk")
+async def matrix_profile_upload_chunk(
+    sheet_id: str = Form(...),
+    row_id: str = Form(...),
+    col_id: str = Form(default="col_photo"),
+    personnel_name: str = Form(...),
+    filename: str = Form(...),
+    upload_url: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    start_byte: int = Form(...),
+    total_size: int = Form(...),
+    chunk_file: UploadFile = File(...),
+):
+    try:
+        chunk_data = await chunk_file.read()
+        chunk_size = len(chunk_data)
+        end_byte = start_byte + chunk_size - 1
+        headers = {
+            "Content-Range": f"bytes {start_byte}-{end_byte}/{total_size}",
+            "Content-Length": str(chunk_size),
+        }
+        response = requests.put(upload_url, headers=headers, data=chunk_data)
+        if response.status_code not in (200, 201, 308):
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+
+        if chunk_index != total_chunks - 1:
+            return {"status": "chunk_accepted", "next_expected": end_byte + 1}
+
+        res_data = response.json()
+        file_id = res_data.get("id")
+        if not file_id:
+            raise HTTPException(status_code=500, detail="Upload selesai tanpa file_id dari Google Drive")
+
+        update_row(sheet_id, row_id, {col_id: file_id})
+        return {"status": "complete", "file_id": file_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/matrix/profile-photo/upload")
+async def matrix_profile_upload_simple(
+    sheet_id: str = Form(...),
+    row_id: str = Form(...),
+    col_id: str = Form(default="col_photo"),
+    personnel_name: str = Form(...),
+    file: UploadFile = File(...),
+):
+    """Direct upload for small profile photos."""
+    if not drive_service.enabled:
+        raise HTTPException(status_code=503, detail="Google Drive not configured")
+    content = await file.read()
+    parent_id = _personnel_photo_folder(personnel_name)
+    safe_name = re.sub(r'[\\/:*?"<>|]+', "-", file.filename or "profile.jpg")
+    file_id = drive_service.upload_file_to_parent(safe_name, content, parent_id)
+    if not file_id:
+        raise HTTPException(status_code=500, detail="Gagal mengunggah foto ke Google Drive")
+    update_row(sheet_id, row_id, {col_id: file_id})
+    return {"file_id": file_id}

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-05-20T03:12:37.553842Z",
+  "updated_at": "2026-05-20T12:11:56.700290Z",
   "sheets": [
     {
       "id": "employee_mandatory_training",
@@ -634,6 +634,15 @@
           "index": 3
         },
         {
+          "id": "col_photo",
+          "key": "profile_photo",
+          "label": "Profile Photo",
+          "type": "image",
+          "filterable": false,
+          "required": false,
+          "index": 4
+        },
+        {
           "id": "col_4",
           "key": "gender_4",
           "label": "Gender*",
@@ -810,7 +819,8 @@
             "col_17": "+62 811-8756-822",
             "col_18": "",
             "col_19": "19/04/2026",
-            "col_20": "18/04/2029"
+            "col_20": "18/04/2029",
+            "col_photo": ""
           }
         },
         {
@@ -835,7 +845,8 @@
             "col_17": "+62 812-9386-6363",
             "col_18": "",
             "col_19": "19/04/2026",
-            "col_20": "18/04/2029"
+            "col_20": "18/04/2029",
+            "col_photo": ""
           }
         },
         {
@@ -860,7 +871,8 @@
             "col_17": "+62 811-221-426",
             "col_18": "",
             "col_19": "19/04/2026",
-            "col_20": "18/04/2029"
+            "col_20": "18/04/2029",
+            "col_photo": ""
           }
         },
         {
@@ -885,7 +897,8 @@
             "col_17": "",
             "col_18": "",
             "col_19": "",
-            "col_20": ""
+            "col_20": "",
+            "col_photo": ""
           }
         }
       ]

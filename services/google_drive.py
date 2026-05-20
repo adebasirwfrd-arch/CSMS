@@ -669,6 +669,24 @@ class GoogleDriveService:
             print(f"[ERROR] Error uploading file: {e}")
             return None
 
+    def upload_file_to_parent(self, filename: str, file_content: bytes, parent_id: str) -> str:
+        """Upload file directly into a specific Drive folder."""
+        if not self.enabled or not self.service or not parent_id:
+            return None
+        try:
+            file_metadata = {'name': filename, 'parents': [parent_id]}
+            media = MediaInMemoryUpload(file_content, resumable=True)
+            file = self.service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id',
+                supportsAllDrives=True,
+            ).execute()
+            return file.get('id')
+        except Exception as e:
+            log_drive_error("UPLOAD_PARENT", e)
+            return None
+
     def get_resumable_upload_session(self, filename: str, mime_type: str, folder_name: str = "RelatedDocs", parent_id: str = None) -> Tuple[str, str]:
         """
         Initiate a resumable upload session and return the Location URL.

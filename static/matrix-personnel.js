@@ -1,13 +1,20 @@
 /**
- * HSE Personnel Matrix — CRUD table with unlimited undo/redo.
+ * HSE Personnel Matrix — CRUD, undo/redo, profile sidebar, photo upload.
  */
 (function () {
+    const PROFILE_SHEET_ID = 'personnel_data_information';
+    const PHOTO_COL_ID = 'col_photo';
+    const AVATAR_MALE = '/static/images/matrix-avatar-male.png';
+    const AVATAR_FEMALE = '/static/images/matrix-avatar-female.png';
+
     const MATRIX_STATE = {
         workbook: null,
         activeSheetId: null,
         search: '',
         filters: {},
         loading: false,
+        selectedRowId: null,
+        sidebarTab: 'personal',
     };
 
     const HISTORY = { undo: [], redo: [] };
@@ -19,6 +26,18 @@
         personnel_data_information: 'Data Personel',
         contract_information: 'Kontrak',
         emergency_contact_information: 'Kontak Darurat',
+    };
+
+    const SIDEBAR_TABS = [
+        { id: 'personal', label: 'Personal' },
+        { id: 'contact', label: 'Kontak' },
+        { id: 'documents', label: 'Dokumen' },
+    ];
+
+    const SIDEBAR_FIELDS = {
+        personal: [/gender/i, /birth date/i, /birth place/i, /family status/i, /education/i, /majoring/i, /address/i, /city/i, /country/i],
+        contact: [/home phone/i, /hp number/i, /email/i],
+        documents: [/skck/i, /hse passport/i, /ktp/i],
     };
 
     function esc(s) {
@@ -49,6 +68,10 @@
         return MATRIX_STATE.workbook?.sheets?.find(s => s.id === id);
     }
 
+    function getColByLabel(sheet, pattern) {
+        return (sheet?.columns || []).find(c => pattern.test(c.label));
+    }
+
     function parseDate(val) {
         if (!val) return null;
         const s = String(val).trim();
@@ -64,6 +87,91 @@
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         return Math.ceil((d - today) / (86400000));
+    }
+
+    function isFemale(gender) {
+        return /female|wanita|perempuan|f\b/i.test(String(gender || '').trim());
+    }
+
+    function defaultAvatar(gender) {
+        return isFemale(gender) ? AVATAR_FEMALE : AVATAR_MALE;
+    }
+
+    function photoViewUrl(fileId) {
+        if (!fileId) return '';
+        return `${apiBase()}/matrix/profile-photo/view/${encodeURIComponent(fileId)}`;
+    }
+
+    function getDisplayColumns(sheet) {
+        const cols = [...(sheet.columns || [])];
+        if (sheet.id !== PROFILE_SHEET_ID) return cols;
+        const nameIdx = cols.findIndex(c => /personnel name/i.test(c.label));
+        const photoIdx = cols.findIndex(c => c.type === 'image' || c.id === PHOTO_COL_ID);
+        if (nameIdx >= 0 && photoIdx >= 0 && photoIdx !== nameIdx + 1) {
+            const [photo] = cols.splice(photoIdx, 1);
+            cols.splice(nameIdx + 1, 0, photo);
+        }
+        return cols;
+    }
+
+    function findPersonnelProfileRow(sheet, row) {
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        if (!profileSheet || !row) return row;
+        if (sheet?.id === PROFILE_SHEET_ID) return row;
+
+        const ktpCol = getColByLabel(sheet, /ktp/i);
+        const nameCol = getColByLabel(sheet, /personnel name/i);
+        const ktp = ktpCol ? (row.cells?.[ktpCol.id] || '').trim() : '';
+        const name = nameCol ? (row.cells?.[nameCol.id] || '').trim() : '';
+
+        const profileKtpCol = getColByLabel(profileSheet, /ktp/i);
+        const profileNameCol = getColByLabel(profileSheet, /personnel name/i);
+
+        if (ktp && profileKtpCol) {
+            const match = profileSheet.rows.find(r => (r.cells?.[profileKtpCol.id] || '').trim() === ktp);
+            if (match) return match;
+        }
+        if (name && profileNameCol) {
+            const nl = name.toLowerCase();
+            const match = profileSheet.rows.find(r =>
+                (r.cells?.[profileNameCol.id] || '').trim().toLowerCase() === nl
+            );
+            if (match) return match;
+        }
+        return row;
+    }
+
+    function getPhotoCol(sheet) {
+        return (sheet?.columns || []).find(c => c.type === 'image' || /profile photo/i.test(c.label) || c.id === PHOTO_COL_ID);
+    }
+
+    function photoColId(sheet) {
+        return getPhotoCol(sheet)?.id || PHOTO_COL_ID;
+    }
+
+    function profilePhotoFileId(profileRow) {
+        if (!profileRow) return '';
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        const cid = photoColId(profileSheet);
+        return (profileRow.cells?.[cid] || '').trim();
+    }
+
+    function profileGender(profileRow) {
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        const genderCol = getColByLabel(profileSheet, /gender/i);
+        return genderCol ? (profileRow?.cells?.[genderCol.id] || '') : '';
+    }
+
+    function profileName(profileRow) {
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        const nameCol = getColByLabel(profileSheet, /personnel name/i);
+        return nameCol ? (profileRow?.cells?.[nameCol.id] || '').trim() : '';
+    }
+
+    function avatarSrcForProfile(profileRow) {
+        const fileId = profilePhotoFileId(profileRow);
+        if (fileId) return photoViewUrl(fileId);
+        return defaultAvatar(profileGender(profileRow));
     }
 
     function computeSheetSummary(sheet) {
@@ -146,6 +254,26 @@
         await matrixRequest('PUT', `/matrix/sheets/${sheetId}/rows/${rowId}`, { cells: { [colId]: value } });
         const row = sheetById(sheetId)?.rows?.find(r => r.id === rowId);
         if (row) row.cells[colId] = value;
+    }
+
+    async function ensureProfilePhotoColumn() {
+        const sheet = sheetById(PROFILE_SHEET_ID);
+        if (!sheet) return;
+        const hasPhoto = (sheet.columns || []).some(c => c.type === 'image' || /profile photo/i.test(c.label));
+        if (hasPhoto) return;
+        try {
+            const col = await matrixRequest('POST', `/matrix/sheets/${PROFILE_SHEET_ID}/columns`, {
+                label: 'Profile Photo',
+                type: 'image',
+                filterable: false,
+            });
+            if (col?.id) {
+                sheet.columns.push(col);
+                sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+            }
+        } catch (e) {
+            console.warn('ensureProfilePhotoColumn:', e.message);
+        }
     }
 
     function clearHistory() {
@@ -255,9 +383,49 @@
         </div>`;
     }
 
+    function renderPhotoCell(sheet, row, col) {
+        const profileRow = findPersonnelProfileRow(sheet, row);
+        const fileId = profilePhotoFileId(profileRow);
+        const gender = profileGender(profileRow);
+        const src = fileId ? photoViewUrl(fileId) : defaultAvatar(gender);
+        const canUpload = sheet.id === PROFILE_SHEET_ID;
+        const name = profileName(profileRow) || profileName(row) || 'Personnel';
+        const uploadAttrs = canUpload
+            ? `onclick="matrixTriggerPhotoUpload('${esc(sheet.id)}','${esc(row.id)}','${esc(col.id)}')" title="Upload foto profil"`
+            : 'title="Foto dari Data Personel"';
+
+        return `<td class="mx-td mx-td-photo">
+            <div class="mx-photo-cell" ${uploadAttrs}>
+                <img class="mx-photo-thumb" src="${esc(src)}" alt="Profil" onerror="this.src='${defaultAvatar(gender)}'" />
+                ${canUpload ? `<span class="mx-photo-upload-hint">📷 Upload</span>
+                <input type="file" accept="image/*" class="mx-photo-input" id="mx-photo-${esc(row.id)}"
+                    data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
+                    data-name="${esc(name)}" onchange="matrixOnPhotoSelected(this)" />` : ''}
+            </div>
+        </td>`;
+    }
+
+    function renderCell(sheet, row, c) {
+        if (c.type === 'image' || c.id === PHOTO_COL_ID) {
+            return renderPhotoCell(sheet, row, c);
+        }
+        const val = row.cells?.[c.id] ?? '';
+        const inputType = c.type === 'date' ? 'date' : (c.type === 'number' ? 'number' : 'text');
+        return `<td class="mx-td">
+            <input class="mx-cell-input" type="${inputType}" value="${esc(val)}"
+                data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(c.id)}"
+                onfocus="this.dataset.prev=this.value"
+                onchange="matrixOnCellChange(this)" />
+        </td>`;
+    }
+
     function renderTable(sheet, rows) {
-        const cols = sheet.columns || [];
-        const head = cols.map(c => `
+        const cols = getDisplayColumns(sheet);
+        const head = cols.map(c => {
+            if (c.type === 'image' || c.id === PHOTO_COL_ID) {
+                return `<th class="mx-th mx-th-photo"><span>${esc(c.label.replace(/\*/g, ''))}</span></th>`;
+            }
+            return `
             <th class="mx-th">
                 <div class="mx-th-inner">
                     <span title="${esc(c.label)}">${esc(c.label.replace(/\*/g, ''))}</span>
@@ -266,21 +434,15 @@
                         <button type="button" title="Hapus kolom" onclick="matrixDeleteColumn('${esc(sheet.id)}','${esc(c.id)}')">×</button>
                     </div>
                 </div>
-            </th>`).join('') + '<th class="mx-th mx-th-sticky">Aksi</th>';
+            </th>`;
+        }).join('') + '<th class="mx-th mx-th-sticky">Aksi</th>';
 
         const body = rows.map(row => {
-            const cells = cols.map(c => {
-                const val = row.cells?.[c.id] ?? '';
-                const inputType = c.type === 'date' ? 'date' : (c.type === 'number' ? 'number' : 'text');
-                return `<td class="mx-td">
-                    <input class="mx-cell-input" type="${inputType}" value="${esc(val)}"
-                        data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(c.id)}"
-                        onfocus="this.dataset.prev=this.value"
-                        onchange="matrixOnCellChange(this)" />
-                </td>`;
-            }).join('');
-            return `<tr data-row-id="${esc(row.id)}">${cells}
-                <td class="mx-td mx-td-actions">
+            const selected = row.id === MATRIX_STATE.selectedRowId ? ' mx-row-selected' : '';
+            const cells = cols.map(c => renderCell(sheet, row, c)).join('');
+            return `<tr class="mx-data-row${selected}" data-row-id="${esc(row.id)}"
+                onclick="matrixSelectRow('${esc(row.id)}')">${cells}
+                <td class="mx-td mx-td-actions" onclick="event.stopPropagation()">
                     <button type="button" class="mx-btn mx-btn-danger-sm" onclick="matrixDeleteRow('${esc(sheet.id)}','${esc(row.id)}')">Hapus</button>
                 </td></tr>`;
         }).join('');
@@ -294,6 +456,73 @@
                 </table>
             </div>
         </div>`;
+    }
+
+    function sidebarFieldRows(profileSheet, profileRow, tabId) {
+        const patterns = SIDEBAR_FIELDS[tabId] || [];
+        const cols = profileSheet?.columns || [];
+        const items = [];
+        cols.forEach(col => {
+            if (col.type === 'image' || col.id === PHOTO_COL_ID) return;
+            if (!patterns.some(p => p.test(col.label))) return;
+            const val = (profileRow?.cells?.[col.id] || '').trim();
+            items.push({ label: col.label.replace(/\*/g, ''), value: val || '—' });
+        });
+        return items;
+    }
+
+    function renderSidebar(sheet) {
+        const activeRow = (sheet.rows || []).find(r => r.id === MATRIX_STATE.selectedRowId);
+        if (!activeRow) {
+            return `
+            <aside class="mx-sidebar mx-sidebar-empty">
+                <div class="mx-sidebar-placeholder">
+                    <div class="mx-sidebar-placeholder-icon">👤</div>
+                    <p>Pilih baris personel untuk melihat profil</p>
+                </div>
+            </aside>`;
+        }
+
+        const profileSheet = sheetById(PROFILE_SHEET_ID) || sheet;
+        const profileRow = findPersonnelProfileRow(sheet, activeRow);
+        const name = profileName(profileRow) || 'Personnel';
+        const gender = profileGender(profileRow);
+        const ktpCol = getColByLabel(profileSheet, /ktp/i);
+        const cityCol = getColByLabel(profileSheet, /city/i);
+        const ktp = ktpCol ? (profileRow?.cells?.[ktpCol.id] || '').trim() : '';
+        const city = cityCol ? (profileRow?.cells?.[cityCol.id] || '').trim() : '';
+        const avatar = avatarSrcForProfile(profileRow);
+        const tabId = MATRIX_STATE.sidebarTab;
+        const fields = sidebarFieldRows(profileSheet, profileRow, tabId);
+
+        const tabs = SIDEBAR_TABS.map(t =>
+            `<button type="button" class="mx-sidebar-tab${t.id === tabId ? ' active' : ''}"
+                onclick="matrixSetSidebarTab('${t.id}')">${esc(t.label)}</button>`
+        ).join('');
+
+        const fieldHtml = fields.map(f => `
+            <div class="mx-sidebar-field">
+                <span class="mx-sidebar-field-label">${esc(f.label)}</span>
+                <span class="mx-sidebar-field-value">${esc(f.value)}</span>
+            </div>`).join('') || '<p class="mx-sidebar-no-data">Tidak ada data untuk tab ini.</p>';
+
+        return `
+        <aside class="mx-sidebar">
+            <div class="mx-sidebar-card">
+                <div class="mx-sidebar-photo-wrap">
+                    <img class="mx-sidebar-photo" src="${esc(avatar)}" alt="${esc(name)}"
+                        onerror="this.src='${defaultAvatar(gender)}'" />
+                </div>
+                <h3 class="mx-sidebar-name">${esc(name)}</h3>
+                <div class="mx-sidebar-badges">
+                    ${gender ? `<span class="mx-sidebar-badge">${esc(gender)}</span>` : ''}
+                    ${city ? `<span class="mx-sidebar-badge mx-sidebar-badge-muted">${esc(city)}</span>` : ''}
+                    ${ktp ? `<span class="mx-sidebar-badge mx-sidebar-badge-muted">KTP</span>` : ''}
+                </div>
+                <div class="mx-sidebar-tabs">${tabs}</div>
+                <div class="mx-sidebar-fields">${fieldHtml}</div>
+            </div>
+        </aside>`;
     }
 
     function paintMatrixScreen() {
@@ -315,6 +544,12 @@
         const rows = filterRows(sheet);
         const tabLabel = TAB_LABELS[sheet.id] || sheet.title || sheet.name;
 
+        if (MATRIX_STATE.selectedRowId && !rows.some(r => r.id === MATRIX_STATE.selectedRowId)) {
+            MATRIX_STATE.selectedRowId = rows[0]?.id || null;
+        } else if (!MATRIX_STATE.selectedRowId && rows.length) {
+            MATRIX_STATE.selectedRowId = rows[0].id;
+        }
+
         root.innerHTML = `
             <div class="mx-page">
                 <header class="ex-stats-header mx-header">
@@ -329,15 +564,132 @@
                     </div>
                 </header>
                 ${renderDashboard(summary)}
-                ${renderToolbar(sheet)}
-                ${renderTable(sheet, rows)}
+                <div class="mx-layout">
+                    ${renderSidebar(sheet)}
+                    <div class="mx-main">
+                        ${renderToolbar(sheet)}
+                        ${renderTable(sheet, rows)}
+                    </div>
+                </div>
             </div>`;
         updateUndoRedoUI();
+    }
+
+    window.matrixSelectRow = function (rowId) {
+        MATRIX_STATE.selectedRowId = rowId;
+        paintMatrixScreen();
+    };
+
+    window.matrixSetSidebarTab = function (tabId) {
+        MATRIX_STATE.sidebarTab = tabId;
+        paintMatrixScreen();
+    };
+
+    window.matrixTriggerPhotoUpload = function (sheetId, rowId, colId) {
+        const input = document.getElementById(`mx-photo-${rowId}`);
+        if (input) input.click();
+    };
+
+    window.matrixOnPhotoSelected = async function (input) {
+        const file = input.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            showToast?.('Hanya file gambar yang diizinkan', 'error');
+            input.value = '';
+            return;
+        }
+
+        const sheetId = input.dataset.sheet;
+        const rowId = input.dataset.row;
+        const colId = input.dataset.col || PHOTO_COL_ID;
+        const personnelName = input.dataset.name || 'Personnel';
+        const oldVal = sheetById(sheetId)?.rows?.find(r => r.id === rowId)?.cells?.[colId] || '';
+
+        try {
+            showToast?.('Mengunggah foto...', 'info');
+            const fileId = await uploadProfilePhoto(sheetId, rowId, colId, personnelName, file);
+            pushHistory({
+                desc: 'Upload foto profil',
+                undo: async () => { await applyCellUpdate(sheetId, rowId, colId, oldVal); },
+                redo: async () => { await applyCellUpdate(sheetId, rowId, colId, fileId); },
+            });
+            showToast?.('Foto profil berhasil diunggah ke Google Drive', 'success');
+            paintMatrixScreen();
+        } catch (e) {
+            showToast?.(e.message || 'Gagal mengunggah foto', 'error');
+        } finally {
+            input.value = '';
+        }
+    };
+
+    async function uploadProfilePhoto(sheetId, rowId, colId, personnelName, file) {
+        const CHUNK_SIZE = 2 * 1024 * 1024;
+        const totalSize = file.size;
+
+        if (totalSize <= CHUNK_SIZE) {
+            const form = new FormData();
+            form.append('sheet_id', sheetId);
+            form.append('row_id', rowId);
+            form.append('col_id', colId);
+            form.append('personnel_name', personnelName);
+            form.append('file', file);
+            const res = await fetch(`${apiBase()}/matrix/profile-photo/upload`, { method: 'POST', body: form });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            await applyCellUpdate(sheetId, rowId, colId, data.file_id);
+            return data.file_id;
+        }
+
+        const initForm = new FormData();
+        initForm.append('filename', file.name);
+        initForm.append('mime_type', file.type || 'image/jpeg');
+        initForm.append('personnel_name', personnelName);
+        const initRes = await fetch(`${apiBase()}/matrix/profile-photo/initiate-upload`, { method: 'POST', body: initForm });
+        if (!initRes.ok) {
+            const err = await initRes.json().catch(() => ({}));
+            throw new Error(err.detail || 'Gagal memulai upload');
+        }
+        const { upload_url } = await initRes.json();
+        const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+        let fileId = null;
+
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const chunk = file.slice(start, Math.min(start + CHUNK_SIZE, totalSize));
+            const chunkForm = new FormData();
+            chunkForm.append('sheet_id', sheetId);
+            chunkForm.append('row_id', rowId);
+            chunkForm.append('col_id', colId);
+            chunkForm.append('personnel_name', personnelName);
+            chunkForm.append('filename', file.name);
+            chunkForm.append('upload_url', upload_url);
+            chunkForm.append('chunk_index', String(i));
+            chunkForm.append('total_chunks', String(totalChunks));
+            chunkForm.append('chunk_file', chunk, file.name);
+            chunkForm.append('start_byte', String(start));
+            chunkForm.append('total_size', String(totalSize));
+
+            const chunkRes = await fetch(`${apiBase()}/matrix/profile-photo/upload-chunk`, { method: 'POST', body: chunkForm });
+            if (!chunkRes.ok) {
+                const err = await chunkRes.json().catch(() => ({}));
+                throw new Error(err.detail || `Chunk ${i + 1} gagal`);
+            }
+            const chunkData = await chunkRes.json();
+            if (chunkData.status === 'complete') fileId = chunkData.file_id;
+        }
+
+        if (!fileId) throw new Error('Upload selesai tanpa file_id');
+        await applyCellUpdate(sheetId, rowId, colId, fileId);
+        return fileId;
     }
 
     window.matrixOnTabChange = function (sheetId) {
         MATRIX_STATE.activeSheetId = sheetId;
         MATRIX_STATE.search = '';
+        MATRIX_STATE.selectedRowId = null;
         clearHistory();
         paintMatrixScreen();
     };
@@ -363,6 +715,9 @@
                 undo: async () => { await applyCellUpdate(sheetId, rowId, colId, oldVal); },
                 redo: async () => { await applyCellUpdate(sheetId, rowId, colId, newVal); },
             });
+            if (/personnel name/i.test(sheetById(sheetId)?.columns?.find(c => c.id === colId)?.label || '')) {
+                paintMatrixScreen();
+            }
         } catch (e) {
             input.value = oldVal;
             showToast?.(e.message || 'Gagal menyimpan', 'error');
@@ -388,6 +743,7 @@
                     sheet.rows.push(restored);
                 },
             });
+            MATRIX_STATE.selectedRowId = row.id;
             paintMatrixScreen();
         } catch (e) {
             showToast?.(e.message, 'error');
@@ -404,6 +760,7 @@
         try {
             await matrixRequest('DELETE', `/matrix/sheets/${sheetId}/rows/${rowId}`);
             sheet.rows = sheet.rows.filter(r => r.id !== rowId);
+            if (MATRIX_STATE.selectedRowId === rowId) MATRIX_STATE.selectedRowId = null;
             pushHistory({
                 desc: 'Hapus baris',
                 undo: async () => {
@@ -443,7 +800,7 @@
                     await reloadActiveSheet();
                 },
                 redo: async () => {
-                    const c = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/columns`, {
+                    await matrixRequest('POST', `/matrix/sheets/${sheet.id}/columns`, {
                         label: colSnap.label, type: colSnap.type || 'text', filterable: colSnap.filterable !== false,
                     });
                     await reloadActiveSheet();
@@ -541,6 +898,7 @@
         try {
             MATRIX_STATE.loading = true;
             MATRIX_STATE.workbook = await fetchWorkbook();
+            await ensureProfilePhotoColumn();
             if (!MATRIX_STATE.activeSheetId && MATRIX_STATE.workbook.sheets?.length) {
                 MATRIX_STATE.activeSheetId = MATRIX_STATE.workbook.sheets[0].id;
             }
