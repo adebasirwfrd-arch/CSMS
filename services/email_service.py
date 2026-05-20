@@ -120,6 +120,65 @@ class EmailService:
         
         return self._send_email([recipient], subject, body_html)
 
+    def send_matrix_expiry_reminder(
+        self,
+        recipients: List[str],
+        items: List[Dict],
+        reminder_days: int = 90,
+        product_line_name: str = "",
+    ) -> bool:
+        """Send digest email for matrix columns expiring in ~90 days (per Product Line)."""
+        if not recipients:
+            print("[EMAIL WARN] No matrix reminder recipients configured")
+            return False
+        if not items:
+            print("[EMAIL WARN] No matrix expiry items to remind")
+            return False
+
+        pl_label = f" {product_line_name}" if product_line_name else ""
+        subject = f"[CSMS Matrix{pl_label}] Reminder — {len(items)} dokumen akan expired ({reminder_days} hari)"
+        rows_html = ""
+        for it in items:
+            rows_html += f"""
+            <tr style="background:#fff;">
+                <td style="padding:8px;border:1px solid #ddd;">{it.get('sheet_label', '-')}</td>
+                <td style="padding:8px;border:1px solid #ddd;">{it.get('personnel_name', '-')}</td>
+                <td style="padding:8px;border:1px solid #ddd;">{it.get('column_label', '-')}</td>
+                <td style="padding:8px;border:1px solid #ddd;">{it.get('expiry_date', '-')}</td>
+                <td style="padding:8px;border:1px solid #ddd;color:#e67e22;font-weight:bold;">{it.get('days_until', '-')} hari</td>
+                <td style="padding:8px;border:1px solid #ddd;">{it.get('client', '-')}</td>
+                <td style="padding:8px;border:1px solid #ddd;">{it.get('project', '-')}</td>
+            </tr>"""
+
+        body_html = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+            <div style="background: #E50914; color: white; padding: 20px; border-radius: 8px;">
+                <h2 style="margin: 0;">Matrix Expiry Reminder{pl_label}</h2>
+                <p style="margin: 8px 0 0;">Pengingat {reminder_days} hari sebelum tanggal expired</p>
+            </div>
+            <div style="padding: 20px; background: #f5f5f5; border-radius: 8px; margin-top: 10px;">
+                <p>Berikut daftar sertifikasi / dokumen personel yang akan expired dalam <strong>{reminder_days} hari</strong>:</p>
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <tr style="background:#333;color:#fff;">
+                        <th style="padding:8px;border:1px solid #ddd;">Sheet</th>
+                        <th style="padding:8px;border:1px solid #ddd;">Personel</th>
+                        <th style="padding:8px;border:1px solid #ddd;">Kolom</th>
+                        <th style="padding:8px;border:1px solid #ddd;">Tanggal Expired</th>
+                        <th style="padding:8px;border:1px solid #ddd;">Sisa Hari</th>
+                        <th style="padding:8px;border:1px solid #ddd;">Client</th>
+                        <th style="padding:8px;border:1px solid #ddd;">Project</th>
+                    </tr>
+                    {rows_html}
+                </table>
+                <p style="margin-top: 20px;">Silakan tindak lanjuti perpanjangan sebelum tanggal expired.</p>
+                <p>Best regards,<br><strong>CSMS Project Management System</strong><br>Weatherford</p>
+            </div>
+        </body>
+        </html>
+        """
+        return self._send_email(recipients, subject, body_html)
+
     def send_project_rig_down_alert(self, project: Dict, days_until: int, total_tasks: int, is_new_project: bool = True) -> bool:
         """Send alert for imminent rig down"""
         pic_email_str = project.get('pic_email') or project.get('assigned_to_email') or ''

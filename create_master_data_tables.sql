@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS product_lines (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   description TEXT,
+  supervisor_email TEXT DEFAULT '',
+  hse_email TEXT DEFAULT '',
+  manager_email TEXT DEFAULT '',
+  coordinator_email TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

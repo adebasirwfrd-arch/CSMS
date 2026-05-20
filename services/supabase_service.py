@@ -1188,6 +1188,59 @@ class SupabaseService:
         ).eq("id", sheet_id).execute()
         return True
 
+    def filter_unsent_matrix_reminders(self, items: List[Dict]) -> List[Dict]:
+        if not self.enabled or not items:
+            return items
+        try:
+            result = self.client.table("matrix_reminder_log").select(
+                "sheet_id,row_id,col_id,expiry_date,reminder_days"
+            ).execute()
+            sent = {
+                (
+                    r["sheet_id"],
+                    r["row_id"],
+                    r["col_id"],
+                    str(r["expiry_date"])[:10],
+                    r.get("reminder_days", 90),
+                )
+                for r in (result.data or [])
+            }
+            out = []
+            for item in items:
+                key = (
+                    item["sheet_id"],
+                    item["row_id"],
+                    item["col_id"],
+                    str(item["expiry_date"])[:10],
+                    90,
+                )
+                if key not in sent:
+                    out.append(item)
+            return out
+        except Exception as e:
+            self._log_err("SELECT", "matrix_reminder_log", e)
+            return items
+
+    def log_matrix_reminders_sent(self, items: List[Dict]) -> None:
+        if not self.enabled or not items:
+            return
+        try:
+            rows = [
+                {
+                    "sheet_id": it["sheet_id"],
+                    "row_id": it["row_id"],
+                    "col_id": it["col_id"],
+                    "expiry_date": str(it["expiry_date"])[:10],
+                    "reminder_days": 90,
+                }
+                for it in items
+            ]
+            self.client.table("matrix_reminder_log").upsert(
+                rows, on_conflict="sheet_id,row_id,col_id,expiry_date,reminder_days"
+            ).execute()
+        except Exception as e:
+            self._log_err("UPSERT", "matrix_reminder_log", e)
+
 
 # Global instance
 supabase_service = SupabaseService()

@@ -15,8 +15,10 @@ from services.matrix_store import (
     add_row,
     delete_column,
     delete_row,
+    filter_unsent_reminders,
     get_sheet,
     get_workbook,
+    log_reminder_sent,
     seed_workbook,
     update_column,
     update_row,
@@ -57,6 +59,77 @@ class ColumnUpdateBody(BaseModel):
     label: Optional[str] = None
     type: Optional[str] = None
     filterable: Optional[bool] = None
+
+
+@router.post("/matrix/send-expiry-reminders")
+@router.get("/matrix/send-expiry-reminders")
+def matrix_send_expiry_reminders(force: bool = False):
+    """Send Brevo email digest per Product Line for matrix items expiring in ~90 days."""
+    from database import get_product_lines
+    from services.email_service import email_service
+    from services.matrix_expiry_reminder import (
+        MATRIX_REMINDER_DAYS,
+        collect_expiry_reminders,
+        group_items_by_product_line,
+    )
+
+    if not email_service.api_key:
+        return {"sent": False, "message": "Brevo API key tidak dikonfigurasi", "count": 0}
+
+    product_lines = get_product_lines()
+    workbook = get_workbook()
+    items = collect_expiry_reminders(workbook, reminder_days=MATRIX_REMINDER_DAYS)
+    if not force:
+        items = filter_unsent_reminders(items)
+    if not items:
+        return {
+            "sent": False,
+            "message": f"Tidak ada kolom yang akan expired ~{MATRIX_REMINDER_DAYS} hari",
+            "count": 0,
+        }
+
+    groups = group_items_by_product_line(items, product_lines)
+    sent_total = 0
+    sent_pl = []
+    skipped = []
+    all_sent_items = []
+
+    for pl_key, group in groups.items():
+        recipients = group["recipients"]
+        pl_items = group["items"]
+        pl_name = group["product_line_name"]
+        if not recipients:
+            skipped.append({"product_line": pl_name, "reason": "belum ada email penerima"})
+            continue
+        ok = email_service.send_matrix_expiry_reminder(
+            recipients,
+            pl_items,
+            reminder_days=MATRIX_REMINDER_DAYS,
+            product_line_name=pl_name,
+        )
+        if ok:
+            sent_total += len(pl_items)
+            sent_pl.append({"product_line": pl_name, "count": len(pl_items), "recipients": recipients})
+            all_sent_items.extend(pl_items)
+
+    if all_sent_items:
+        log_reminder_sent(all_sent_items)
+
+    if sent_pl:
+        return {
+            "sent": True,
+            "message": f"Email reminder terkirim untuk {len(sent_pl)} product line",
+            "count": sent_total,
+            "product_lines": sent_pl,
+            "skipped": skipped,
+        }
+
+    return {
+        "sent": False,
+        "message": "Tidak ada email terkirim — pastikan Product Line di Master sudah diisi email",
+        "count": 0,
+        "skipped": skipped,
+    }
 
 
 @router.get("/matrix/workbook")

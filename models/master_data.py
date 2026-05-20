@@ -25,6 +25,10 @@ class Client(ClientBase):
 class ProductLineBase(BaseModel):
     name: str
     description: Optional[str] = None
+    supervisor_email: Optional[str] = ""
+    hse_email: Optional[str] = ""
+    manager_email: Optional[str] = ""
+    coordinator_email: Optional[str] = ""
 
 
 class ProductLineCreate(ProductLineBase):
@@ -34,6 +38,10 @@ class ProductLineCreate(ProductLineBase):
 class ProductLineUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    supervisor_email: Optional[str] = None
+    hse_email: Optional[str] = None
+    manager_email: Optional[str] = None
+    coordinator_email: Optional[str] = None
 
 
 class ProductLine(ProductLineBase):

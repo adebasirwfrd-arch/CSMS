@@ -174,3 +174,14 @@ def delete_column(sheet_id: str, col_id: str) -> bool:
         row.get("cells", {}).pop(col_id, None)
     _save_json(data)
     return True
+
+
+def log_reminder_sent(items: list) -> None:
+    if SUPABASE_MATRIX and supabase_service:
+        supabase_service.log_matrix_reminders_sent(items)
+
+
+def filter_unsent_reminders(items: list) -> list:
+    if SUPABASE_MATRIX and supabase_service:
+        return supabase_service.filter_unsent_matrix_reminders(items)
+    return items

@@ -3067,6 +3067,11 @@
                     <div style="display: grid; gap: 8px;">
                         <input class="form-input" id="pl-name-input" placeholder="Nama Product Line *" required>
                         <input class="form-input" id="pl-desc-input" placeholder="Deskripsi">
+                        <input class="form-input" type="email" id="pl-supervisor-email-input" placeholder="Supervisor Email (opsional)">
+                        <input class="form-input" type="email" id="pl-hse-email-input" placeholder="HSE Email (opsional)">
+                        <input class="form-input" type="email" id="pl-manager-email-input" placeholder="Manager Email (opsional)">
+                        <input class="form-input" type="email" id="pl-coordinator-email-input" placeholder="Coordinator Email (opsional)">
+                        <p style="font-size: 11px; color: var(--text-muted); margin: 0;">Email reminder Matrix (90 hari sebelum expired). Tidak wajib diisi semua — hanya email yang diisi yang akan menerima.</p>
                         <div style="display: flex; gap: 8px;">
                             <button type="submit" class="btn btn-save" style="flex:1;">Simpan Product Line</button>
                             <button type="button" class="btn btn-cancel" onclick="resetProductLineForm()">Reset</button>
@@ -4881,7 +4886,12 @@
                 cachedProductLines,
                 [
                     { label: 'Nama', render: i => i.name },
-                    { label: 'Deskripsi', render: i => i.description || '-' }
+                    { label: 'Deskripsi', render: i => i.description || '-' },
+                    { label: 'Email Reminder', render: i => {
+                        const n = [i.supervisor_email, i.hse_email, i.manager_email, i.coordinator_email]
+                            .filter(e => e && String(e).trim()).length;
+                        return n ? `${n} email` : '-';
+                    }}
                 ],
                 'editProductLine',
                 'deleteProductLineRow'
@@ -4914,6 +4924,10 @@
         document.getElementById('product-line-edit-id').value = '';
         document.getElementById('pl-name-input').value = '';
         document.getElementById('pl-desc-input').value = '';
+        document.getElementById('pl-supervisor-email-input').value = '';
+        document.getElementById('pl-hse-email-input').value = '';
+        document.getElementById('pl-manager-email-input').value = '';
+        document.getElementById('pl-coordinator-email-input').value = '';
     }
 
     async function saveClient(e) {
@@ -4960,7 +4974,11 @@
         const id = document.getElementById('product-line-edit-id').value;
         const body = {
             name: document.getElementById('pl-name-input').value.trim(),
-            description: document.getElementById('pl-desc-input').value.trim() || null
+            description: document.getElementById('pl-desc-input').value.trim() || null,
+            supervisor_email: document.getElementById('pl-supervisor-email-input').value.trim(),
+            hse_email: document.getElementById('pl-hse-email-input').value.trim(),
+            manager_email: document.getElementById('pl-manager-email-input').value.trim(),
+            coordinator_email: document.getElementById('pl-coordinator-email-input').value.trim(),
         };
         const url = id ? `${API_BASE}/product-lines/${id}` : `${API_BASE}/product-lines`;
         const method = id ? 'PUT' : 'POST';
@@ -4982,6 +5000,10 @@
         document.getElementById('product-line-edit-id').value = p.id;
         document.getElementById('pl-name-input').value = p.name;
         document.getElementById('pl-desc-input').value = p.description || '';
+        document.getElementById('pl-supervisor-email-input').value = p.supervisor_email || '';
+        document.getElementById('pl-hse-email-input').value = p.hse_email || '';
+        document.getElementById('pl-manager-email-input').value = p.manager_email || '';
+        document.getElementById('pl-coordinator-email-input').value = p.coordinator_email || '';
     }
     window.editProductLine = editProductLine;
 
@@ -10388,7 +10410,7 @@
 </script>
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
-    <script src="/static/matrix-personnel.js?v=18"></script>
+    <script src="/static/matrix-personnel.js?v=20"></script>
 </body>
 
 </html>
