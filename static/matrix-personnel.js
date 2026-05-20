@@ -14,7 +14,7 @@
         filters: {},
         loading: false,
         selectedRowId: null,
-        sidebarTab: 'personal',
+        sidebarTab: PROFILE_SHEET_ID,
     };
 
     const HISTORY = { undo: [], redo: [] };
@@ -28,17 +28,15 @@
         emergency_contact_information: 'Kontak Darurat',
     };
 
-    const SIDEBAR_TABS = [
-        { id: 'personal', label: 'Personal' },
-        { id: 'contact', label: 'Kontak' },
-        { id: 'documents', label: 'Dokumen' },
+    const SIDEBAR_SHEET_ORDER = [
+        'employee_mandatory_training',
+        'personnel_health',
+        'personnel_data_information',
+        'contract_information',
+        'emergency_contact_information',
     ];
 
-    const SIDEBAR_FIELDS = {
-        personal: [/gender/i, /birth date/i, /birth place/i, /family status/i, /education/i, /majoring/i, /address/i, /city/i, /country/i],
-        contact: [/home phone/i, /hp number/i, /email/i],
-        documents: [/skck/i, /hse passport/i, /ktp/i],
-    };
+    const SIDEBAR_TABS = SIDEBAR_SHEET_ORDER.map(id => ({ id, label: TAB_LABELS[id] }));
 
     function esc(s) {
         if (s == null) return '';
@@ -112,6 +110,78 @@
             cols.splice(nameIdx + 1, 0, photo);
         }
         return cols;
+    }
+
+    function getColByExactLabel(sheet, label) {
+        const target = label.toLowerCase();
+        return (sheet?.columns || []).find(c => c.label.replace(/\*/g, '').trim().toLowerCase() === target);
+    }
+
+    function getPersonnelKeys(profileRow) {
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        const ktpCol = getColByLabel(profileSheet, /ktp/i);
+        const nameCol = getColByLabel(profileSheet, /personnel name/i);
+        return {
+            ktp: ktpCol ? (profileRow?.cells?.[ktpCol.id] || '').trim() : '',
+            name: nameCol ? (profileRow?.cells?.[nameCol.id] || '').trim() : '',
+        };
+    }
+
+    function findRowInSheet(targetSheet, profileRow) {
+        if (!targetSheet || !profileRow) return null;
+        if (targetSheet.id === PROFILE_SHEET_ID) return profileRow;
+
+        const { ktp, name } = getPersonnelKeys(profileRow);
+        const ktpCol = getColByLabel(targetSheet, /ktp/i);
+        const nameCol = getColByLabel(targetSheet, /personnel name/i);
+
+        if (ktp && ktpCol) {
+            const byKtp = targetSheet.rows.find(r => (r.cells?.[ktpCol.id] || '').trim() === ktp);
+            if (byKtp) return byKtp;
+        }
+        if (name && nameCol) {
+            const nl = name.toLowerCase();
+            const byName = targetSheet.rows.find(r =>
+                (r.cells?.[nameCol.id] || '').trim().toLowerCase() === nl
+            );
+            if (byName) return byName;
+        }
+
+        if (targetSheet.id === 'contract_information') {
+            const trainingSheet = sheetById('employee_mandatory_training');
+            if (trainingSheet) {
+                const trainingRow = findRowInSheet(trainingSheet, profileRow);
+                if (trainingRow) {
+                    const noCol = getColByExactLabel(trainingSheet, 'No');
+                    const noVal = noCol ? (trainingRow.cells?.[noCol.id] || '').trim() : '';
+                    if (noVal) {
+                        const contractNoCol = getColByExactLabel(targetSheet, 'No');
+                        if (contractNoCol) {
+                            const byNo = targetSheet.rows.find(r =>
+                                (r.cells?.[contractNoCol.id] || '').trim() === noVal
+                            );
+                            if (byNo) return byNo;
+                        }
+                    }
+                    const hbCol = getColByLabel(trainingSheet, /home base/i);
+                    const wlCol = getColByLabel(trainingSheet, /working location/i);
+                    const hb = hbCol ? (trainingRow.cells?.[hbCol.id] || '').trim() : '';
+                    const wl = wlCol ? (trainingRow.cells?.[wlCol.id] || '').trim() : '';
+                    if (hb || wl) {
+                        const cHb = getColByLabel(targetSheet, /home base/i);
+                        const cWl = getColByLabel(targetSheet, /working location/i);
+                        const byLoc = targetSheet.rows.find(r => {
+                            const matchHb = !hb || !cHb || (r.cells?.[cHb.id] || '').trim() === hb;
+                            const matchWl = !wl || !cWl || (r.cells?.[cWl.id] || '').trim() === wl;
+                            return matchHb && matchWl;
+                        });
+                        if (byLoc) return byLoc;
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     function findPersonnelProfileRow(sheet, row) {
@@ -458,17 +528,19 @@
         </div>`;
     }
 
-    function sidebarFieldRows(profileSheet, profileRow, tabId) {
-        const patterns = SIDEBAR_FIELDS[tabId] || [];
-        const cols = profileSheet?.columns || [];
+    function sidebarFieldRowsForSheet(sheetId, profileRow) {
+        const sheet = sheetById(sheetId);
+        if (!sheet) return { items: [], hasRow: false };
+        const row = findRowInSheet(sheet, profileRow);
+        if (!row) return { items: [], hasRow: false };
+
         const items = [];
-        cols.forEach(col => {
+        (sheet.columns || []).forEach(col => {
             if (col.type === 'image' || col.id === PHOTO_COL_ID) return;
-            if (!patterns.some(p => p.test(col.label))) return;
-            const val = (profileRow?.cells?.[col.id] || '').trim();
+            const val = (row.cells?.[col.id] || '').trim();
             items.push({ label: col.label.replace(/\*/g, ''), value: val || '—' });
         });
-        return items;
+        return { items, hasRow: true };
     }
 
     function renderSidebar(sheet) {
@@ -493,18 +565,23 @@
         const city = cityCol ? (profileRow?.cells?.[cityCol.id] || '').trim() : '';
         const avatar = avatarSrcForProfile(profileRow);
         const tabId = MATRIX_STATE.sidebarTab;
-        const fields = sidebarFieldRows(profileSheet, profileRow, tabId);
+        const { items: fields, hasRow } = sidebarFieldRowsForSheet(tabId, profileRow);
+        const tabLabel = TAB_LABELS[tabId] || tabId;
 
         const tabs = SIDEBAR_TABS.map(t =>
             `<button type="button" class="mx-sidebar-tab${t.id === tabId ? ' active' : ''}"
-                onclick="matrixSetSidebarTab('${t.id}')">${esc(t.label)}</button>`
+                onclick="matrixSetSidebarTab('${t.id}')" title="${esc(t.label)}">${esc(t.label)}</button>`
         ).join('');
 
         const fieldHtml = fields.map(f => `
             <div class="mx-sidebar-field">
                 <span class="mx-sidebar-field-label">${esc(f.label)}</span>
                 <span class="mx-sidebar-field-value">${esc(f.value)}</span>
-            </div>`).join('') || '<p class="mx-sidebar-no-data">Tidak ada data untuk tab ini.</p>';
+            </div>`).join('');
+
+        const bodyHtml = hasRow
+            ? (fieldHtml || '<p class="mx-sidebar-no-data">Semua field kosong.</p>')
+            : `<p class="mx-sidebar-no-data">Tidak ada data ${esc(tabLabel)} untuk personel ini.</p>`;
 
         return `
         <aside class="mx-sidebar">
@@ -520,7 +597,7 @@
                     ${ktp ? `<span class="mx-sidebar-badge mx-sidebar-badge-muted">KTP</span>` : ''}
                 </div>
                 <div class="mx-sidebar-tabs">${tabs}</div>
-                <div class="mx-sidebar-fields">${fieldHtml}</div>
+                <div class="mx-sidebar-fields">${bodyHtml}</div>
             </div>
         </aside>`;
     }
@@ -687,9 +764,24 @@
     }
 
     window.matrixOnTabChange = function (sheetId) {
+        const prevSheet = activeSheet();
+        const prevRow = prevSheet?.rows?.find(r => r.id === MATRIX_STATE.selectedRowId);
+        const profileRow = prevRow ? findPersonnelProfileRow(prevSheet, prevRow) : null;
+
         MATRIX_STATE.activeSheetId = sheetId;
         MATRIX_STATE.search = '';
-        MATRIX_STATE.selectedRowId = null;
+        if (SIDEBAR_SHEET_ORDER.includes(sheetId)) {
+            MATRIX_STATE.sidebarTab = sheetId;
+        }
+
+        const newSheet = sheetById(sheetId);
+        if (profileRow && newSheet) {
+            const match = findRowInSheet(newSheet, profileRow);
+            MATRIX_STATE.selectedRowId = match?.id || null;
+        } else {
+            MATRIX_STATE.selectedRowId = null;
+        }
+
         clearHistory();
         paintMatrixScreen();
     };
