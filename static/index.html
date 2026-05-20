@@ -1323,6 +1323,8 @@
             gap: 12px;
         }
         .mx-toolbar-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+        .mx-toolbar-filters { margin-bottom: 0; }
+        .mx-toolbar-filters .mx-select { flex: 1; min-width: 140px; max-width: none; }
         .mx-toolbar-actions { justify-content: space-between; }
         .mx-select { min-width: 200px; max-width: 280px; font-size: 13px; padding: 8px 12px; }
         .mx-search { flex: 1; min-width: 180px; font-size: 13px; padding: 8px 12px; }
@@ -1369,6 +1371,7 @@
             color: var(--text-primary); padding: 7px 10px; border-radius: 6px; font-size: 12px;
         }
         .mx-cell-input:focus { border-color: var(--netflix-red); outline: none; background: #1a1a1a; }
+        .mx-cell-select { cursor: pointer; appearance: auto; }
         .mx-empty-row, .mx-loading, .mx-empty, .mx-locked { padding: 32px 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
         .mx-locked { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 14px; margin: 16px 0; }
 
@@ -10261,7 +10264,7 @@
     }
 </script>
     <script src="/static/exec-stats.js"></script>
-    <script src="/static/matrix-personnel.js?v=8"></script>
+    <script src="/static/matrix-personnel.js?v=9"></script>
 </body>
 
 </html>

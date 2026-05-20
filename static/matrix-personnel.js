@@ -15,7 +15,18 @@
         loading: false,
         selectedRowId: null,
         sidebarTab: PROFILE_SHEET_ID,
+        filterClientId: 'ALL',
+        filterProductLineId: '',
+        clients: [],
+        productLines: [],
     };
+
+    const STANDARD_COLUMN_SPECS = [
+        { label: 'Personnel Name*', type: 'text', match: /personnel name/i },
+        { label: 'Position*', type: 'text', match: /position/i },
+        { label: 'Product Line*', type: 'select', match: /product line/i },
+        { label: 'Client', type: 'text', match: /^client$/i },
+    ];
 
     const HISTORY = { undo: [], redo: [] };
     let historyRecording = true;
@@ -100,16 +111,58 @@
         return `${apiBase()}/matrix/profile-photo/view/${encodeURIComponent(fileId)}`;
     }
 
+    function getPersonnelNameCol(sheet) {
+        return getColByLabel(sheet, /personnel name/i);
+    }
+
+    function getPositionCol(sheet) {
+        return getColByLabel(sheet, /position/i);
+    }
+
+    function getProductLineCol(sheet) {
+        return getColByLabel(sheet, /product line/i);
+    }
+
+    function getClientCol(sheet) {
+        return getColByLabel(sheet, /^client/i);
+    }
+
+    function isAllClients() {
+        return !MATRIX_STATE.filterClientId || MATRIX_STATE.filterClientId === 'ALL';
+    }
+
+    function getSelectedProductLineName() {
+        const pl = MATRIX_STATE.productLines.find(p => String(p.id) === String(MATRIX_STATE.filterProductLineId));
+        return (pl?.name || '').trim();
+    }
+
+    function getSelectedClientName() {
+        const c = MATRIX_STATE.clients.find(x => String(x.id) === String(MATRIX_STATE.filterClientId));
+        return (c?.name || '').trim();
+    }
+
     function getDisplayColumns(sheet) {
-        const cols = [...(sheet.columns || [])];
-        if (sheet.id !== PROFILE_SHEET_ID) return cols;
-        const nameIdx = cols.findIndex(c => /personnel name/i.test(c.label));
-        const photoIdx = cols.findIndex(c => c.type === 'image' || c.id === PHOTO_COL_ID);
-        if (nameIdx >= 0 && photoIdx >= 0 && photoIdx !== nameIdx + 1) {
-            const [photo] = cols.splice(photoIdx, 1);
-            cols.splice(nameIdx + 1, 0, photo);
-        }
-        return cols;
+        let cols = [...(sheet.columns || [])];
+        cols = cols.filter(c => !/^client$/i.test(c.label.replace(/\*/g, '').trim()));
+
+        const nameCol = getPersonnelNameCol(sheet);
+        const posCol = getPositionCol(sheet);
+        const plCol = getProductLineCol(sheet);
+        const photoCol = sheet.id === PROFILE_SHEET_ID ? getPhotoCol(sheet) : null;
+        const noCol = getColByExactLabel(sheet, 'No');
+
+        const pinned = new Set();
+        const ordered = [];
+        if (noCol) { ordered.push(noCol); pinned.add(noCol.id); }
+        if (nameCol) { ordered.push(nameCol); pinned.add(nameCol.id); }
+        if (photoCol) { ordered.push(photoCol); pinned.add(photoCol.id); }
+        if (posCol && !pinned.has(posCol.id)) { ordered.push(posCol); pinned.add(posCol.id); }
+        if (plCol && !pinned.has(plCol.id)) { ordered.push(plCol); pinned.add(plCol.id); }
+
+        cols.forEach(c => {
+            if (!pinned.has(c.id)) ordered.push(c);
+        });
+        return ordered;
     }
 
     function getColByExactLabel(sheet, label) {
@@ -245,7 +298,7 @@
     }
 
     function computeSheetSummary(sheet) {
-        const rows = sheet.rows || [];
+        const rows = filterRows(sheet);
         const cols = sheet.columns || [];
         const requiredCols = cols.filter(c => c.required);
         let missingRequired = 0;
@@ -281,12 +334,165 @@
         return { totalRows: rows.length, totalCols: cols.length, missingRequired, expiringSoon, expired, gender, uniquePersonnel };
     }
 
+    function rowMatchesFilters(sheet, row) {
+        const plName = getSelectedProductLineName();
+        const plCol = getProductLineCol(sheet);
+
+        if (MATRIX_STATE.filterProductLineId && plCol) {
+            const rowPl = (row.cells?.[plCol.id] || '').trim();
+            if (rowPl !== plName) return false;
+        }
+
+        if (!isAllClients()) {
+            const clientCol = getClientCol(sheet);
+            const clientName = getSelectedClientName();
+            if (!clientCol || !clientName) return false;
+            return (row.cells?.[clientCol.id] || '').trim() === clientName;
+        }
+
+        return true;
+    }
+
     function filterRows(sheet) {
+        if (!MATRIX_STATE.filterProductLineId) return [];
+        let rows = (sheet.rows || []).filter(row => rowMatchesFilters(sheet, row));
         const q = MATRIX_STATE.search.trim().toLowerCase();
-        return (sheet.rows || []).filter(row => {
-            if (!q) return true;
-            return Object.values(row.cells || {}).join(' ').toLowerCase().includes(q);
+        if (q) {
+            rows = rows.filter(row =>
+                Object.values(row.cells || {}).join(' ').toLowerCase().includes(q)
+            );
+        }
+        return rows;
+    }
+
+    async function loadMasterFilters() {
+        try {
+            const [clientsRes, plRes] = await Promise.all([
+                fetch(`${apiBase()}/clients?t=${Date.now()}`, { cache: 'no-store' }),
+                fetch(`${apiBase()}/product-lines?t=${Date.now()}`, { cache: 'no-store' }),
+            ]);
+            MATRIX_STATE.clients = clientsRes.ok ? await clientsRes.json() : [];
+            MATRIX_STATE.productLines = plRes.ok ? await plRes.json() : [];
+            if (!Array.isArray(MATRIX_STATE.clients)) MATRIX_STATE.clients = [];
+            if (!Array.isArray(MATRIX_STATE.productLines)) MATRIX_STATE.productLines = [];
+            if (!MATRIX_STATE.filterClientId) MATRIX_STATE.filterClientId = 'ALL';
+            if (!MATRIX_STATE.filterProductLineId && MATRIX_STATE.productLines.length) {
+                MATRIX_STATE.filterProductLineId = String(MATRIX_STATE.productLines[0].id);
+            }
+        } catch (e) {
+            console.warn('loadMasterFilters:', e.message);
+        }
+    }
+
+    async function ensureStandardColumns() {
+        if (!MATRIX_STATE.workbook) return;
+        for (const sheet of MATRIX_STATE.workbook.sheets) {
+            for (const spec of STANDARD_COLUMN_SPECS) {
+                const exists = (sheet.columns || []).some(c => spec.match.test(c.label));
+                if (exists) continue;
+                try {
+                    const col = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/columns`, {
+                        label: spec.label,
+                        type: spec.type,
+                        filterable: spec.type !== 'text' || spec.label.includes('Product Line'),
+                    });
+                    sheet.columns.push(col);
+                    sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                } catch (e) {
+                    console.warn(`ensureStandardColumns ${sheet.id}:`, e.message);
+                }
+            }
+        }
+    }
+
+    function getPersonnelPool(sheet) {
+        const names = new Set();
+        const plName = getSelectedProductLineName();
+
+        const collectFromSheet = (srcSheet) => {
+            if (!srcSheet) return;
+            const nameCol = getPersonnelNameCol(srcSheet);
+            const plCol = getProductLineCol(srcSheet);
+            if (!nameCol) return;
+            srcSheet.rows.forEach(r => {
+                const rowPl = plCol ? (r.cells?.[plCol.id] || '').trim() : '';
+                if (plName && plCol && rowPl && rowPl !== plName) return;
+                const n = (r.cells?.[nameCol.id] || '').trim();
+                if (n) names.add(n);
+            });
+        };
+
+        collectFromSheet(sheetById(PROFILE_SHEET_ID));
+        collectFromSheet(sheetById('employee_mandatory_training'));
+        collectFromSheet(sheetById('personnel_health'));
+        collectFromSheet(sheetById('emergency_contact_information'));
+
+        if (!isAllClients()) {
+            const clientName = getSelectedClientName();
+            const clientCol = getClientCol(sheet);
+            const nameCol = getPersonnelNameCol(sheet);
+            const used = new Set(
+                (sheet.rows || [])
+                    .filter(r => clientCol && (r.cells?.[clientCol.id] || '').trim() === clientName)
+                    .map(r => nameCol ? (r.cells?.[nameCol.id] || '').trim() : '')
+                    .filter(Boolean)
+            );
+            return [...names].filter(n => !used.has(n)).sort((a, b) => a.localeCompare(b));
+        }
+
+        return [...names].sort((a, b) => a.localeCompare(b));
+    }
+
+    async function applyCellsUpdate(sheetId, rowId, cells) {
+        await matrixRequest('PUT', `/matrix/sheets/${sheetId}/rows/${rowId}`, { cells });
+        const row = sheetById(sheetId)?.rows?.find(r => r.id === rowId);
+        if (row) Object.assign(row.cells, cells);
+    }
+
+    async function fillRowFromPersonnel(sheetId, rowId, personnelName) {
+        const sheet = sheetById(sheetId);
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        if (!sheet || !profileSheet) return;
+
+        const profileRow = profileSheet.rows.find(r => {
+            const nc = getPersonnelNameCol(profileSheet);
+            return nc && (r.cells?.[nc.id] || '').trim().toLowerCase() === personnelName.toLowerCase();
         });
+        if (!profileRow) return;
+
+        const sourceRow = findRowInSheet(sheet, profileRow);
+        const trainingSheet = sheetById('employee_mandatory_training');
+        const trainingRow = trainingSheet ? findRowInSheet(trainingSheet, profileRow) : null;
+        const clientName = getSelectedClientName();
+        const plName = getSelectedProductLineName();
+        const cells = {};
+
+        sheet.columns.forEach(col => {
+            const labelKey = col.label.replace(/\*/g, '').trim().toLowerCase();
+            if (getClientCol(sheet)?.id === col.id) {
+                cells[col.id] = clientName;
+            } else if (getProductLineCol(sheet)?.id === col.id) {
+                cells[col.id] = plName;
+            } else if (getPersonnelNameCol(sheet)?.id === col.id) {
+                cells[col.id] = personnelName;
+            } else if (sourceRow?.cells?.[col.id] !== undefined && String(sourceRow.cells[col.id]).trim() !== '') {
+                cells[col.id] = sourceRow.cells[col.id];
+            } else if (getPositionCol(sheet)?.id === col.id && trainingRow) {
+                const tPos = getPositionCol(trainingSheet);
+                cells[col.id] = tPos ? (trainingRow.cells?.[tPos.id] || '') : '';
+            } else {
+                const profCol = profileSheet.columns.find(
+                    pc => pc.label.replace(/\*/g, '').trim().toLowerCase() === labelKey
+                );
+                if (profCol && profileRow.cells?.[profCol.id] !== undefined) {
+                    cells[col.id] = profileRow.cells[profCol.id];
+                } else {
+                    cells[col.id] = sheet.rows.find(r => r.id === rowId)?.cells?.[col.id] || '';
+                }
+            }
+        });
+
+        await applyCellsUpdate(sheetId, rowId, cells);
     }
 
     async function fetchWorkbook() {
@@ -429,8 +635,22 @@
             return `<option value="${esc(s.id)}" ${sel}>${esc(lbl)}</option>`;
         }).join('');
 
+        const clientOptions = `<option value="ALL"${MATRIX_STATE.filterClientId === 'ALL' ? ' selected' : ''}>ALL</option>` +
+            MATRIX_STATE.clients.map(c =>
+                `<option value="${esc(String(c.id))}"${String(c.id) === String(MATRIX_STATE.filterClientId) ? ' selected' : ''}>${esc(c.name)}</option>`
+            ).join('');
+
+        const plOptions = `<option value="">Pilih Product Line</option>` +
+            MATRIX_STATE.productLines.map(pl =>
+                `<option value="${esc(String(pl.id))}"${String(pl.id) === String(MATRIX_STATE.filterProductLineId) ? ' selected' : ''}>${esc(pl.name)}</option>`
+            ).join('');
+
         return `
         <div class="mx-toolbar-card">
+            <div class="mx-toolbar-row mx-toolbar-filters">
+                <select id="mx-filter-client" class="form-input mx-select" title="Client" onchange="matrixOnClientFilterChange(this.value)">${clientOptions}</select>
+                <select id="mx-filter-product-line" class="form-input mx-select" title="Product Line" onchange="matrixOnProductLineFilterChange(this.value)">${plOptions}</select>
+            </div>
             <div class="mx-toolbar-row">
                 <select id="mx-tab-select" class="form-input mx-select" onchange="matrixOnTabChange(this.value)">${tabOptions}</select>
                 <input type="search" id="mx-search" class="form-input mx-search" placeholder="Cari data..." value="${esc(MATRIX_STATE.search)}" oninput="matrixOnSearchInput(this.value)" />
@@ -475,11 +695,54 @@
         </td>`;
     }
 
+    function renderProductLineSelect(sheet, row, col, val) {
+        const options = ['<option value="">—</option>'].concat(
+            MATRIX_STATE.productLines.map(pl => {
+                const sel = val === pl.name ? ' selected' : '';
+                return `<option value="${esc(pl.name)}"${sel}>${esc(pl.name)}</option>`;
+            })
+        );
+        return `<td class="mx-td">
+            <select class="mx-cell-input mx-cell-select"
+                data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
+                onfocus="this.dataset.prev=this.value"
+                onchange="matrixOnCellChange(this)">${options.join('')}</select>
+        </td>`;
+    }
+
+    function renderPersonnelNameSelect(sheet, row, col, val) {
+        const pool = getPersonnelPool(sheet);
+        const options = ['<option value="">— Pilih Personel —</option>'].concat(
+            pool.map(n => {
+                const sel = val === n ? ' selected' : '';
+                return `<option value="${esc(n)}"${sel}>${esc(n)}</option>`;
+            })
+        );
+        if (val && !pool.includes(val)) {
+            options.push(`<option value="${esc(val)}" selected>${esc(val)}</option>`);
+        }
+        return `<td class="mx-td">
+            <select class="mx-cell-input mx-cell-select"
+                data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
+                onfocus="this.dataset.prev=this.value"
+                onchange="matrixOnPersonnelSelect(this)">${options.join('')}</select>
+        </td>`;
+    }
+
     function renderCell(sheet, row, c) {
         if (c.type === 'image' || c.id === PHOTO_COL_ID) {
             return renderPhotoCell(sheet, row, c);
         }
         const val = row.cells?.[c.id] ?? '';
+
+        if (getProductLineCol(sheet)?.id === c.id) {
+            return renderProductLineSelect(sheet, row, c, val);
+        }
+
+        if (getPersonnelNameCol(sheet)?.id === c.id && !isAllClients()) {
+            return renderPersonnelNameSelect(sheet, row, c, val);
+        }
+
         const inputType = c.type === 'date' ? 'date' : (c.type === 'number' ? 'number' : 'text');
         return `<td class="mx-td">
             <input class="mx-cell-input" type="${inputType}" value="${esc(val)}"
@@ -614,6 +877,11 @@
         const sheet = activeSheet();
         if (!sheet) {
             root.innerHTML = '<div class="mx-empty">Workbook kosong.</div>';
+            return;
+        }
+
+        if (!MATRIX_STATE.filterProductLineId) {
+            root.innerHTML = `<div class="mx-empty">Pilih <strong>Product Line</strong> terlebih dahulu untuk menampilkan data personel.</div>`;
             return;
         }
 
@@ -763,6 +1031,48 @@
         return fileId;
     }
 
+    window.matrixOnClientFilterChange = function (clientId) {
+        MATRIX_STATE.filterClientId = clientId || 'ALL';
+        MATRIX_STATE.selectedRowId = null;
+        paintMatrixScreen();
+    };
+
+    window.matrixOnProductLineFilterChange = function (plId) {
+        MATRIX_STATE.filterProductLineId = plId || '';
+        MATRIX_STATE.selectedRowId = null;
+        paintMatrixScreen();
+    };
+
+    window.matrixOnPersonnelSelect = async function (select) {
+        const personnelName = select.value;
+        const sheetId = select.dataset.sheet;
+        const rowId = select.dataset.row;
+        const colId = select.dataset.col;
+        const oldVal = select.dataset.prev ?? '';
+
+        if (!personnelName) return;
+
+        try {
+            await fillRowFromPersonnel(sheetId, rowId, personnelName);
+            select.dataset.prev = personnelName;
+            pushHistory({
+                desc: 'Pilih personel',
+                undo: async () => {
+                    await applyCellsUpdate(sheetId, rowId, { [colId]: oldVal });
+                    paintMatrixScreen();
+                },
+                redo: async () => {
+                    await fillRowFromPersonnel(sheetId, rowId, personnelName);
+                    paintMatrixScreen();
+                },
+            });
+            paintMatrixScreen();
+        } catch (e) {
+            select.value = oldVal;
+            showToast?.(e.message || 'Gagal memuat data personel', 'error');
+        }
+    };
+
     window.matrixOnTabChange = function (sheetId) {
         const prevSheet = activeSheet();
         const prevRow = prevSheet?.rows?.find(r => r.id === MATRIX_STATE.selectedRowId);
@@ -819,8 +1129,18 @@
     window.matrixAddRow = async function () {
         const sheet = activeSheet();
         if (!sheet) return;
+        if (!MATRIX_STATE.filterProductLineId) {
+            showToast?.('Pilih Product Line terlebih dahulu', 'error');
+            return;
+        }
+        const initCells = {};
+        const clientCol = getClientCol(sheet);
+        const plCol = getProductLineCol(sheet);
+        const plName = getSelectedProductLineName();
+        if (clientCol && !isAllClients()) initCells[clientCol.id] = getSelectedClientName();
+        if (plCol && plName) initCells[plCol.id] = plName;
         try {
-            const row = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/rows`, { cells: {} });
+            const row = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/rows`, { cells: initCells });
             sheet.rows.push(row);
             const ref = { id: row.id, cells: row.cells || {} };
             pushHistory({
@@ -989,7 +1309,9 @@
         if (!silent) root.innerHTML = '<div class="mx-loading">Memuat Matrix...</div>';
         try {
             MATRIX_STATE.loading = true;
+            await loadMasterFilters();
             MATRIX_STATE.workbook = await fetchWorkbook();
+            await ensureStandardColumns();
             await ensureProfilePhotoColumn();
             if (!MATRIX_STATE.activeSheetId && MATRIX_STATE.workbook.sheets?.length) {
                 MATRIX_STATE.activeSheetId = MATRIX_STATE.workbook.sheets[0].id;
