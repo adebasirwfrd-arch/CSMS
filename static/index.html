@@ -1314,6 +1314,61 @@
         .mx-storage-badge { margin-left: 8px; font-size: 11px; font-weight: 600; }
         .mx-storage-ok { color: #46D369; }
         .mx-storage-warn { color: #F5A623; }
+        .mx-reminder-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 500;
+            background: rgba(0, 0, 0, 0.72);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .mx-reminder-overlay.active { display: flex; }
+        .mx-reminder-dialog {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+        }
+        .mx-reminder-dialog h3 {
+            margin: 0 0 8px;
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .mx-reminder-dialog p {
+            margin: 0 0 20px;
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .mx-reminder-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+        .mx-reminder-months-wrap {
+            margin-bottom: 20px;
+        }
+        .mx-reminder-months-wrap label {
+            display: block;
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+        .mx-reminder-months-wrap input {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 16px;
+        }
         .mx-muted { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
         .mx-toolbar-card {
             background: var(--bg-secondary);
@@ -2858,6 +2913,33 @@
     <section class="screen" id="screen-matrix" style="overflow-y: auto; height: calc(100vh - 130px);">
         <div id="matrix-content"></div>
     </section>
+
+    <!-- Matrix date reminder modal -->
+    <div class="mx-reminder-overlay" id="mx-reminder-modal" hidden>
+        <div class="mx-reminder-dialog" role="dialog" aria-modal="true" aria-labelledby="mx-reminder-title">
+            <div id="mx-reminder-step1">
+                <h3 id="mx-reminder-title">Tambah Reminder</h3>
+                <p>Apakah anda ingin menambahkan reminder?</p>
+                <div class="mx-reminder-actions">
+                    <button type="button" class="mx-btn mx-btn-secondary" onclick="matrixReminderNo()">Tidak</button>
+                    <button type="button" class="mx-btn mx-btn-primary" onclick="matrixReminderYes()">Ya</button>
+                </div>
+            </div>
+            <div id="mx-reminder-step2" hidden>
+                <h3>Masa Validity</h3>
+                <p>Berapa lama masa validity?</p>
+                <div class="mx-reminder-months-wrap">
+                    <label for="mx-reminder-months">Jumlah bulan</label>
+                    <input type="number" id="mx-reminder-months" min="1" max="120" value="12"
+                        onkeydown="if(event.key==='Enter')matrixReminderSave()" />
+                </div>
+                <div class="mx-reminder-actions">
+                    <button type="button" class="mx-btn mx-btn-secondary" onclick="matrixReminderCancel()">Cancel</button>
+                    <button type="button" class="mx-btn mx-btn-primary" onclick="matrixReminderSave()">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- LL Indicator Screen -->
     <section class="screen" id="screen-ll-indicator">
@@ -10306,7 +10388,7 @@
 </script>
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
-    <script src="/static/matrix-personnel.js?v=17"></script>
+    <script src="/static/matrix-personnel.js?v=18"></script>
 </body>
 
 </html>

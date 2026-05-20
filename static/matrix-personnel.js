@@ -145,6 +145,136 @@
         return Math.ceil((d - today) / (86400000));
     }
 
+    let REMINDER_PENDING = null;
+
+    function isExpiryDateColumn(col) {
+        const label = (col?.label || '').replace(/\*/g, '').trim().toLowerCase();
+        return /expir|expired|end date|berakhir|kadaluarsa/i.test(label);
+    }
+
+    function findPairedExpiryColumn(sheet, sourceCol) {
+        if (!sheet || !sourceCol) return null;
+        const cols = sheet.columns || [];
+        const srcLabel = sourceCol.label.replace(/\*/g, '').trim().toLowerCase();
+
+        const labelPairs = [
+            [/bst training/i, /bst expiry/i],
+            [/sbtc date/i, /sbtc expiry/i],
+            [/one sika.*(train|traiin)/i, /one sika expiry/i],
+            [/^mcu date$/i, /mcu expired/i],
+            [/skck date/i, /skck expiry/i],
+            [/hse passport date/i, /hse passport expired/i],
+            [/contract start/i, /contract end/i],
+        ];
+
+        for (const [srcRe, expRe] of labelPairs) {
+            if (srcRe.test(srcLabel)) {
+                const found = cols.find(c => expRe.test((c.label || '').replace(/\*/g, '').trim()));
+                if (found) return found;
+            }
+        }
+
+        const prefix = srcLabel.replace(/\s*date\s*$/, '').trim();
+        if (prefix) {
+            const found = cols.find(c => {
+                const l = (c.label || '').replace(/\*/g, '').trim().toLowerCase();
+                return l.includes(prefix) && isExpiryDateColumn(c);
+            });
+            if (found) return found;
+        }
+
+        const srcIdx = cols.findIndex(c => c.id === sourceCol.id);
+        for (let i = srcIdx + 1; i < cols.length; i++) {
+            if (isExpiryDateColumn(cols[i])) return cols[i];
+        }
+        return null;
+    }
+
+    function shouldPromptReminder(sheet, col) {
+        if (!col || col.type !== 'date' || !sheet) return false;
+        if (isExpiryDateColumn(col)) return false;
+        const label = col.label.replace(/\*/g, '').trim().toLowerCase();
+        if (/birth date|booster.*date|review \(client\) date|follow up date/i.test(label)) return false;
+        return !!findPairedExpiryColumn(sheet, col);
+    }
+
+    function addMonthsToIsoDate(isoDate, months) {
+        const d = parseDate(isoDate);
+        if (!d || !months) return '';
+        const out = new Date(d.getFullYear(), d.getMonth() + months, d.getDate());
+        const y = out.getFullYear();
+        const m = String(out.getMonth() + 1).padStart(2, '0');
+        const day = String(out.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    }
+
+    function showReminderModal(step) {
+        const modal = document.getElementById('mx-reminder-modal');
+        const step1 = document.getElementById('mx-reminder-step1');
+        const step2 = document.getElementById('mx-reminder-step2');
+        if (!modal) return;
+        modal.classList.add('active');
+        modal.hidden = false;
+        if (step1) step1.hidden = step !== 1;
+        if (step2) step2.hidden = step !== 2;
+        if (step === 2) {
+            const inp = document.getElementById('mx-reminder-months');
+            if (inp) {
+                inp.value = '12';
+                setTimeout(() => inp.focus(), 50);
+            }
+        }
+    }
+
+    function hideReminderModal() {
+        const modal = document.getElementById('mx-reminder-modal');
+        if (modal) {
+            modal.classList.remove('active');
+            modal.hidden = true;
+        }
+        REMINDER_PENDING = null;
+    }
+
+    async function saveSourceDateOnly(pending) {
+        const { sheetId, rowId, colId, newVal, input } = pending;
+        await applyCellUpdate(sheetId, rowId, colId, newVal);
+        if (input) {
+            input.value = newVal;
+            input.dataset.prev = newVal;
+        }
+    }
+
+    async function saveSourceAndExpiry(pending, months) {
+        const { sheetId, rowId, colId, expiryColId, newVal, oldVal, input } = pending;
+        const expiryVal = addMonthsToIsoDate(newVal, months);
+        const row = sheetById(sheetId)?.rows?.find(r => r.id === rowId);
+        const oldExpiry = row?.cells?.[expiryColId] ?? '';
+
+        await applyCellsUpdate(sheetId, rowId, {
+            [colId]: newVal,
+            [expiryColId]: expiryVal,
+        });
+
+        if (input) {
+            input.value = newVal;
+            input.dataset.prev = newVal;
+        }
+
+        pushHistory({
+            desc: 'Tanggal + validity',
+            undo: async () => {
+                await applyCellsUpdate(sheetId, rowId, { [colId]: oldVal, [expiryColId]: oldExpiry });
+                paintMatrixScreen();
+            },
+            redo: async () => {
+                await applyCellsUpdate(sheetId, rowId, { [colId]: newVal, [expiryColId]: expiryVal });
+                paintMatrixScreen();
+            },
+        });
+
+        return expiryVal;
+    }
+
     function isFemale(gender) {
         return /female|wanita|perempuan|f\b/i.test(String(gender || '').trim());
     }
@@ -1177,13 +1307,17 @@
         }
 
         const inputType = c.type === 'date' ? 'date' : (c.type === 'number' ? 'number' : 'text');
+        const changeHandler = inputType === 'date'
+            ? 'onchange="matrixOnDateCellChange(this)"'
+            : 'onchange="matrixOnCellChange(this)"';
+        const blurHandler = inputType === 'date' ? '' : 'onblur="matrixOnCellBlur(this)"';
         return `<td class="mx-td mx-td-edit" onclick="event.stopPropagation()">
             <input class="mx-cell-input" type="${inputType}" value="${esc(val)}"
                 data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(c.id)}"
                 onclick="event.stopPropagation()"
                 onfocus="this.dataset.prev=this.value"
-                onchange="matrixOnCellChange(this)"
-                onblur="matrixOnCellBlur(this)" />
+                ${changeHandler}
+                ${blurHandler} />
         </td>`;
     }
 
@@ -1573,8 +1707,97 @@
     };
 
     window.matrixOnCellBlur = function (input) {
-        if (!input || input.tagName === 'SELECT') return;
+        if (!input || input.tagName === 'SELECT' || input.type === 'date') return;
         matrixOnCellChange(input);
+    };
+
+    window.matrixOnDateCellChange = async function (input) {
+        if (!input || input.dataset.saving === '1' || input.dataset.reminderFlow === '1') return;
+        const oldVal = input.dataset.prev ?? '';
+        const newVal = input.value;
+        if (oldVal === newVal) return;
+
+        const sheetId = input.dataset.sheet;
+        const sheet = sheetById(sheetId);
+        const col = sheet?.columns?.find(c => c.id === input.dataset.col);
+
+        if (!newVal || !shouldPromptReminder(sheet, col)) {
+            await matrixOnCellChange(input);
+            return;
+        }
+
+        const expiryCol = findPairedExpiryColumn(sheet, col);
+        REMINDER_PENDING = {
+            input,
+            sheetId,
+            rowId: input.dataset.row,
+            colId: input.dataset.col,
+            expiryColId: expiryCol.id,
+            oldVal,
+            newVal,
+        };
+
+        input.dataset.reminderFlow = '1';
+        input.value = oldVal;
+        delete input.dataset.reminderFlow;
+        showReminderModal(1);
+    };
+
+    window.matrixReminderNo = async function () {
+        const pending = REMINDER_PENDING;
+        if (!pending) return hideReminderModal();
+        try {
+            pending.input.dataset.saving = '1';
+            await saveSourceDateOnly(pending);
+            pushHistory({
+                desc: 'Edit tanggal',
+                undo: async () => {
+                    await applyCellUpdate(pending.sheetId, pending.rowId, pending.colId, pending.oldVal);
+                    paintMatrixScreen();
+                },
+                redo: async () => {
+                    await applyCellUpdate(pending.sheetId, pending.rowId, pending.colId, pending.newVal);
+                    paintMatrixScreen();
+                },
+            });
+            hideReminderModal();
+            paintMatrixScreen();
+        } catch (e) {
+            showToast?.(e.message || 'Gagal menyimpan', 'error');
+        } finally {
+            if (pending.input) delete pending.input.dataset.saving;
+        }
+    };
+
+    window.matrixReminderYes = function () {
+        if (!REMINDER_PENDING) return;
+        showReminderModal(2);
+    };
+
+    window.matrixReminderCancel = function () {
+        hideReminderModal();
+    };
+
+    window.matrixReminderSave = async function () {
+        const pending = REMINDER_PENDING;
+        if (!pending) return;
+        const monthsInp = document.getElementById('mx-reminder-months');
+        const months = parseInt(monthsInp?.value, 10);
+        if (!months || months < 1) {
+            showToast?.('Masukkan masa validity minimal 1 bulan', 'error');
+            return;
+        }
+        try {
+            pending.input.dataset.saving = '1';
+            const expiryVal = await saveSourceAndExpiry(pending, months);
+            hideReminderModal();
+            showToast?.(`Expiry date diisi: ${expiryVal} (+${months} bulan)`, 'success');
+            paintMatrixScreen();
+        } catch (e) {
+            showToast?.(e.message || 'Gagal menyimpan', 'error');
+        } finally {
+            if (pending.input) delete pending.input.dataset.saving;
+        }
     };
 
     window.matrixOnCellChange = async function (input) {
