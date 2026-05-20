@@ -185,29 +185,16 @@
     }
 
     function renderFilterBar(sheet) {
-        const filterCols = (sheet.columns || []).filter(c => c.filterable);
         const tabOptions = MATRIX_STATE.workbook.sheets.map(s => {
             const lbl = TAB_LABELS[s.id] || s.title || s.name;
             const sel = s.id === sheet.id ? 'selected' : '';
             return `<option value="${esc(s.id)}" ${sel}>${esc(lbl)}</option>`;
         }).join('');
 
-        const dynamicFilters = filterCols.map(col => {
-            const opts = filterOptions(sheet, col);
-            const cur = MATRIX_STATE.filters[col.id] || '';
-            const short = col.label.replace(/\*/g, '').slice(0, 28);
-            return `<select class="form-input mx-filter-select" data-col="${esc(col.id)}" onchange="matrixOnFilterChange(this)" title="${esc(col.label)}">
-                <option value="">Semua ${esc(short)}</option>
-                ${opts.map(o => `<option value="${esc(o)}" ${o === cur ? 'selected' : ''}>${esc(o)}</option>`).join('')}
-            </select>`;
-        }).join('');
-
         return `
         <div class="mx-toolbar">
             <select id="mx-tab-select" class="form-input" onchange="matrixOnTabChange(this.value)">${tabOptions}</select>
             <input type="search" id="mx-search" class="form-input" placeholder="Cari di tab ini..." value="${esc(MATRIX_STATE.search)}" oninput="matrixOnSearchInput(this.value)" />
-            <div class="mx-filter-row">${dynamicFilters}</div>
-            <button type="button" class="btn btn-cancel" onclick="matrixClearFilters()">Reset Filter</button>
         </div>`;
     }
 
@@ -249,19 +236,6 @@
         </div>`;
     }
 
-    function renderAllTabsOverview() {
-        return `<div class="mx-tabs-overview">${MATRIX_STATE.workbook.sheets.map(s => {
-            const sum = computeSheetSummary(s);
-            const lbl = TAB_LABELS[s.id] || s.title || s.name;
-            const active = s.id === MATRIX_STATE.activeSheetId ? ' mx-tab-card-active' : '';
-            return `<button type="button" class="mx-tab-card${active}" onclick="matrixOnTabChange('${esc(s.id)}')">
-                <strong>${esc(lbl)}</strong>
-                <span>${sum.totalRows} baris</span>
-                <span class="mx-tab-warn">${sum.expiringSoon ? sum.expiringSoon + ' expiring' : ''}</span>
-            </button>`;
-        }).join('')}</div>`;
-    }
-
     function paintMatrixScreen() {
         const root = document.getElementById('matrix-content');
         if (!root) return;
@@ -282,7 +256,6 @@
 
         root.innerHTML = `
             <div class="mx-page">
-                ${renderAllTabsOverview()}
                 <div class="mx-header-meta">
                     <h3>${esc(sheet.title || sheet.name)}</h3>
                     <p>${esc(sheet.name)} · ${rows.length} / ${sheet.rows.length} baris ditampilkan</p>
