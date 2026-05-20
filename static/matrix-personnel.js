@@ -2494,34 +2494,53 @@
         else loadMatrixWorkbook();
     };
 
+    function applyNativeFileToInput(input, data, onSelected) {
+        if (!input) return;
+        if (data.file instanceof File) {
+            const dt = new DataTransfer();
+            dt.items.add(data.file);
+            input.files = dt.files;
+            onSelected(input);
+            return;
+        }
+        if (data.base64 && data.name) {
+            const mime = data.mimeType || 'application/octet-stream';
+            const bin = atob(data.base64);
+            const arr = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            const blob = new Blob([arr], { type: mime });
+            const file = new File([blob], data.name, { type: mime });
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            onSelected(input);
+        }
+    }
+
     window.addEventListener('message', function (event) {
         try {
             const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-            if (!data || data.type !== 'fileSelected' || !window.__matrixPendingDocInputId) return;
-            const input = document.getElementById(window.__matrixPendingDocInputId);
-            window.__matrixPendingDocInputId = null;
-            if (!input) return;
-            if (data.file instanceof File) {
-                const dt = new DataTransfer();
-                dt.items.add(data.file);
-                input.files = dt.files;
-                matrixOnDocSelected(input);
+            if (!data) return;
+
+            if ((data.type === 'fileSelected') && window.__matrixPendingDocInputId) {
+                const input = document.getElementById(window.__matrixPendingDocInputId);
+                window.__matrixPendingDocInputId = null;
+                applyNativeFileToInput(input, data, matrixOnDocSelected);
                 return;
             }
-            if (data.base64 && data.name) {
-                const mime = data.mimeType || 'application/octet-stream';
-                const bin = atob(data.base64);
-                const arr = new Uint8Array(bin.length);
-                for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-                const blob = new Blob([arr], { type: mime });
-                const file = new File([blob], data.name, { type: mime });
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                input.files = dt.files;
-                matrixOnDocSelected(input);
+
+            if ((data.type === 'fileSelected' || data.type === 'imageSelected' || data.type === 'photoTaken')
+                && window.__matrixPendingPhotoInputId) {
+                const input = document.getElementById(window.__matrixPendingPhotoInputId);
+                window.__matrixPendingPhotoInputId = null;
+                if (data.type === 'imageSelected' || data.type === 'photoTaken') {
+                    data.name = data.name || 'photo.jpg';
+                    data.mimeType = data.mimeType || 'image/jpeg';
+                }
+                applyNativeFileToInput(input, data, matrixOnPhotoSelected);
             }
         } catch (e) {
-            console.warn('matrix doc message handler:', e);
+            console.warn('matrix native file handler:', e);
         }
     });
 
