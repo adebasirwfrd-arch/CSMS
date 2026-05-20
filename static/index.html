@@ -1307,7 +1307,7 @@
         }
 
         /* Personnel Matrix (PTS Wells Excel tabs) */
-        .mx-page { padding: 0 16px 24px; }
+        .mx-page { padding: 0 16px 24px; min-height: 200px; color: var(--text-primary); }
         .mx-tabs-overview {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -1437,6 +1437,7 @@
     <!-- PDF Compression Library -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="/static/matrix-personnel.js?v=2"></script>
 </head>
 
 <!-- Header -->
@@ -3578,6 +3579,9 @@
             console.log('[CSMS] Admin logged in');
             loadMasterDataPage();
             populateClientProductLineDropdowns();
+            if (document.getElementById('screen-matrix')?.classList.contains('active')) {
+                ensureMatrixScreenLoaded();
+            }
         } else {
             // Login failed
             errorDiv.textContent = 'Invalid username or password';
@@ -5562,6 +5566,33 @@
     }
     window.navigateToMatrix = navigateToMatrix;
 
+    /** Load Matrix UI — works even if matrix-personnel.js loads slightly later */
+    function ensureMatrixScreenLoaded() {
+        const root = document.getElementById('matrix-content');
+        if (!root) return;
+        if (!document.body.classList.contains('admin-mode')) {
+            root.innerHTML = '<div class="mx-locked"><p>🔒 Matrix hanya tersedia dalam <strong>Admin Mode</strong>.</p><p style="font-size:12px;color:var(--text-muted);">Buka menu ☰ → Login Admin.</p></div>';
+            return;
+        }
+        if (typeof window.loadMatrixWorkbook === 'function') {
+            window.loadMatrixWorkbook();
+            return;
+        }
+        root.innerHTML = '<div class="mx-loading">Memuat modul Matrix...</div>';
+        let tries = 0;
+        const timer = setInterval(() => {
+            tries += 1;
+            if (typeof window.loadMatrixWorkbook === 'function') {
+                clearInterval(timer);
+                window.loadMatrixWorkbook();
+            } else if (tries >= 40) {
+                clearInterval(timer);
+                root.innerHTML = '<div class="mx-empty">Modul Matrix gagal dimuat. Hard refresh (Ctrl+Shift+R).</motion.div>';
+            }
+        }, 100);
+    }
+    window.ensureMatrixScreenLoaded = ensureMatrixScreenLoaded;
+
     function navigateTo(screen) {
         if (screen === 'matrix' && !document.body.classList.contains('admin-mode')) {
             alert('Akses Ditolak: Halaman Matrix hanya untuk Admin.');
@@ -5604,7 +5635,7 @@
         if (screen === 'otp') {
             populateOtpLlScreen('otp').then(() => renderOTPScreen());
         }
-        if (screen === 'matrix') renderMatrixScreen();
+        if (screen === 'matrix') ensureMatrixScreenLoaded();
         if (screen === 'll-indicator') {
             populateOtpLlScreen('ll').then(() => renderLLScreen());
         }
@@ -10117,7 +10148,6 @@
     }
 </script>
     <script src="/static/exec-stats.js"></script>
-    <script src="/static/matrix-personnel.js"></script>
 </body>
 
 </html>
