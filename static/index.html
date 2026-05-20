@@ -1309,15 +1309,6 @@
         /* Personnel Matrix */
         .mx-page { padding: 0 4px 24px; color: var(--text-primary); max-width: 1400px; margin: 0 auto; }
         .mx-header { margin-bottom: 16px; }
-        .mx-kpi-strip { margin-bottom: 16px; }
-        .mx-section-title {
-            font-size: 15px;
-            font-weight: 700;
-            margin: 0 0 12px;
-            color: var(--text-primary);
-        }
-        .mx-charts-section { margin-bottom: 20px; }
-        .mx-charts-grid { margin-bottom: 8px; }
         .mx-title { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
         .mx-subtitle { margin: 4px 0 0; font-size: 12px; color: var(--text-muted); }
         .mx-storage-badge { margin-left: 8px; font-size: 11px; font-weight: 600; }
@@ -2145,6 +2136,39 @@
         <div class="ex-stats-grid">
             <div class="ex-chart-card"><h4>On Track vs Off Track</h4><p class="ex-chart-desc">Bar — performa indikator</p><div class="ex-chart-wrap"><canvas id="chart-ll-track"></canvas></div></div>
             <div class="ex-chart-card"><h4>Lagging vs Leading</h4><p class="ex-chart-desc">Polar Area — jumlah indikator</p><div class="ex-chart-wrap"><canvas id="chart-ll-category"></canvas></div></div>
+        </div>
+
+        <div id="mx-stats-section">
+            <h3 class="ex-section-title" onclick="navigateTo('matrix')">👥 Matrix Personel — Compliance <span>→</span></h3>
+            <p class="ex-chart-desc" style="margin: -8px 0 12px;">Ringkasan expiry BST, SBTC, MCU, SKCK, Kontrak, dll. dari semua sheet (data master)</p>
+            <div class="ex-kpi-strip" id="mx-stats-kpi-strip"></div>
+            <div class="ex-stats-grid">
+                <div class="ex-chart-card">
+                    <h4>Status Compliance Personel</h4>
+                    <p class="ex-chart-desc">Donut — compliant, akan expired, sudah expired</p>
+                    <div class="ex-chart-wrap"><canvas id="mx-stats-compliance-donut"></canvas></div>
+                </div>
+                <div class="ex-chart-card">
+                    <h4>Per Kategori Sheet</h4>
+                    <p class="ex-chart-desc">Donut — distribusi issue per tab Matrix</p>
+                    <div class="ex-chart-wrap"><canvas id="mx-stats-category-donut"></canvas></div>
+                </div>
+                <div class="ex-chart-card ex-chart-wide">
+                    <h4>Akan Expired (≤ threshold)</h4>
+                    <p class="ex-chart-desc">Bar Chart — BST, SBTC, MCU, SKCK, Kontrak, dll.</p>
+                    <div class="ex-chart-wrap ex-chart-tall"><canvas id="mx-stats-expiring-bar"></canvas></div>
+                </div>
+                <div class="ex-chart-card ex-chart-wide">
+                    <h4>Sudah Expired</h4>
+                    <p class="ex-chart-desc">Bar Chart — dokumen &amp; sertifikasi kadaluarsa</p>
+                    <div class="ex-chart-wrap ex-chart-tall"><canvas id="mx-stats-expired-bar"></canvas></div>
+                </div>
+                <div class="ex-chart-card ex-chart-wide">
+                    <h4>Ringkasan Semua Kolom Expiry</h4>
+                    <p class="ex-chart-desc">Grouped Bar — akan expired vs sudah expired per kolom</p>
+                    <div class="ex-chart-wrap ex-chart-tall"><canvas id="mx-stats-expiry-grouped"></canvas></div>
+                </div>
+            </div>
         </div>
 
         <div style="margin: 24px 0 40px; display: flex; gap: 12px; flex-wrap: wrap;">
@@ -7900,6 +7924,9 @@
                 console.error('[Stats] renderExecutiveStatistics missing — check /static/exec-stats.js');
                 if (hint) hint.textContent = 'Gagal memuat modul chart. Hard refresh (Ctrl+Shift+R).';
             }
+            if (typeof renderMatrixComplianceStatistics === 'function') {
+                await renderMatrixComplianceStatistics();
+            }
         } catch (error) {
             console.error('Error loading dashboard stats:', error);
             const fallback = buildClientSideStatsFallback();
@@ -10278,7 +10305,8 @@
     }
 </script>
     <script src="/static/exec-stats.js"></script>
-    <script src="/static/matrix-personnel.js?v=16"></script>
+    <script src="/static/matrix-stats.js"></script>
+    <script src="/static/matrix-personnel.js?v=17"></script>
 </body>
 
 </html>
