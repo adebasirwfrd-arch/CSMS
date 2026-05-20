@@ -123,19 +123,35 @@ def add_column(
     label: str,
     col_type: str = "text",
     filterable: bool = True,
+    col_id: Optional[str] = None,
+    col_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     if SUPABASE_MATRIX and supabase_service:
-        return supabase_service.add_matrix_column(sheet_id, label, col_type, filterable)
+        return supabase_service.add_matrix_column(
+            sheet_id, label, col_type, filterable, col_id=col_id, col_key=col_key
+        )
     data = _load_json()
     sheet = _find_sheet_json(data, sheet_id)
     cols = sheet.setdefault("columns", [])
-    max_idx = max((c.get("index", i + 1) for i, c in enumerate(cols)), default=0)
+    target_label = label.replace("*", "").strip().lower()
+    for c in cols:
+        if (c.get("label") or "").replace("*", "").strip().lower() == target_label:
+            return c
+    if col_id:
+        for c in cols:
+            if c.get("id") == col_id:
+                return c
+    existing_ids = {c.get("id") for c in cols}
+    max_idx = max((c.get("index", 0) for c in cols), default=0)
     new_index = max_idx + 1
-    col_id = f"col_{new_index}"
-    key_base = label.lower().replace("*", "").strip().replace(" ", "_")[:40]
+    new_id = col_id if col_id and col_id not in existing_ids else f"col_{new_index}"
+    while new_id in existing_ids:
+        new_index += 1
+        new_id = f"col_{new_index}"
+    key_base = (col_key or label).lower().replace("*", "").strip().replace(" ", "_")[:40]
     col = {
-        "id": col_id,
-        "key": f"{key_base}_{new_index}",
+        "id": new_id,
+        "key": col_key or f"{key_base}_{new_index}",
         "label": label,
         "type": col_type,
         "filterable": filterable,
@@ -144,7 +160,7 @@ def add_column(
     }
     cols.append(col)
     for row in sheet.get("rows", []):
-        row.setdefault("cells", {})[col_id] = ""
+        row.setdefault("cells", {})[new_id] = ""
     _save_json(data)
     return col
 

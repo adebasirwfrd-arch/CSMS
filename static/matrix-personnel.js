@@ -152,6 +152,14 @@
         return /expir|expired|end date|berakhir|kadaluarsa/i.test(label);
     }
 
+    function normColLabel(label) {
+        return (label || '').replace(/\*/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function docColumnIdFor(expiryCol) {
+        return `${expiryCol.id}_doc`;
+    }
+
     function docColumnLabelFor(expiryCol) {
         return `Doc: ${expiryCol.label.replace(/\*/g, '').trim()}`;
     }
@@ -163,10 +171,15 @@
     }
 
     function findDocColumnForExpiry(sheet, expiryCol) {
-        const target = docColumnLabelFor(expiryCol).toLowerCase();
-        return (sheet?.columns || []).find(c =>
-            (c.label || '').replace(/\*/g, '').trim().toLowerCase() === target
-        );
+        const target = normColLabel(docColumnLabelFor(expiryCol));
+        const docId = docColumnIdFor(expiryCol);
+        return (sheet?.columns || []).find(c => {
+            if (c.id === docId) return true;
+            if (normColLabel(c.label) === target) return true;
+            const key = (c.key || '').toLowerCase();
+            if (key === `doc_${(expiryCol.key || expiryCol.id).toLowerCase()}`) return true;
+            return false;
+        });
     }
 
     function docColumnFolderName(col) {
@@ -1154,42 +1167,101 @@
     async function ensureProfilePhotoColumn() {
         const sheet = sheetById(PROFILE_SHEET_ID);
         if (!sheet) return;
-        const hasPhoto = (sheet.columns || []).some(c => c.type === 'image' || /profile photo/i.test(c.label));
+        const hasPhoto = (sheet.columns || []).some(c =>
+            c.id === PHOTO_COL_ID || c.type === 'image' || /profile photo/i.test(c.label)
+        );
         if (hasPhoto) return;
         try {
             const col = await matrixRequest('POST', `/matrix/sheets/${PROFILE_SHEET_ID}/columns`, {
                 label: 'Profile Photo',
                 type: 'image',
                 filterable: false,
+                col_id: PHOTO_COL_ID,
+                col_key: 'profile_photo',
             });
             if (col?.id) {
-                sheet.columns.push(col);
+                if (!sheet.columns.some(c => c.id === col.id)) {
+                    sheet.columns.push(col);
+                }
                 sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
             }
         } catch (e) {
-            console.warn('ensureProfilePhotoColumn:', e.message);
+            const msg = e.message || String(e);
+            if (/duplicate|23505/i.test(msg)) {
+                try {
+                    const fresh = await matrixRequest('GET', `/matrix/sheets/${PROFILE_SHEET_ID}`);
+                    if (fresh?.columns) {
+                        const idx = MATRIX_STATE.workbook.sheets.findIndex(s => s.id === PROFILE_SHEET_ID);
+                        if (idx >= 0) {
+                            MATRIX_STATE.workbook.sheets[idx] = fresh;
+                        }
+                    }
+                } catch (reloadErr) {
+                    console.warn('ensureProfilePhotoColumn reload:', reloadErr.message);
+                }
+                return;
+            }
+            console.warn('ensureProfilePhotoColumn:', msg);
         }
     }
 
+    let ensuringDocColumns = false;
+
     async function ensureExpiryDocColumns() {
-        if (!MATRIX_STATE.workbook) return;
-        for (const sheet of MATRIX_STATE.workbook.sheets) {
-            for (const expCol of (sheet.columns || []).filter(isExpiryDateColumn)) {
-                if (findDocColumnForExpiry(sheet, expCol)) continue;
-                try {
-                    const col = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/columns`, {
-                        label: docColumnLabelFor(expCol),
-                        type: 'file',
-                        filterable: false,
-                    });
-                    if (col?.id) {
-                        sheet.columns.push(col);
-                        sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+        if (!MATRIX_STATE.workbook || ensuringDocColumns) return;
+        ensuringDocColumns = true;
+        let needsReload = false;
+        try {
+            for (const sheet of MATRIX_STATE.workbook.sheets) {
+                for (const expCol of (sheet.columns || []).filter(isExpiryDateColumn)) {
+                    if (findDocColumnForExpiry(sheet, expCol)) continue;
+                    const docId = docColumnIdFor(expCol);
+                    const docKey = `doc_${expCol.key || expCol.id}`;
+                    try {
+                        const col = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/columns`, {
+                            label: docColumnLabelFor(expCol),
+                            type: 'file',
+                            filterable: false,
+                            col_id: docId,
+                            col_key: docKey,
+                        });
+                        if (col?.id) {
+                            if (!sheet.columns.some(c => c.id === col.id)) {
+                                sheet.columns.push(col);
+                            }
+                            sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                            needsReload = true;
+                        }
+                    } catch (e) {
+                        const msg = e.message || String(e);
+                        if (/duplicate|23505|already exists/i.test(msg)) {
+                            try {
+                                const fresh = await matrixRequest('GET', `/matrix/sheets/${sheet.id}`);
+                                if (fresh?.columns) {
+                                    sheet.columns = fresh.columns;
+                                    sheet.rows = fresh.rows || sheet.rows;
+                                    needsReload = true;
+                                }
+                            } catch (reloadErr) {
+                                console.warn('ensureExpiryDocColumns reload:', reloadErr.message);
+                            }
+                            continue;
+                        }
+                        console.warn(`ensureExpiryDocColumns ${sheet.id}:`, msg);
                     }
-                } catch (e) {
-                    console.warn(`ensureExpiryDocColumns ${sheet.id}:`, e.message);
                 }
             }
+            if (needsReload) {
+                const freshWb = await fetchWorkbook();
+                MATRIX_STATE.workbook = freshWb;
+                if (MATRIX_STATE.activeSheetId) {
+                    const sid = MATRIX_STATE.activeSheetId;
+                    const idx = freshWb.sheets.findIndex(s => s.id === sid);
+                    if (idx >= 0) MATRIX_STATE.workbook.sheets[idx] = freshWb.sheets[idx];
+                }
+            }
+        } finally {
+            ensuringDocColumns = false;
         }
     }
 

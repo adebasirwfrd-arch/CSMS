@@ -3,6 +3,7 @@ Supabase Database Service
 Provides persistent storage for CSMS application data
 """
 import os
+import re
 import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional, TypeVar
@@ -1205,27 +1206,154 @@ class SupabaseService:
         ).eq("id", sheet_id).execute()
         return True
 
+    def _normalize_col_label(self, label: str) -> str:
+        return (label or "").replace("*", "").strip().lower()
+
+    def _find_matrix_column_api(self, columns: List[Dict], label: str = None, col_id: str = None) -> Optional[Dict]:
+        if col_id:
+            for c in columns:
+                if c.get("id") == col_id:
+                    return c
+        if label:
+            target = self._normalize_col_label(label)
+            for c in columns:
+                if self._normalize_col_label(c.get("label", "")) == target:
+                    return c
+        return None
+
+    def _next_matrix_col_id(self, existing_ids: set, preferred_id: Optional[str] = None) -> str:
+        if preferred_id and preferred_id not in existing_ids:
+            return preferred_id
+        max_n = 0
+        for cid in existing_ids:
+            m = re.match(r"^col_(\d+)$", cid or "")
+            if m:
+                max_n = max(max_n, int(m.group(1)))
+        for n in range(max_n + 1, max_n + 500):
+            candidate = f"col_{n}"
+            if candidate not in existing_ids:
+                return candidate
+        return f"col_{uuid.uuid4().hex[:8]}"
+
+    def _is_duplicate_key_error(self, exc: Exception) -> bool:
+        err = str(exc)
+        if "23505" in err or "duplicate key" in err.lower():
+            return True
+        try:
+            from postgrest.exceptions import APIError
+
+            if isinstance(exc, APIError):
+                detail = exc.args[0] if exc.args else {}
+                if isinstance(detail, dict) and detail.get("code") == "23505":
+                    return True
+        except ImportError:
+            pass
+        return False
+
+    def _get_matrix_column_db(
+        self, sheet_id: str, col_id: Optional[str] = None, label: Optional[str] = None
+    ) -> Optional[Dict]:
+        """Read column from DB (avoids stale in-memory workbook during ensure-* flows)."""
+        if not self.enabled:
+            return None
+        try:
+            if col_id:
+                result = (
+                    self.client.table("matrix_columns")
+                    .select("*")
+                    .eq("sheet_id", sheet_id)
+                    .eq("id", col_id)
+                    .limit(1)
+                    .execute()
+                )
+                if result.data:
+                    return result.data[0]
+            if label:
+                target = self._normalize_col_label(label)
+                result = (
+                    self.client.table("matrix_columns")
+                    .select("*")
+                    .eq("sheet_id", sheet_id)
+                    .execute()
+                )
+                for row in result.data or []:
+                    if self._normalize_col_label(row.get("label")) == target:
+                        return row
+        except Exception as e:
+            self._log_err("SELECT", "matrix_columns", e)
+        return None
+
     def add_matrix_column(
-        self, sheet_id: str, label: str, col_type: str = "text", filterable: bool = True
+        self,
+        sheet_id: str,
+        label: str,
+        col_type: str = "text",
+        filterable: bool = True,
+        col_id: Optional[str] = None,
+        col_key: Optional[str] = None,
     ) -> Dict:
         if not self.enabled:
             raise RuntimeError("Supabase not enabled")
+
+        db_existing = self._get_matrix_column_db(sheet_id, col_id=col_id, label=label)
+        if db_existing:
+            return self._matrix_col_to_api(db_existing)
+
         sheet = self.get_matrix_sheet(sheet_id)
-        max_idx = max((c.get("index", 0) for c in sheet.get("columns", [])), default=0)
+        columns = sheet.get("columns", [])
+        existing = self._find_matrix_column_api(columns, label=label, col_id=col_id)
+        if existing:
+            return existing
+
+        existing_ids = {c.get("id") for c in columns if c.get("id")}
+        try:
+            db_ids = (
+                self.client.table("matrix_columns")
+                .select("id")
+                .eq("sheet_id", sheet_id)
+                .execute()
+            )
+            for row in db_ids.data or []:
+                if row.get("id"):
+                    existing_ids.add(row["id"])
+        except Exception as e:
+            self._log_err("SELECT", "matrix_columns ids", e)
+
+        max_idx = max((c.get("index", 0) for c in columns), default=0)
         new_index = max_idx + 1
-        col_id = f"col_{new_index}"
-        key_base = label.lower().replace("*", "").strip().replace(" ", "_")[:40]
+        new_id = self._next_matrix_col_id(existing_ids, col_id)
+        key_base = (col_key or label).lower().replace("*", "").strip().replace(" ", "_")[:40]
         col_payload = {
             "sheet_id": sheet_id,
-            "id": col_id,
-            "col_key": f"{key_base}_{new_index}",
+            "id": new_id,
+            "col_key": col_key or f"{key_base}_{new_index}",
             "label": label,
             "col_type": col_type,
             "filterable": filterable,
             "is_required": "*" in label,
             "sort_index": new_index,
         }
-        self.client.table("matrix_columns").insert(col_payload).execute()
+
+        if self._get_matrix_column_db(sheet_id, col_id=new_id, label=label):
+            return self._matrix_col_to_api(
+                self._get_matrix_column_db(sheet_id, col_id=new_id, label=label)
+            )
+
+        try:
+            result = (
+                self.client.table("matrix_columns")
+                .upsert(col_payload, on_conflict="sheet_id,id")
+                .execute()
+            )
+        except Exception as e:
+            if self._is_duplicate_key_error(e):
+                db_col = self._get_matrix_column_db(
+                    sheet_id, col_id=col_id or new_id, label=label
+                )
+                if db_col:
+                    return self._matrix_col_to_api(db_col)
+            self._log_err("UPSERT", "matrix_columns", e)
+            raise
         rows_r = (
             self.client.table("matrix_rows").select("id,cells").eq("sheet_id", sheet_id).execute()
         )
@@ -1236,12 +1364,14 @@ class SupabaseService:
                     cells = json.loads(cells)
                 except Exception:
                     cells = {}
-            cells[col_id] = ""
-            self.client.table("matrix_rows").update({"cells": cells}).eq("id", row["id"]).execute()
+            if new_id not in cells:
+                cells[new_id] = ""
+                self.client.table("matrix_rows").update({"cells": cells}).eq("id", row["id"]).execute()
         self.client.table("matrix_sheets").update(
             {"updated_at": datetime.utcnow().isoformat()}
         ).eq("id", sheet_id).execute()
-        return self._matrix_col_to_api(col_payload)
+        row_out = result.data[0] if result.data else col_payload
+        return self._matrix_col_to_api(row_out)
 
     def update_matrix_column(self, sheet_id: str, col_id: str, updates: Dict) -> Dict:
         if not self.enabled:

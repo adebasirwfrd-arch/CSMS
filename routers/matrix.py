@@ -71,6 +71,8 @@ class ColumnCreateBody(BaseModel):
     label: str
     type: str = "text"
     filterable: bool = True
+    col_id: Optional[str] = None
+    col_key: Optional[str] = None
 
 
 class ColumnUpdateBody(BaseModel):
@@ -229,9 +231,27 @@ def matrix_delete_row(sheet_id: str, row_id: str):
 @router.post("/matrix/sheets/{sheet_id}/columns")
 def matrix_add_column(sheet_id: str, body: ColumnCreateBody):
     try:
-        return add_column(sheet_id, body.label, body.type, body.filterable)
+        return add_column(
+            sheet_id,
+            body.label,
+            body.type,
+            body.filterable,
+            col_id=body.col_id,
+            col_key=body.col_key,
+        )
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        if "23505" in str(e) or "duplicate key" in str(e).lower():
+            from services.supabase_service import supabase_service
+
+            if supabase_service.enabled:
+                db_col = supabase_service._get_matrix_column_db(
+                    sheet_id, col_id=body.col_id, label=body.label
+                )
+                if db_col:
+                    return supabase_service._matrix_col_to_api(db_col)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/matrix/sheets/{sheet_id}/columns/{col_id}")
