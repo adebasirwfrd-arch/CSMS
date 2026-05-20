@@ -1352,6 +1352,7 @@
     </style>
     <!-- PDF Compression Library -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 
 <!-- Header -->
@@ -1836,6 +1837,7 @@
                 <div>
                     <h2 style="font-size: 22px; font-weight: 700; margin: 0;" data-i18n="statisticsTitle">Laporan Statistik Executive</h2>
                     <p id="ex-report-period" style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0;">—</p>
+                    <p id="ex-stats-load-hint" style="font-size: 11px; color: var(--warning); margin: 4px 0 0;"></p>
                 </div>
             </div>
             <div class="ex-stats-filters">
@@ -7601,19 +7603,60 @@
             if (i === y) opt.selected = true;
             sel.appendChild(opt);
         }
-        const m = document.getElementById('ex-filter-month');
-        if (m && !m.value) m.value = String(new Date().getMonth() + 1);
+        // Keep "Semua Bulan" as default — do not auto-select current month
+    }
+
+    function buildClientSideStatsFallback() {
+        const byStatus = (list, key) => ({
+            Upcoming: list.filter(p => p.status === 'Upcoming').length,
+            InProgress: list.filter(p => p.status === 'InProgress' || p.status === 'Ongoing').length,
+            Completed: list.filter(p => p.status === 'Completed').length,
+            OnHold: list.filter(p => p.status === 'OnHold').length,
+        });
+        const taskTotal = allTasks.length;
+        const taskDone = allTasks.filter(t => t.status === 'Completed').length;
+        return {
+            report_year: parseInt(document.getElementById('ex-filter-year')?.value, 10) || new Date().getFullYear(),
+            report_month: document.getElementById('ex-filter-month')?.value ? parseInt(document.getElementById('ex-filter-month').value, 10) : null,
+            projects: { total: allProjects.length, by_status: byStatus(allProjects, 'status') },
+            tasks: {
+                total: taskTotal,
+                by_status: {
+                    Upcoming: allTasks.filter(t => t.status === 'Upcoming').length,
+                    'In Progress': allTasks.filter(t => t.status === 'In Progress').length,
+                    Completed: taskDone,
+                },
+                completion_rate: taskTotal ? (taskDone / taskTotal) * 100 : 0,
+            },
+            schedules: { total: allSchedules.length, by_type: {} },
+            pb: { total: 0, average: 0 },
+            ll: { total: 0, on_track_pct: 0 },
+            otp: { avg_progress: 0 },
+            monthly_executive: { labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], projects: [], tasks_completed: [], schedules: [], pb_audits: [] },
+            project_completion: [],
+            clients: [],
+            tasks_by_category: [],
+        };
     }
 
     async function loadDashboardStats() {
+        const hint = document.getElementById('ex-stats-load-hint');
+        if (hint) hint.textContent = 'Memuat statistik...';
         try {
             initExStatsYearFilter();
             const q = typeof getStatisticsQueryParams === 'function' ? getStatisticsQueryParams() : '';
             const url = `${API_BASE}/statistics${q}${q ? '&' : '?'}t=${Date.now()}`;
-            const res = await fetch(url);
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 60000);
+            let res;
+            try {
+                res = await fetch(url, { signal: controller.signal });
+            } finally {
+                clearTimeout(timeout);
+            }
+
             if (!res.ok) {
-                showToast('Gagal memuat statistik', 'error');
-                return;
+                throw new Error(`HTTP ${res.status}`);
             }
             const stats = await res.json();
 
@@ -7622,12 +7665,23 @@
                 if (schedRes.ok) allSchedules = await schedRes.json();
             } catch (e) { console.error('Error loading schedules:', e); }
 
+            if (typeof applyExecutiveKpis === 'function') applyExecutiveKpis(stats);
             if (typeof renderExecutiveStatistics === 'function') {
-                renderExecutiveStatistics(stats);
+                await renderExecutiveStatistics(stats);
+            } else {
+                console.error('[Stats] renderExecutiveStatistics missing — check /static/exec-stats.js');
+                if (hint) hint.textContent = 'Gagal memuat modul chart. Hard refresh (Ctrl+Shift+R).';
             }
         } catch (error) {
             console.error('Error loading dashboard stats:', error);
-            showToast('Error loading statistics', 'error');
+            const fallback = buildClientSideStatsFallback();
+            if (typeof applyExecutiveKpis === 'function') applyExecutiveKpis(fallback);
+            if (hint) {
+                hint.textContent = error.name === 'AbortError'
+                    ? 'Statistik timeout — coba lagi atau pilih tahun lain.'
+                    : 'API statistik gagal — menampilkan data cache terbatas.';
+            }
+            showToast('Statistik: menggunakan data terbatas', 'warning');
         }
     }
 
@@ -10011,7 +10065,6 @@
         }
     }
 </script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="/static/exec-stats.js"></script>
 </body>
 

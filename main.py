@@ -2191,35 +2191,8 @@ def get_statistics(year: Optional[int] = None, month: Optional[int] = None):
         if ll_stats['total']:
             ll_stats['on_track_pct'] = round((ll_stats['on_track'] / ll_stats['total']) * 100, 1)
 
-        otp_programs = []
         if SUPABASE_ENABLED and supabase_service:
-            for p in projects:
-                otp_programs.extend(supabase_service.get_otp_programs(p['id'], report_year, None) or [])
-        seen_otp = set()
-        unique_otp = []
-        for prog in otp_programs:
-            key = (prog.get('id'), prog.get('name'))
-            if key in seen_otp:
-                continue
-            seen_otp.add(key)
-            unique_otp.append(prog)
-        progress_vals = []
-        for prog in unique_otp:
-            otp_stats['total_programs'] += 1
-            if prog.get('category') == 'Lagging':
-                otp_stats['lagging'] += 1
-            else:
-                otp_stats['leading'] += 1
-            pr = float(prog.get('progress') or 0)
-            progress_vals.append(pr)
-            bi = min(3, int(pr // 25)) if pr < 100 else 3
-            otp_stats['progress_buckets'][bi] += 1
-        if progress_vals:
-            otp_stats['avg_progress'] = round(sum(progress_vals) / len(progress_vals), 1)
-        otp_stats['top_programs'] = sorted(
-            [{'name': (p.get('name') or '')[:24], 'progress': float(p.get('progress') or 0)} for p in unique_otp],
-            key=lambda x: -x['progress'],
-        )[:8]
+            otp_stats = supabase_service.get_otp_stats_summary(report_year)
     except Exception as e:
         print(f"[STATS] LL/OTP aggregation error: {e}")
 

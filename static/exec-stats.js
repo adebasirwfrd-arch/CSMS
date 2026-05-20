@@ -35,11 +35,16 @@
     function createChart(id, config) {
         const el = document.getElementById(id);
         if (!el) return null;
-        if (executiveCharts[id]) {
-            executiveCharts[id].destroy();
+        try {
+            if (executiveCharts[id]) {
+                executiveCharts[id].destroy();
+            }
+            executiveCharts[id] = new Chart(el, config);
+            return executiveCharts[id];
+        } catch (err) {
+            console.error(`[Stats] chart failed: ${id}`, err);
+            return null;
         }
-        executiveCharts[id] = new Chart(el, config);
-        return executiveCharts[id];
     }
 
     function setKpi(id, val) {
@@ -47,9 +52,58 @@
         if (el) el.textContent = val;
     }
 
-    window.renderExecutiveStatistics = function (stats) {
-        if (typeof Chart === 'undefined') {
-            console.error('[Stats] Chart.js not loaded');
+    window.applyExecutiveKpis = function (stats) {
+        if (!stats) return;
+        const proj = stats.projects || {};
+        const task = stats.tasks || {};
+        const sched = stats.schedules || {};
+        const pb = stats.pb || {};
+        const ll = stats.ll || {};
+        const otp = stats.otp || {};
+
+        setKpi('ex-kpi-projects', proj.total ?? 0);
+        setKpi('ex-kpi-tasks', task.total ?? 0);
+        setKpi('ex-kpi-completion', `${(task.completion_rate || 0).toFixed(0)}%`);
+        setKpi('ex-kpi-schedules', sched.total ?? 0);
+        setKpi('ex-kpi-pb-avg', pb.average ? `${pb.average}%` : '—');
+        setKpi('ex-kpi-otp', otp.avg_progress ? `${otp.avg_progress}%` : '—');
+        setKpi('ex-kpi-ll', ll.on_track_pct != null && ll.total ? `${ll.on_track_pct}%` : (ll.total === 0 ? '—' : '0%'));
+        setKpi('ex-kpi-pb-records', pb.total ?? 0);
+
+        const periodEl = document.getElementById('ex-report-period');
+        if (periodEl) {
+            const months = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+            const m = stats.report_month ? months[stats.report_month] : 'Semua Bulan';
+            periodEl.textContent = `${m} ${stats.report_year || new Date().getFullYear()}`;
+        }
+    };
+
+    window.ensureChartJs = function () {
+        if (typeof Chart !== 'undefined') return Promise.resolve(true);
+        return new Promise((resolve) => {
+            const existing = document.querySelector('script[data-chartjs-loader]');
+            if (existing) {
+                existing.addEventListener('load', () => resolve(typeof Chart !== 'undefined'));
+                existing.addEventListener('error', () => resolve(false));
+                return;
+            }
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+            s.dataset.chartjsLoader = '1';
+            s.onload = () => resolve(typeof Chart !== 'undefined');
+            s.onerror = () => resolve(false);
+            document.head.appendChild(s);
+        });
+    };
+
+    window.renderExecutiveStatistics = async function (stats) {
+        window.applyExecutiveKpis(stats);
+
+        const chartOk = await window.ensureChartJs();
+        if (!chartOk) {
+            console.error('[Stats] Chart.js not loaded — KPI updated, charts skipped');
+            const hint = document.getElementById('ex-stats-load-hint');
+            if (hint) hint.textContent = 'Chart.js gagal dimuat. Periksa koneksi internet lalu refresh.';
             return;
         }
         chartDefaults();
@@ -63,21 +117,8 @@
         const otp = stats.otp || {};
         const monthly = stats.monthly_executive || {};
 
-        setKpi('ex-kpi-projects', proj.total || 0);
-        setKpi('ex-kpi-tasks', task.total || 0);
-        setKpi('ex-kpi-completion', `${(task.completion_rate || 0).toFixed(0)}%`);
-        setKpi('ex-kpi-schedules', sched.total || 0);
-        setKpi('ex-kpi-pb-avg', pb.average ? `${pb.average}%` : '—');
-        setKpi('ex-kpi-otp', otp.avg_progress ? `${otp.avg_progress}%` : '—');
-        setKpi('ex-kpi-ll', ll.on_track_pct ? `${ll.on_track_pct}%` : '—');
-        setKpi('ex-kpi-pb-records', pb.total || 0);
-
-        const periodEl = document.getElementById('ex-report-period');
-        if (periodEl) {
-            const months = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-            const m = stats.report_month ? months[stats.report_month] : 'Semua Bulan';
-            periodEl.textContent = `${m} ${stats.report_year || new Date().getFullYear()}`;
-        }
+        const hint = document.getElementById('ex-stats-load-hint');
+        if (hint) hint.textContent = '';
 
         // 1. Projects — Doughnut status
         createChart('chart-projects-status', {

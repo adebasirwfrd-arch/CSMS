@@ -575,6 +575,83 @@ class SupabaseService:
             traceback.print_exc()
             return []
 
+    def get_otp_stats_summary(self, year: int) -> Dict:
+        """Aggregate OTP stats in two queries (all projects for year)."""
+        empty = {
+            'total_programs': 0, 'avg_progress': 0, 'lagging': 0, 'leading': 0,
+            'progress_buckets': [0, 0, 0, 0], 'top_programs': [],
+        }
+        if not self.enabled:
+            return empty
+        try:
+            result = (
+                self.client.table('ll_indicators')
+                .select('id,name,category,sort_order,project_id')
+                .eq('year', year)
+                .execute()
+            )
+            indicators = result.data or []
+            if not indicators:
+                return empty
+
+            ids = [ind['id'] for ind in indicators]
+            month_result = (
+                self.client.table('otp_month_data')
+                .select('indicator_id,month,plan,actual')
+                .in_('indicator_id', ids)
+                .execute()
+            )
+            month_data = month_result.data or []
+            month_map = {}
+            for md in month_data:
+                iid = md['indicator_id']
+                if iid not in month_map:
+                    month_map[iid] = {}
+                month_map[iid][md['month']] = md
+
+            merged = {}
+            for ind in indicators:
+                key = (str(ind.get('project_id') or ''), str(ind.get('category') or ''), ind.get('name') or '')
+                if key not in merged:
+                    merged[key] = {**ind, 'months': dict(month_map.get(ind['id'], {}))}
+                else:
+                    for m_key, md in month_map.get(ind['id'], {}).items():
+                        if m_key not in merged[key]['months']:
+                            merged[key]['months'][m_key] = md
+
+            progress_vals = []
+            top_programs = []
+            buckets = [0, 0, 0, 0]
+            lagging = leading = 0
+            for prog in merged.values():
+                if prog.get('category') == 'Lagging':
+                    lagging += 1
+                else:
+                    leading += 1
+                total_plan = total_actual = 0
+                for m in range(1, 13):
+                    md = prog['months'].get(m, prog['months'].get(str(m), {}))
+                    total_plan += int(md.get('plan') or 0)
+                    total_actual += int(md.get('actual') or 0)
+                progress = min(100, round((total_actual / total_plan * 100) if total_plan > 0 else 0))
+                progress_vals.append(progress)
+                bi = min(3, int(progress // 25)) if progress < 100 else 3
+                buckets[bi] += 1
+                top_programs.append({'name': (prog.get('name') or '')[:24], 'progress': float(progress)})
+
+            top_programs.sort(key=lambda x: -x['progress'])
+            return {
+                'total_programs': len(merged),
+                'avg_progress': round(sum(progress_vals) / len(progress_vals), 1) if progress_vals else 0,
+                'lagging': lagging,
+                'leading': leading,
+                'progress_buckets': buckets,
+                'top_programs': top_programs[:8],
+            }
+        except Exception as e:
+            print(f"[ERROR] get_otp_stats_summary: {e}")
+            return empty
+
     def update_otp_program(self, project_id: str, program_id: str, data: Dict) -> bool:
         """Update OTP program metadata (ll_indicators row)."""
         if not self.enabled:
