@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from services.google_drive import drive_service
 from services.matrix_store import (
+    SUPABASE_MATRIX,
     add_column,
     add_row,
     delete_column,
@@ -61,6 +62,15 @@ class ColumnUpdateBody(BaseModel):
 @router.get("/matrix/workbook")
 def matrix_workbook():
     return get_workbook()
+
+
+@router.get("/matrix/status")
+def matrix_status():
+    """Report whether matrix CRUD persists to Supabase or local JSON fallback."""
+    return {
+        "storage": "supabase" if SUPABASE_MATRIX else "json",
+        "persisted": bool(SUPABASE_MATRIX),
+    }
 
 
 @router.post("/matrix/seed")

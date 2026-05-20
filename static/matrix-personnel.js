@@ -21,7 +21,51 @@
         clients: [],
         productLines: [],
         projects: [],
+        storage: null,
     };
+
+    const SHEET_KPI_COLORS = ['#46D369', '#F5A623', '#e74c3c', '#4A90D9', '#9b59b6', '#E50914', '#1abc9c'];
+
+    const SHEET_KPI_RULES = {
+        employee_mandatory_training: [
+            { type: 'personnel' },
+            { label: 'BST Expired ≤30 hari', match: /bst expiry/i, warnDays: 30, status: 'soon' },
+            { label: 'SBTC Expired ≤30 hari', match: /sbtc expiry/i, warnDays: 30, status: 'soon' },
+            { label: 'One Sika Expired ≤30 hari', match: /one sika expiry/i, warnDays: 30, status: 'soon' },
+            { label: 'Training Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
+            { type: 'missing' },
+        ],
+        personnel_health: [
+            { type: 'personnel' },
+            { label: 'MCU Expired ≤90 hari', match: /mcu expired/i, warnDays: 90, status: 'soon' },
+            { label: 'MCU Sudah Expired', match: /mcu expired/i, status: 'expired' },
+            { label: 'Field Wajib Kosong', type: 'missing' },
+        ],
+        personnel_data_information: [
+            { type: 'personnel' },
+            { label: 'SKCK Expired ≤30 hari', match: /skck expiry/i, warnDays: 30, status: 'soon' },
+            { label: 'HSE Passport Expired ≤30 hari', match: /hse passport expired/i, warnDays: 30, status: 'soon' },
+            { label: 'Dokumen Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
+            { type: 'missing' },
+        ],
+        contract_information: [
+            { type: 'personnel' },
+            { label: 'Kontrak Berakhir ≤30 hari', match: /contract end date/i, warnDays: 30, status: 'soon' },
+            { label: 'Kontrak Sudah Expired', match: /contract end date/i, status: 'expired' },
+            { type: 'missing' },
+        ],
+        emergency_contact_information: [
+            { type: 'personnel' },
+            { type: 'missing' },
+        ],
+    };
+
+    const DEFAULT_KPI_RULES = [
+        { type: 'personnel' },
+        { label: 'Kadaluarsa ≤30 hari', match: /(?:expir|expired)/i, warnDays: 30, status: 'soon' },
+        { label: 'Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
+        { type: 'missing' },
+    ];
 
     const STANDARD_COLUMN_SPECS = [
         { label: 'Personnel Name*', type: 'text', match: /personnel name/i },
@@ -571,26 +615,50 @@
         }
     }
 
+    function countDateMetric(rows, cols, rule) {
+        const matchingCols = cols.filter(c => {
+            if (!rule.match.test(c.label)) return false;
+            return c.type === 'date' || /expir|end date|expired/i.test(c.label);
+        });
+        if (!matchingCols.length) return 0;
+
+        if (rule.status === 'expired' && rule.perRow) {
+            let count = 0;
+            rows.forEach(row => {
+                for (const c of matchingCols) {
+                    const du = daysUntil(row.cells?.[c.id]);
+                    if (du != null && du < 0) {
+                        count += 1;
+                        break;
+                    }
+                }
+            });
+            return count;
+        }
+
+        let count = 0;
+        rows.forEach(row => {
+            for (const c of matchingCols) {
+                const du = daysUntil(row.cells?.[c.id]);
+                if (du == null) continue;
+                if (rule.status === 'soon' && du >= 0 && du <= (rule.warnDays || 30)) count += 1;
+                else if (rule.status === 'expired' && du < 0) count += 1;
+            }
+        });
+        return count;
+    }
+
     function computeSheetSummary(sheet) {
         const rows = filterRows(sheet);
         const cols = sheet.columns || [];
         const requiredCols = cols.filter(c => c.required);
         let missingRequired = 0;
-        let expiringSoon = 0;
-        let expired = 0;
         const genderCol = cols.find(c => /gender/i.test(c.label));
         const gender = { Male: 0, Female: 0, Other: 0 };
 
         rows.forEach(row => {
             requiredCols.forEach(c => {
                 if (!(row.cells?.[c.id] || '').trim()) missingRequired += 1;
-            });
-            cols.forEach(c => {
-                if (!/expir|expired/i.test(c.label)) return;
-                const du = daysUntil(row.cells?.[c.id]);
-                if (du == null) return;
-                if (du < 0) expired += 1;
-                else if (du <= 30) expiringSoon += 1;
             });
             if (genderCol) {
                 const g = (row.cells?.[genderCol.id] || '').trim();
@@ -605,7 +673,31 @@
             ? new Set(rows.map(r => (r.cells?.[personnelCol.id] || '').trim()).filter(Boolean)).size
             : rows.length;
 
-        return { totalRows: rows.length, totalCols: cols.length, missingRequired, expiringSoon, expired, gender, uniquePersonnel };
+        const rules = SHEET_KPI_RULES[sheet.id] || DEFAULT_KPI_RULES;
+        const kpis = rules.map((rule, idx) => {
+            if (rule.type === 'personnel') {
+                return { label: 'Personel Aktif', value: uniquePersonnel, color: SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length] };
+            }
+            if (rule.type === 'missing') {
+                return { label: 'Field Wajib Kosong', value: missingRequired, color: SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length] };
+            }
+            return {
+                label: rule.label,
+                value: countDateMetric(rows, cols, rule),
+                color: SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length],
+            };
+        });
+
+        if (genderCol && gender.Male + gender.Female + gender.Other > 0
+            && (sheet.id === PROFILE_SHEET_ID || sheet.id === 'personnel_health')) {
+            kpis.push({
+                label: 'Gender (M/F/L)',
+                value: `${gender.Male}/${gender.Female}/${gender.Other}`,
+                color: '#1abc9c',
+            });
+        }
+
+        return { uniquePersonnel, missingRequired, kpis, gender };
     }
 
     function rowMatchesFilters(sheet, row) {
@@ -929,26 +1021,35 @@
     };
 
     function renderDashboard(summary) {
-        const cards = [
-            { label: 'Total Baris', value: summary.totalRows, color: '#E50914' },
-            { label: 'Kolom', value: summary.totalCols, color: '#4A90D9' },
-            { label: 'Personel Unik', value: summary.uniquePersonnel, color: '#46D369' },
-            { label: 'Kadaluarsa ≤30 hari', value: summary.expiringSoon, color: '#F5A623' },
-            { label: 'Sudah Expired', value: summary.expired, color: '#e74c3c' },
-            { label: 'Field Wajib Kosong', value: summary.missingRequired, color: '#9b59b6' },
-        ];
-        if (summary.gender.Male + summary.gender.Female + summary.gender.Other > 0) {
-            cards.push({
-                label: 'Gender (M/F/L)',
-                value: `${summary.gender.Male}/${summary.gender.Female}/${summary.gender.Other}`,
-                color: '#1abc9c',
-            });
-        }
+        const cards = summary.kpis || [];
         return `<div class="ex-kpi-strip">${cards.map(c => `
             <div class="ex-kpi" style="--kpi-color:${c.color}">
                 <span>${esc(c.label)}</span>
                 <strong>${esc(c.value)}</strong>
             </div>`).join('')}</div>`;
+    }
+
+    function renderStorageBadge() {
+        const s = MATRIX_STATE.storage;
+        if (!s) return '';
+        if (s.persisted) {
+            return '<span class="mx-storage-badge mx-storage-ok" title="Data tersimpan di Supabase">● Supabase</span>';
+        }
+        return '<span class="mx-storage-badge mx-storage-warn" title="Supabase tidak aktif — data hanya lokal">⚠ Penyimpanan Lokal</span>';
+    }
+
+    async function checkMatrixStorage() {
+        try {
+            const res = await fetch(`${apiBase()}/matrix/status?t=${Date.now()}`, { cache: 'no-store' });
+            if (res.ok) {
+                MATRIX_STATE.storage = await res.json();
+                if (!MATRIX_STATE.storage.persisted) {
+                    showToast?.('Matrix menggunakan penyimpanan lokal. Set SUPABASE_URL & SUPABASE_KEY agar data tersimpan di Supabase.', 'error');
+                }
+            }
+        } catch (e) {
+            console.warn('checkMatrixStorage:', e.message);
+        }
     }
 
     function renderToolbar(sheet) {
@@ -1258,7 +1359,7 @@
                         </svg>
                         <div>
                             <h2 class="mx-title">${esc(sheet.title || tabLabel)}</h2>
-                            <p class="mx-subtitle">${esc(sheet.name)} · ${rows.length} dari ${sheet.rows.length} baris ditampilkan</p>
+                            <p class="mx-subtitle">${esc(sheet.name)} · ${rows.length} baris ditampilkan ${renderStorageBadge()}</p>
                         </div>
                     </div>
                 </header>
@@ -1580,19 +1681,21 @@
     window.matrixAddColumn = async function () {
         const sheet = activeSheet();
         if (!sheet) return;
-        const label = prompt('Nama kolom baru:', 'Kolom Baru');
+        const label = prompt('Nama kolom baru (berlaku untuk semua filter Client/Project):', 'Kolom Baru');
         if (!label) return;
+        const colType = /expir|expired|date|tanggal/i.test(label) ? 'date' : 'text';
         try {
             const col = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/columns`, {
-                label, type: 'text', filterable: true,
+                label, type: colType, filterable: true,
             });
-            sheet.columns.push(col);
-            sheet.rows.forEach(r => { r.cells[col.id] = ''; });
+            await reloadActiveSheet();
             const colSnap = clone(col);
             pushHistory({
                 desc: 'Tambah kolom',
                 undo: async () => {
-                    await matrixRequest('DELETE', `/matrix/sheets/${sheet.id}/columns/${colSnap.id}`);
+                    if (colSnap.id) {
+                        await matrixRequest('DELETE', `/matrix/sheets/${sheet.id}/columns/${colSnap.id}`);
+                    }
                     await reloadActiveSheet();
                 },
                 redo: async () => {
@@ -1602,6 +1705,7 @@
                     await reloadActiveSheet();
                 },
             });
+            showToast?.('Kolom ditambahkan — tampil di semua filter termasuk Client ALL', 'success');
             paintMatrixScreen();
         } catch (e) {
             showToast?.(e.message, 'error');
@@ -1693,6 +1797,7 @@
         if (!silent) root.innerHTML = '<div class="mx-loading">Memuat Matrix...</div>';
         try {
             MATRIX_STATE.loading = true;
+            await checkMatrixStorage();
             await loadMasterFilters();
             MATRIX_STATE.workbook = await fetchWorkbook();
             await ensureStandardColumns();
