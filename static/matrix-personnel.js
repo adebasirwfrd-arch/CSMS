@@ -684,7 +684,7 @@
             ? `onclick="matrixTriggerPhotoUpload('${esc(sheet.id)}','${esc(row.id)}','${esc(col.id)}')" title="Upload foto profil"`
             : 'title="Foto dari Data Personel"';
 
-        return `<td class="mx-td mx-td-photo">
+        return `<td class="mx-td mx-td-photo mx-td-edit" onclick="event.stopPropagation()">
             <div class="mx-photo-cell" ${uploadAttrs}>
                 <img class="mx-photo-thumb" src="${esc(src)}" alt="Profil" onerror="this.src='${defaultAvatar(gender)}'" />
                 ${canUpload ? `<span class="mx-photo-upload-hint">📷 Upload</span>
@@ -702,9 +702,10 @@
                 return `<option value="${esc(pl.name)}"${sel}>${esc(pl.name)}</option>`;
             })
         );
-        return `<td class="mx-td">
+        return `<td class="mx-td mx-td-edit" onclick="event.stopPropagation()">
             <select class="mx-cell-input mx-cell-select"
                 data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
+                onclick="event.stopPropagation()"
                 onfocus="this.dataset.prev=this.value"
                 onchange="matrixOnCellChange(this)">${options.join('')}</select>
         </td>`;
@@ -721,9 +722,10 @@
         if (val && !pool.includes(val)) {
             options.push(`<option value="${esc(val)}" selected>${esc(val)}</option>`);
         }
-        return `<td class="mx-td">
+        return `<td class="mx-td mx-td-edit" onclick="event.stopPropagation()">
             <select class="mx-cell-input mx-cell-select"
                 data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
+                onclick="event.stopPropagation()"
                 onfocus="this.dataset.prev=this.value"
                 onchange="matrixOnPersonnelSelect(this)">${options.join('')}</select>
         </td>`;
@@ -744,11 +746,13 @@
         }
 
         const inputType = c.type === 'date' ? 'date' : (c.type === 'number' ? 'number' : 'text');
-        return `<td class="mx-td">
+        return `<td class="mx-td mx-td-edit" onclick="event.stopPropagation()">
             <input class="mx-cell-input" type="${inputType}" value="${esc(val)}"
                 data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(c.id)}"
+                onclick="event.stopPropagation()"
                 onfocus="this.dataset.prev=this.value"
-                onchange="matrixOnCellChange(this)" />
+                onchange="matrixOnCellChange(this)"
+                onblur="matrixOnCellBlur(this)" />
         </td>`;
     }
 
@@ -865,6 +869,26 @@
         </aside>`;
     }
 
+    function replaceMatrixSidebar() {
+        const sheet = activeSheet();
+        if (!sheet) return;
+        const old = document.querySelector('#matrix-content .mx-sidebar');
+        if (!old) {
+            paintMatrixScreen();
+            return;
+        }
+        const wrap = document.createElement('div');
+        wrap.innerHTML = renderSidebar(sheet).trim();
+        const next = wrap.firstElementChild;
+        if (next) old.replaceWith(next);
+    }
+
+    function highlightMatrixRow(rowId) {
+        document.querySelectorAll('#matrix-content .mx-data-row').forEach(tr => {
+            tr.classList.toggle('mx-row-selected', tr.dataset.rowId === rowId);
+        });
+    }
+
     function paintMatrixScreen() {
         const root = document.getElementById('matrix-content');
         if (!root) return;
@@ -921,13 +945,15 @@
     }
 
     window.matrixSelectRow = function (rowId) {
+        if (MATRIX_STATE.selectedRowId === rowId) return;
         MATRIX_STATE.selectedRowId = rowId;
-        paintMatrixScreen();
+        highlightMatrixRow(rowId);
+        replaceMatrixSidebar();
     };
 
     window.matrixSetSidebarTab = function (tabId) {
         MATRIX_STATE.sidebarTab = tabId;
-        paintMatrixScreen();
+        replaceMatrixSidebar();
     };
 
     window.matrixTriggerPhotoUpload = function (sheetId, rowId, colId) {
@@ -1101,7 +1127,13 @@
         paintMatrixScreen();
     };
 
+    window.matrixOnCellBlur = function (input) {
+        if (!input || input.tagName === 'SELECT') return;
+        matrixOnCellChange(input);
+    };
+
     window.matrixOnCellChange = async function (input) {
+        if (!input || input.dataset.saving === '1') return;
         const sheetId = input.dataset.sheet;
         const rowId = input.dataset.row;
         const colId = input.dataset.col;
@@ -1109,6 +1141,7 @@
         const newVal = input.value;
         if (oldVal === newVal) return;
 
+        input.dataset.saving = '1';
         try {
             await applyCellUpdate(sheetId, rowId, colId, newVal);
             input.dataset.prev = newVal;
@@ -1117,12 +1150,15 @@
                 undo: async () => { await applyCellUpdate(sheetId, rowId, colId, oldVal); },
                 redo: async () => { await applyCellUpdate(sheetId, rowId, colId, newVal); },
             });
-            if (/personnel name/i.test(sheetById(sheetId)?.columns?.find(c => c.id === colId)?.label || '')) {
-                paintMatrixScreen();
+            const colLabel = sheetById(sheetId)?.columns?.find(c => c.id === colId)?.label || '';
+            if (/personnel name/i.test(colLabel)) {
+                replaceMatrixSidebar();
             }
         } catch (e) {
             input.value = oldVal;
             showToast?.(e.message || 'Gagal menyimpan', 'error');
+        } finally {
+            delete input.dataset.saving;
         }
     };
 
