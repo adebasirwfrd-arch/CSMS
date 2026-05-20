@@ -1581,18 +1581,27 @@
         .mx-photo-input { display: none; }
         .mx-td-doc { padding: 6px 8px; vertical-align: middle; min-width: 130px; }
         .mx-doc-cell {
+            position: relative;
             display: flex; align-items: center; justify-content: center;
-            min-height: 32px; cursor: pointer; border-radius: 6px;
+            min-height: 36px; min-width: 100px; cursor: pointer; border-radius: 6px;
             padding: 4px 6px; transition: background 0.15s;
         }
         .mx-doc-cell:hover { background: rgba(255,255,255,0.04); }
         .mx-doc-name {
             color: #46D369; font-weight: 600; font-size: 11px;
             text-decoration: none; word-break: break-all; text-align: center;
+            position: relative; z-index: 1; pointer-events: auto;
         }
         .mx-doc-name:hover { text-decoration: underline; }
-        .mx-doc-upload-hint { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
-        .mx-doc-input { display: none; }
+        .mx-doc-upload-hint {
+            font-size: 11px; color: var(--text-muted); white-space: nowrap;
+            position: relative; z-index: 1; pointer-events: none;
+        }
+        /* Overlay input — Android WebView often blocks hidden file inputs */
+        .mx-doc-input {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            opacity: 0; cursor: pointer; z-index: 2;
+        }
         .mx-th-doc { min-width: 120px; text-align: center; }
         .mx-th-doc-sub {
             display: block; font-size: 9px; font-weight: 400;
@@ -10429,7 +10438,7 @@
 </script>
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
-    <script src="/static/matrix-personnel.js?v=25"></script>
+    <script src="/static/matrix-personnel.js?v=26"></script>
 </body>
 
 </html>

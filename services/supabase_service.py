@@ -1081,6 +1081,7 @@ class SupabaseService:
                     f"matrix_columns:{sid}",
                 )
                 cols = sorted(cols_r.data or [], key=lambda x: x.get("sort_index", 0))
+                cols = self._ensure_expiry_doc_columns(sid, cols)
                 rows = self._fetch_matrix_rows(sid)
                 out_sheets.append(self._matrix_sheet_to_api(s, cols, rows))
             updated = max(
@@ -1205,6 +1206,51 @@ class SupabaseService:
             {"updated_at": datetime.utcnow().isoformat()}
         ).eq("id", sheet_id).execute()
         return True
+
+    def _is_expiry_date_column(self, label: str) -> bool:
+        return bool(
+            re.search(
+                r"expir|expired|end date|berakhir|kadaluarsa",
+                (label or "").replace("*", ""),
+                re.I,
+            )
+        )
+
+    def _ensure_expiry_doc_columns(self, sheet_id: str, columns: List[Dict]) -> List[Dict]:
+        """Create Doc:* file columns for expiry date columns (idempotent)."""
+        if not self.enabled or not columns:
+            return columns
+        col_ids = {c.get("id") for c in columns if c.get("id")}
+        norm_labels = {self._normalize_col_label(c.get("label", "")) for c in columns}
+        added: List[Dict] = []
+        for col in columns:
+            label = col.get("label") or ""
+            if not self._is_expiry_date_column(label):
+                continue
+            doc_id = f"{col['id']}_doc"
+            doc_label = f"Doc: {label.replace('*', '').strip()}"
+            if doc_id in col_ids or self._normalize_col_label(doc_label) in norm_labels:
+                continue
+            try:
+                self.add_matrix_column(
+                    sheet_id,
+                    doc_label,
+                    "file",
+                    False,
+                    col_id=doc_id,
+                    col_key=f"doc_{col.get('col_key') or col['id']}",
+                )
+                db_col = self._get_matrix_column_db(sheet_id, col_id=doc_id)
+                if db_col:
+                    added.append(db_col)
+                    col_ids.add(doc_id)
+                    norm_labels.add(self._normalize_col_label(doc_label))
+            except Exception as e:
+                self._log_err("ENSURE_DOC_COL", f"{sheet_id}:{doc_id}", e)
+        if added:
+            columns = list(columns) + added
+            columns.sort(key=lambda x: x.get("sort_index", 0))
+        return columns
 
     def _normalize_col_label(self, label: str) -> str:
         return (label or "").replace("*", "").strip().lower()

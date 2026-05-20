@@ -400,6 +400,22 @@
         });
     }
 
+    function virtualDocColumnFor(expiryCol) {
+        const docId = docColumnIdFor(expiryCol);
+        return {
+            id: docId,
+            key: `doc_${expiryCol.key || expiryCol.id}`,
+            label: docColumnLabelFor(expiryCol),
+            type: 'file',
+            filterable: false,
+            _virtual: true,
+        };
+    }
+
+    function resolveDocColumnForExpiry(sheet, expiryCol) {
+        return findDocColumnForExpiry(sheet, expiryCol) || virtualDocColumnFor(expiryCol);
+    }
+
     function getDisplayColumns(sheet) {
         let cols = [...(sheet.columns || [])];
         cols = cols.filter(c => {
@@ -430,7 +446,7 @@
             orderedRest.push(c);
             placed.add(c.id);
             if (isExpiryDateColumn(c)) {
-                const docCol = findDocColumnForExpiry(sheet, c);
+                const docCol = resolveDocColumnForExpiry(sheet, c);
                 if (docCol && !placed.has(docCol.id)) {
                     orderedRest.push(docCol);
                     placed.add(docCol.id);
@@ -1128,7 +1144,7 @@
     }
 
     async function fetchWorkbook() {
-        const res = await fetch(`${apiBase()}/matrix/workbook?t=${Date.now()}`);
+        const res = await fetch(`${apiBase()}/matrix/workbook?t=${Date.now()}`, { cache: 'no-store' });
         if (!res.ok) throw new Error('Gagal memuat matrix workbook');
         return res.json();
     }
@@ -1136,6 +1152,7 @@
     async function matrixRequest(method, path, body) {
         const res = await fetch(`${apiBase()}${path}`, {
             method,
+            cache: 'no-store',
             headers: { 'Content-Type': 'application/json' },
             body: body ? JSON.stringify(body) : undefined,
         });
@@ -1432,8 +1449,9 @@
         const columnName = docColumnFolderName(col);
         const inputId = `mx-doc-${row.id}-${col.id}`;
 
+        const acceptAttr = ' accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,image/*,application/pdf"';
         return `<td class="mx-td mx-td-doc mx-td-edit" onclick="event.stopPropagation()">
-            <div class="mx-doc-cell" onclick="matrixTriggerDocUpload('${esc(inputId)}')" title="Upload dokumen">
+            <div class="mx-doc-cell" title="Upload dokumen">
                 ${fileId && displayName
                     ? `<a class="mx-doc-name" href="${docViewUrl(fileId)}" target="_blank" rel="noopener"
                         onclick="event.stopPropagation()">${esc(displayName)}</a>`
@@ -1441,9 +1459,10 @@
                         ? `<a class="mx-doc-name" href="${docViewUrl(fileId)}" target="_blank" rel="noopener"
                             onclick="event.stopPropagation()">Document</a>`
                         : '<span class="mx-doc-upload-hint">📄 Upload Doc</span>')}
-                <input type="file" class="mx-doc-input" id="${esc(inputId)}"
+                <input type="file" class="mx-doc-input" id="${esc(inputId)}"${acceptAttr}
                     data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
                     data-name="${esc(personnelName)}" data-column-name="${esc(columnName)}"
+                    data-virtual="${col._virtual ? '1' : '0'}"
                     onchange="matrixOnDocSelected(this)" />
             </div>
         </td>`;
@@ -1822,21 +1841,72 @@
 
     window.matrixTriggerDocUpload = function (inputId) {
         const input = document.getElementById(inputId);
-        if (input) input.click();
+        if (!input) return;
+        if (window.ReactNativeWebView) {
+            window.__matrixPendingDocInputId = inputId;
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pickFile', context: 'matrixDoc' }));
+            return;
+        }
+        input.click();
     };
+
+    async function ensureDocColumnBeforeUpload(sheetId, colId, colLabel, colKey) {
+        const sheet = sheetById(sheetId);
+        if (!sheet) return colId;
+        const existing = (sheet.columns || []).find(c => c.id === colId);
+        if (existing && !existing._virtual) return colId;
+        try {
+            const col = await matrixRequest('POST', `/matrix/sheets/${sheetId}/columns`, {
+                label: colLabel,
+                type: 'file',
+                filterable: false,
+                col_id: colId,
+                col_key: colKey,
+            });
+            if (col?.id) {
+                const idx = (sheet.columns || []).findIndex(c => c.id === col.id);
+                if (idx >= 0) sheet.columns[idx] = col;
+                else sheet.columns.push(col);
+                sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+            }
+            return col?.id || colId;
+        } catch (e) {
+            const msg = e.message || String(e);
+            if (/duplicate|23505/i.test(msg)) {
+                const fresh = await matrixRequest('GET', `/matrix/sheets/${sheetId}`);
+                if (fresh?.columns) {
+                    const wbIdx = MATRIX_STATE.workbook?.sheets?.findIndex(s => s.id === sheetId);
+                    if (wbIdx >= 0) MATRIX_STATE.workbook.sheets[wbIdx] = fresh;
+                    const found = fresh.columns.find(c => c.id === colId);
+                    if (found) return found.id;
+                }
+            }
+            throw e;
+        }
+    }
 
     window.matrixOnDocSelected = async function (input) {
         const file = input.files?.[0];
         if (!file) return;
 
-        const sheetId = input.dataset.sheet;
-        const rowId = input.dataset.row;
-        const colId = input.dataset.col;
+        let sheetId = input.dataset.sheet;
+        let rowId = input.dataset.row;
+        let colId = input.dataset.col;
         const personnelName = input.dataset.name || 'Personnel';
         const columnName = input.dataset.columnName || 'Documents';
         const oldVal = sheetById(sheetId)?.rows?.find(r => r.id === rowId)?.cells?.[colId] || '';
 
         try {
+            if (input.dataset.virtual === '1') {
+                const sheet = sheetById(sheetId);
+                const expId = colId.replace(/_doc$/, '');
+                const expCol = (sheet?.columns || []).find(c => c.id === expId);
+                const docKey = `doc_${expCol?.key || expId}`;
+                const docLabel = expCol ? docColumnLabelFor(expCol) : `Doc: ${columnName}`;
+                colId = await ensureDocColumnBeforeUpload(sheetId, colId, docLabel, docKey);
+                input.dataset.col = colId;
+                input.dataset.virtual = '0';
+            }
             showToast?.('Mengunggah dokumen...', 'info');
             const stored = await uploadMatrixDocument(sheetId, rowId, colId, personnelName, columnName, file);
             pushHistory({
@@ -2343,6 +2413,37 @@
         if (MATRIX_STATE.workbook) paintMatrixScreen();
         else loadMatrixWorkbook();
     };
+
+    window.addEventListener('message', function (event) {
+        try {
+            const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+            if (!data || data.type !== 'fileSelected' || !window.__matrixPendingDocInputId) return;
+            const input = document.getElementById(window.__matrixPendingDocInputId);
+            window.__matrixPendingDocInputId = null;
+            if (!input) return;
+            if (data.file instanceof File) {
+                const dt = new DataTransfer();
+                dt.items.add(data.file);
+                input.files = dt.files;
+                matrixOnDocSelected(input);
+                return;
+            }
+            if (data.base64 && data.name) {
+                const mime = data.mimeType || 'application/octet-stream';
+                const bin = atob(data.base64);
+                const arr = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                const blob = new Blob([arr], { type: mime });
+                const file = new File([blob], data.name, { type: mime });
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                input.files = dt.files;
+                matrixOnDocSelected(input);
+            }
+        } catch (e) {
+            console.warn('matrix doc message handler:', e);
+        }
+    });
 
     document.addEventListener('keydown', (e) => {
         if (!document.getElementById('screen-matrix')?.classList.contains('active')) return;
