@@ -1143,10 +1143,44 @@
         return targetRowId;
     }
 
-    async function fetchWorkbook() {
-        const res = await fetch(`${apiBase()}/matrix/workbook?t=${Date.now()}`, { cache: 'no-store' });
-        if (!res.ok) throw new Error('Gagal memuat matrix workbook');
-        return res.json();
+    const MATRIX_FETCH_TIMEOUT_MS = 120000;
+
+    async function fetchWorkbook(attempt = 0) {
+        const maxAttempts = 3;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), MATRIX_FETCH_TIMEOUT_MS);
+        try {
+            const res = await fetch(`${apiBase()}/matrix/workbook?t=${Date.now()}`, {
+                cache: 'no-store',
+                signal: controller.signal,
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+        } catch (e) {
+            if (attempt + 1 < maxAttempts) {
+                await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+                return fetchWorkbook(attempt + 1);
+            }
+            if (e.name === 'AbortError') {
+                throw new Error('Timeout — koneksi lambat. Coba lagi atau gunakan WiFi yang stabil.');
+            }
+            throw new Error('Gagal memuat matrix workbook');
+        } finally {
+            clearTimeout(timer);
+        }
+    }
+
+    function runMatrixBackgroundSetup() {
+        const tasks = [
+            ensureStandardColumns(),
+            ensureProfilePhotoColumn(),
+            ensureExpiryDocColumns(),
+        ];
+        Promise.allSettled(tasks).then(() => {
+            if (MATRIX_STATE.workbook) paintMatrixScreen();
+        });
+        fetch(`${apiBase()}/matrix/ensure-doc-columns`, { method: 'POST', cache: 'no-store' })
+            .catch(e => console.warn('ensure-doc-columns:', e.message || e));
     }
 
     async function matrixRequest(method, path, body) {
@@ -2392,15 +2426,17 @@
             await checkMatrixStorage();
             await loadMasterFilters();
             MATRIX_STATE.workbook = await fetchWorkbook();
-            await ensureStandardColumns();
-            await ensureProfilePhotoColumn();
-            await ensureExpiryDocColumns();
             if (!MATRIX_STATE.activeSheetId && MATRIX_STATE.workbook.sheets?.length) {
                 MATRIX_STATE.activeSheetId = MATRIX_STATE.workbook.sheets[0].id;
             }
             if (!silent) clearHistory();
-            if (isAllClients()) await dedupeAllPersonnelInWorkbook();
             paintMatrixScreen();
+            runMatrixBackgroundSetup();
+            if (isAllClients()) {
+                dedupeAllPersonnelInWorkbook().then(() => paintMatrixScreen()).catch(e => {
+                    console.warn('dedupeAllPersonnel:', e.message);
+                });
+            }
         } catch (e) {
             root.innerHTML = `<div class="mx-empty">Gagal memuat: ${esc(e.message)}</div>`;
             showToast?.(e.message, 'error');

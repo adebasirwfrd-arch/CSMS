@@ -70,6 +70,12 @@ def get_workbook() -> Dict[str, Any]:
     return _load_json()
 
 
+def ensure_doc_columns() -> Dict[str, Any]:
+    if SUPABASE_MATRIX and supabase_service:
+        return supabase_service.ensure_expiry_doc_columns_workbook()
+    return {"created": 0, "skipped": True}
+
+
 def get_sheet(sheet_id: str) -> Dict[str, Any]:
     if SUPABASE_MATRIX and supabase_service:
         return supabase_service.get_matrix_sheet(sheet_id)

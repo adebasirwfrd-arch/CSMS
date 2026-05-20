@@ -1071,17 +1071,20 @@ class SupabaseService:
                 "matrix_sheets",
             )
             sheets = sheets_r.data or []
+            cols_by_sheet: Dict[str, List[Dict]] = {}
+            cols_r = self._execute_with_retry(
+                lambda: self.client.table("matrix_columns").select("*"),
+                "matrix_columns:all",
+            )
+            for col in cols_r.data or []:
+                cols_by_sheet.setdefault(col["sheet_id"], []).append(col)
+            for sid in cols_by_sheet:
+                cols_by_sheet[sid].sort(key=lambda x: x.get("sort_index", 0))
+
             out_sheets = []
             for s in sheets:
                 sid = s["id"]
-                cols_r = self._execute_with_retry(
-                    lambda sid=sid: self.client.table("matrix_columns")
-                    .select("*")
-                    .eq("sheet_id", sid),
-                    f"matrix_columns:{sid}",
-                )
-                cols = sorted(cols_r.data or [], key=lambda x: x.get("sort_index", 0))
-                cols = self._ensure_expiry_doc_columns(sid, cols)
+                cols = cols_by_sheet.get(sid, [])
                 rows = self._fetch_matrix_rows(sid)
                 out_sheets.append(self._matrix_sheet_to_api(s, cols, rows))
             updated = max(
@@ -1216,41 +1219,52 @@ class SupabaseService:
             )
         )
 
-    def _ensure_expiry_doc_columns(self, sheet_id: str, columns: List[Dict]) -> List[Dict]:
-        """Create Doc:* file columns for expiry date columns (idempotent)."""
-        if not self.enabled or not columns:
-            return columns
-        col_ids = {c.get("id") for c in columns if c.get("id")}
-        norm_labels = {self._normalize_col_label(c.get("label", "")) for c in columns}
-        added: List[Dict] = []
-        for col in columns:
-            label = col.get("label") or ""
-            if not self._is_expiry_date_column(label):
-                continue
-            doc_id = f"{col['id']}_doc"
-            doc_label = f"Doc: {label.replace('*', '').strip()}"
-            if doc_id in col_ids or self._normalize_col_label(doc_label) in norm_labels:
-                continue
-            try:
-                self.add_matrix_column(
-                    sheet_id,
-                    doc_label,
-                    "file",
-                    False,
-                    col_id=doc_id,
-                    col_key=f"doc_{col.get('col_key') or col['id']}",
-                )
-                db_col = self._get_matrix_column_db(sheet_id, col_id=doc_id)
-                if db_col:
-                    added.append(db_col)
+    def _list_matrix_columns_db(self, sheet_id: str) -> List[Dict]:
+        result = (
+            self.client.table("matrix_columns")
+            .select("*")
+            .eq("sheet_id", sheet_id)
+            .execute()
+        )
+        rows = result.data or []
+        rows.sort(key=lambda x: x.get("sort_index", 0))
+        return rows
+
+    def ensure_expiry_doc_columns_workbook(self) -> Dict:
+        """Create missing Doc:* columns (background job / explicit client call)."""
+        if not self.enabled:
+            return {"created": 0, "skipped": True}
+        created = 0
+        sheets_r = self.client.table("matrix_sheets").select("id").execute()
+        for s in sheets_r.data or []:
+            sid = s["id"]
+            columns = self._list_matrix_columns_db(sid)
+            col_ids = {c.get("id") for c in columns if c.get("id")}
+            norm_labels = {self._normalize_col_label(c.get("label", "")) for c in columns}
+            for col in columns:
+                label = col.get("label") or ""
+                if not self._is_expiry_date_column(label):
+                    continue
+                doc_id = f"{col['id']}_doc"
+                doc_label = f"Doc: {label.replace('*', '').strip()}"
+                if doc_id in col_ids or self._normalize_col_label(doc_label) in norm_labels:
+                    continue
+                try:
+                    self.add_matrix_column(
+                        sheet_id,
+                        doc_label,
+                        "file",
+                        False,
+                        col_id=doc_id,
+                        col_key=f"doc_{col.get('col_key') or col['id']}",
+                        init_row_cells=False,
+                    )
+                    created += 1
                     col_ids.add(doc_id)
                     norm_labels.add(self._normalize_col_label(doc_label))
-            except Exception as e:
-                self._log_err("ENSURE_DOC_COL", f"{sheet_id}:{doc_id}", e)
-        if added:
-            columns = list(columns) + added
-            columns.sort(key=lambda x: x.get("sort_index", 0))
-        return columns
+                except Exception as e:
+                    self._log_err("ENSURE_DOC_COL", f"{sid}:{doc_id}", e)
+        return {"created": created}
 
     def _normalize_col_label(self, label: str) -> str:
         return (label or "").replace("*", "").strip().lower()
@@ -1337,6 +1351,7 @@ class SupabaseService:
         filterable: bool = True,
         col_id: Optional[str] = None,
         col_key: Optional[str] = None,
+        init_row_cells: bool = True,
     ) -> Dict:
         if not self.enabled:
             raise RuntimeError("Supabase not enabled")
@@ -1345,26 +1360,13 @@ class SupabaseService:
         if db_existing:
             return self._matrix_col_to_api(db_existing)
 
-        sheet = self.get_matrix_sheet(sheet_id)
-        columns = sheet.get("columns", [])
+        columns_db = self._list_matrix_columns_db(sheet_id)
+        columns = [self._matrix_col_to_api(c) for c in columns_db]
         existing = self._find_matrix_column_api(columns, label=label, col_id=col_id)
         if existing:
             return existing
 
         existing_ids = {c.get("id") for c in columns if c.get("id")}
-        try:
-            db_ids = (
-                self.client.table("matrix_columns")
-                .select("id")
-                .eq("sheet_id", sheet_id)
-                .execute()
-            )
-            for row in db_ids.data or []:
-                if row.get("id"):
-                    existing_ids.add(row["id"])
-        except Exception as e:
-            self._log_err("SELECT", "matrix_columns ids", e)
-
         max_idx = max((c.get("index", 0) for c in columns), default=0)
         new_index = max_idx + 1
         new_id = self._next_matrix_col_id(existing_ids, col_id)
@@ -1400,19 +1402,20 @@ class SupabaseService:
                     return self._matrix_col_to_api(db_col)
             self._log_err("UPSERT", "matrix_columns", e)
             raise
-        rows_r = (
-            self.client.table("matrix_rows").select("id,cells").eq("sheet_id", sheet_id).execute()
-        )
-        for row in rows_r.data or []:
-            cells = row.get("cells") or {}
-            if isinstance(cells, str):
-                try:
-                    cells = json.loads(cells)
-                except Exception:
-                    cells = {}
-            if new_id not in cells:
-                cells[new_id] = ""
-                self.client.table("matrix_rows").update({"cells": cells}).eq("id", row["id"]).execute()
+        if init_row_cells:
+            rows_r = (
+                self.client.table("matrix_rows").select("id,cells").eq("sheet_id", sheet_id).execute()
+            )
+            for row in rows_r.data or []:
+                cells = row.get("cells") or {}
+                if isinstance(cells, str):
+                    try:
+                        cells = json.loads(cells)
+                    except Exception:
+                        cells = {}
+                if new_id not in cells:
+                    cells[new_id] = ""
+                    self.client.table("matrix_rows").update({"cells": cells}).eq("id", row["id"]).execute()
         self.client.table("matrix_sheets").update(
             {"updated_at": datetime.utcnow().isoformat()}
         ).eq("id", sheet_id).execute()

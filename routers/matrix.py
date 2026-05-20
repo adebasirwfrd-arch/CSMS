@@ -15,6 +15,7 @@ from services.matrix_store import (
     add_row,
     delete_column,
     delete_row,
+    ensure_doc_columns,
     filter_unsent_reminders,
     get_sheet,
     get_workbook,
@@ -155,6 +156,15 @@ def matrix_send_expiry_reminders(force: bool = False):
 @router.get("/matrix/workbook")
 def matrix_workbook():
     return get_workbook()
+
+
+@router.post("/matrix/ensure-doc-columns")
+def matrix_ensure_doc_columns():
+    """Create missing Doc:* columns without blocking workbook load."""
+    try:
+        return ensure_doc_columns()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/matrix/status")
