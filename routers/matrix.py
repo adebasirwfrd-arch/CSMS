@@ -45,6 +45,24 @@ def _personnel_photo_folder(personnel_name: str) -> str:
     return parent_id
 
 
+def _document_upload_folder(column_name: str, personnel_name: str) -> str:
+    """Root / {column_name} / {personnel_name} — nested under same root as profile photos."""
+    col_folder = _sanitize_folder_name(column_name)
+    person_folder = _sanitize_folder_name(personnel_name)
+    column_parent = drive_service.find_or_create_folder(col_folder, parent_id=MATRIX_PROFILE_ROOT)
+    if not column_parent:
+        raise HTTPException(status_code=500, detail="Gagal membuat folder kolom di Google Drive")
+    personnel_parent = drive_service.find_or_create_folder(person_folder, parent_id=column_parent)
+    if not personnel_parent:
+        raise HTTPException(status_code=500, detail="Gagal membuat folder personel di Google Drive")
+    return personnel_parent
+
+
+def _format_doc_cell(file_id: str, filename: str) -> str:
+    safe = re.sub(r'[\\/:*?"<>|]+', "-", (filename or "document").strip()) or "document"
+    return f"{file_id}::{safe}"
+
+
 class RowCellsBody(BaseModel):
     cells: Dict[str, str] = Field(default_factory=dict)
 
@@ -335,3 +353,113 @@ async def matrix_profile_upload_simple(
         raise HTTPException(status_code=500, detail="Gagal mengunggah foto ke Google Drive")
     update_row(sheet_id, row_id, {col_id: file_id})
     return {"file_id": file_id}
+
+
+@router.get("/matrix/document/view/{file_id}")
+async def matrix_view_document(file_id: str):
+    """Stream uploaded matrix document (inline or download)."""
+    if not drive_service.enabled or not drive_service.service:
+        raise HTTPException(status_code=503, detail="Google Drive not configured")
+    try:
+        import io
+        from googleapiclient.http import MediaIoBaseDownload
+
+        meta = drive_service.service.files().get(fileId=file_id, fields="name,mimeType").execute()
+        request = drive_service.service.files().get_media(fileId=file_id)
+        buf = io.BytesIO()
+        downloader = MediaIoBaseDownload(buf, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+        buf.seek(0)
+        filename = meta.get("name", "document")
+        return StreamingResponse(
+            buf,
+            media_type=meta.get("mimeType", "application/octet-stream"),
+            headers={"Content-Disposition": f'inline; filename="{filename}"'},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Document not found: {e}")
+
+
+@router.post("/matrix/document/initiate-upload")
+def matrix_initiate_document_upload(
+    filename: str = Form(...),
+    mime_type: str = Form(default="application/octet-stream"),
+    personnel_name: str = Form(...),
+    column_name: str = Form(...),
+):
+    if not drive_service.enabled:
+        raise HTTPException(status_code=503, detail="Google Drive not configured")
+    parent_id = _document_upload_folder(column_name, personnel_name)
+    upload_url, _ = drive_service.get_resumable_upload_session(filename, mime_type, parent_id=parent_id)
+    if not upload_url:
+        raise HTTPException(status_code=500, detail="Gagal memulai upload ke Google Drive")
+    return {"upload_url": upload_url}
+
+
+@router.post("/matrix/document/upload-chunk")
+async def matrix_document_upload_chunk(
+    sheet_id: str = Form(...),
+    row_id: str = Form(...),
+    col_id: str = Form(...),
+    personnel_name: str = Form(...),
+    column_name: str = Form(...),
+    filename: str = Form(...),
+    upload_url: str = Form(...),
+    chunk_index: int = Form(...),
+    total_chunks: int = Form(...),
+    start_byte: int = Form(...),
+    total_size: int = Form(...),
+    chunk_file: UploadFile = File(...),
+):
+    try:
+        chunk_data = await chunk_file.read()
+        chunk_size = len(chunk_data)
+        end_byte = start_byte + chunk_size - 1
+        headers = {
+            "Content-Range": f"bytes {start_byte}-{end_byte}/{total_size}",
+            "Content-Length": str(chunk_size),
+        }
+        response = requests.put(upload_url, headers=headers, data=chunk_data)
+        if response.status_code not in (200, 201, 308):
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+
+        if chunk_index != total_chunks - 1:
+            return {"status": "chunk_accepted", "next_expected": end_byte + 1}
+
+        res_data = response.json()
+        file_id = res_data.get("id")
+        if not file_id:
+            raise HTTPException(status_code=500, detail="Upload selesai tanpa file_id dari Google Drive")
+
+        stored = _format_doc_cell(file_id, filename)
+        update_row(sheet_id, row_id, {col_id: stored})
+        return {"status": "complete", "file_id": file_id, "filename": filename, "stored": stored}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/matrix/document/upload")
+async def matrix_document_upload_simple(
+    sheet_id: str = Form(...),
+    row_id: str = Form(...),
+    col_id: str = Form(...),
+    personnel_name: str = Form(...),
+    column_name: str = Form(...),
+    file: UploadFile = File(...),
+):
+    """Direct upload — stored under root / {column_name} / {personnel_name}."""
+    if not drive_service.enabled:
+        raise HTTPException(status_code=503, detail="Google Drive not configured")
+    content = await file.read()
+    parent_id = _document_upload_folder(column_name, personnel_name)
+    safe_name = re.sub(r'[\\/:*?"<>|]+', "-", file.filename or "document")
+    file_id = drive_service.upload_file_to_parent(safe_name, content, parent_id)
+    if not file_id:
+        raise HTTPException(status_code=500, detail="Gagal mengunggah dokumen ke Google Drive")
+    stored = _format_doc_cell(file_id, safe_name)
+    update_row(sheet_id, row_id, {col_id: stored})
+    return {"file_id": file_id, "filename": safe_name, "stored": stored}

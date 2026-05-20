@@ -152,6 +152,47 @@
         return /expir|expired|end date|berakhir|kadaluarsa/i.test(label);
     }
 
+    function docColumnLabelFor(expiryCol) {
+        return `Doc: ${expiryCol.label.replace(/\*/g, '').trim()}`;
+    }
+
+    function isDocUploadColumn(col) {
+        if (!col) return false;
+        if (col.type === 'file') return true;
+        return /^doc:\s/i.test((col.label || '').replace(/\*/g, '').trim());
+    }
+
+    function findDocColumnForExpiry(sheet, expiryCol) {
+        const target = docColumnLabelFor(expiryCol).toLowerCase();
+        return (sheet?.columns || []).find(c =>
+            (c.label || '').replace(/\*/g, '').trim().toLowerCase() === target
+        );
+    }
+
+    function docColumnFolderName(col) {
+        return (col?.label || '').replace(/^Doc:\s/i, '').replace(/\*/g, '').trim() || 'Documents';
+    }
+
+    function parseDocCellValue(val) {
+        if (!val) return { fileId: '', fileName: '' };
+        const s = String(val).trim();
+        const sep = s.indexOf('::');
+        if (sep > 0) {
+            return { fileId: s.slice(0, sep), fileName: s.slice(sep + 2) };
+        }
+        if (/^[a-zA-Z0-9_-]{12,}$/.test(s)) return { fileId: s, fileName: '' };
+        return { fileId: '', fileName: s };
+    }
+
+    function docViewUrl(fileId) {
+        return `${apiBase()}/matrix/document/view/${encodeURIComponent(fileId)}`;
+    }
+
+    function rowPersonnelName(sheet, row) {
+        const profileRow = findPersonnelProfileRow(sheet, row);
+        return profileName(profileRow) || profileName(row) || 'Unknown Personnel';
+    }
+
     function findPairedExpiryColumn(sheet, sourceCol) {
         if (!sheet || !sourceCol) return null;
         const cols = sheet.columns || [];
@@ -367,10 +408,29 @@
         if (posCol && !pinned.has(posCol.id)) { ordered.push(posCol); pinned.add(posCol.id); }
         if (plCol && !pinned.has(plCol.id)) { ordered.push(plCol); pinned.add(plCol.id); }
 
-        cols.forEach(c => {
-            if (!pinned.has(c.id)) ordered.push(c);
+        const rest = cols.filter(c => !pinned.has(c.id));
+        const orderedRest = [];
+        const placed = new Set();
+
+        rest.forEach(c => {
+            if (placed.has(c.id) || isDocUploadColumn(c)) return;
+            orderedRest.push(c);
+            placed.add(c.id);
+            if (isExpiryDateColumn(c)) {
+                const docCol = findDocColumnForExpiry(sheet, c);
+                if (docCol && !placed.has(docCol.id)) {
+                    orderedRest.push(docCol);
+                    placed.add(docCol.id);
+                }
+            }
         });
-        return ordered;
+        rest.forEach(c => {
+            if (isDocUploadColumn(c) && !placed.has(c.id)) {
+                orderedRest.push(c);
+            }
+        });
+
+        return ordered.concat(orderedRest);
     }
 
     function getColByExactLabel(sheet, label) {
@@ -513,6 +573,20 @@
         const profileSheet = sheetById(PROFILE_SHEET_ID);
         const nameCol = getColByLabel(profileSheet, /personnel name/i);
         return nameCol ? (profileRow?.cells?.[nameCol.id] || '').trim() : '';
+    }
+
+    function personnelFieldFromRows(fieldPattern, profileSheet, profileRow, activeSheet, activeRow) {
+        const sources = [
+            [profileSheet, profileRow],
+            [activeSheet, activeRow],
+        ];
+        for (const [s, r] of sources) {
+            if (!s || !r) continue;
+            const col = getColByLabel(s, fieldPattern);
+            const val = col ? (r.cells?.[col.id] || '').trim() : '';
+            if (val) return val;
+        }
+        return '';
     }
 
     function avatarSrcForProfile(profileRow) {
@@ -1097,6 +1171,28 @@
         }
     }
 
+    async function ensureExpiryDocColumns() {
+        if (!MATRIX_STATE.workbook) return;
+        for (const sheet of MATRIX_STATE.workbook.sheets) {
+            for (const expCol of (sheet.columns || []).filter(isExpiryDateColumn)) {
+                if (findDocColumnForExpiry(sheet, expCol)) continue;
+                try {
+                    const col = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/columns`, {
+                        label: docColumnLabelFor(expCol),
+                        type: 'file',
+                        filterable: false,
+                    });
+                    if (col?.id) {
+                        sheet.columns.push(col);
+                        sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                    }
+                } catch (e) {
+                    console.warn(`ensureExpiryDocColumns ${sheet.id}:`, e.message);
+                }
+            }
+        }
+    }
+
     function clearHistory() {
         HISTORY.undo = [];
         HISTORY.redo = [];
@@ -1256,6 +1352,31 @@
         </td>`;
     }
 
+    function renderDocCell(sheet, row, col) {
+        const val = row.cells?.[col.id] ?? '';
+        const { fileId, fileName } = parseDocCellValue(val);
+        const displayName = fileName || '';
+        const personnelName = rowPersonnelName(sheet, row);
+        const columnName = docColumnFolderName(col);
+        const inputId = `mx-doc-${row.id}-${col.id}`;
+
+        return `<td class="mx-td mx-td-doc mx-td-edit" onclick="event.stopPropagation()">
+            <div class="mx-doc-cell" onclick="matrixTriggerDocUpload('${esc(inputId)}')" title="Upload dokumen">
+                ${fileId && displayName
+                    ? `<a class="mx-doc-name" href="${docViewUrl(fileId)}" target="_blank" rel="noopener"
+                        onclick="event.stopPropagation()">${esc(displayName)}</a>`
+                    : (fileId
+                        ? `<a class="mx-doc-name" href="${docViewUrl(fileId)}" target="_blank" rel="noopener"
+                            onclick="event.stopPropagation()">Document</a>`
+                        : '<span class="mx-doc-upload-hint">📄 Upload Doc</span>')}
+                <input type="file" class="mx-doc-input" id="${esc(inputId)}"
+                    data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
+                    data-name="${esc(personnelName)}" data-column-name="${esc(columnName)}"
+                    onchange="matrixOnDocSelected(this)" />
+            </div>
+        </td>`;
+    }
+
     function renderProductLineSelect(sheet, row, col, val) {
         const options = ['<option value="">—</option>'].concat(
             MATRIX_STATE.productLines.map(pl => {
@@ -1296,6 +1417,9 @@
         if (c.type === 'image' || c.id === PHOTO_COL_ID) {
             return renderPhotoCell(sheet, row, c);
         }
+        if (isDocUploadColumn(c)) {
+            return renderDocCell(sheet, row, c);
+        }
         const val = row.cells?.[c.id] ?? '';
 
         if (getProductLineCol(sheet)?.id === c.id) {
@@ -1326,6 +1450,10 @@
         const head = cols.map(c => {
             if (c.type === 'image' || c.id === PHOTO_COL_ID) {
                 return `<th class="mx-th mx-th-photo"><span>${esc(c.label.replace(/\*/g, ''))}</span></th>`;
+            }
+            if (isDocUploadColumn(c)) {
+                const shortLabel = (c.label || '').replace(/^Doc:\s/i, '').trim();
+                return `<th class="mx-th mx-th-doc"><span title="${esc(c.label.replace(/\*/g, ''))}">Upload Doc</span><span class="mx-th-doc-sub">${esc(shortLabel)}</span></th>`;
             }
             return `
             <th class="mx-th">
@@ -1368,7 +1496,7 @@
 
         const items = [];
         (sheet.columns || []).forEach(col => {
-            if (col.type === 'image' || col.id === PHOTO_COL_ID) return;
+            if (col.type === 'image' || col.type === 'file' || col.id === PHOTO_COL_ID || isDocUploadColumn(col)) return;
             const val = (row.cells?.[col.id] || '').trim();
             items.push({ label: col.label.replace(/\*/g, ''), value: val || '—' });
         });
@@ -1391,10 +1519,9 @@
         const profileRow = findPersonnelProfileRow(sheet, activeRow);
         const name = profileName(profileRow) || 'Personnel';
         const gender = profileGender(profileRow);
-        const ktpCol = getColByLabel(profileSheet, /ktp/i);
-        const cityCol = getColByLabel(profileSheet, /city/i);
-        const ktp = ktpCol ? (profileRow?.cells?.[ktpCol.id] || '').trim() : '';
-        const city = cityCol ? (profileRow?.cells?.[cityCol.id] || '').trim() : '';
+        const productLine = personnelFieldFromRows(/product line/i, profileSheet, profileRow, sheet, activeRow)
+            || getSelectedProductLineName();
+        const position = personnelFieldFromRows(/^position/i, profileSheet, profileRow, sheet, activeRow);
         const avatar = avatarSrcForProfile(profileRow);
         const tabId = MATRIX_STATE.sidebarTab;
         const { items: fields, hasRow } = sidebarFieldRowsForSheet(tabId, profileRow);
@@ -1424,9 +1551,8 @@
                 </div>
                 <h3 class="mx-sidebar-name">${esc(name)}</h3>
                 <div class="mx-sidebar-badges">
-                    ${gender ? `<span class="mx-sidebar-badge">${esc(gender)}</span>` : ''}
-                    ${city ? `<span class="mx-sidebar-badge mx-sidebar-badge-muted">${esc(city)}</span>` : ''}
-                    ${ktp ? `<span class="mx-sidebar-badge mx-sidebar-badge-muted">KTP</span>` : ''}
+                    ${productLine ? `<span class="mx-sidebar-badge">${esc(productLine)}</span>` : ''}
+                    ${position ? `<span class="mx-sidebar-badge mx-sidebar-badge-muted">${esc(position)}</span>` : ''}
                 </div>
                 <div class="mx-sidebar-tabs">${tabs}</div>
                 <div class="mx-sidebar-fields">${bodyHtml}</div>
@@ -1620,6 +1746,107 @@
         if (!fileId) throw new Error('Upload selesai tanpa file_id');
         await applyCellUpdate(sheetId, rowId, colId, fileId);
         return fileId;
+    }
+
+    window.matrixTriggerDocUpload = function (inputId) {
+        const input = document.getElementById(inputId);
+        if (input) input.click();
+    };
+
+    window.matrixOnDocSelected = async function (input) {
+        const file = input.files?.[0];
+        if (!file) return;
+
+        const sheetId = input.dataset.sheet;
+        const rowId = input.dataset.row;
+        const colId = input.dataset.col;
+        const personnelName = input.dataset.name || 'Personnel';
+        const columnName = input.dataset.columnName || 'Documents';
+        const oldVal = sheetById(sheetId)?.rows?.find(r => r.id === rowId)?.cells?.[colId] || '';
+
+        try {
+            showToast?.('Mengunggah dokumen...', 'info');
+            const stored = await uploadMatrixDocument(sheetId, rowId, colId, personnelName, columnName, file);
+            pushHistory({
+                desc: 'Upload dokumen',
+                undo: async () => { await applyCellUpdate(sheetId, rowId, colId, oldVal); },
+                redo: async () => { await applyCellUpdate(sheetId, rowId, colId, stored); },
+            });
+            showToast?.('Dokumen berhasil diunggah ke Google Drive', 'success');
+            paintMatrixScreen();
+        } catch (e) {
+            showToast?.(e.message || 'Gagal mengunggah dokumen', 'error');
+        } finally {
+            input.value = '';
+        }
+    };
+
+    async function uploadMatrixDocument(sheetId, rowId, colId, personnelName, columnName, file) {
+        const CHUNK_SIZE = 2 * 1024 * 1024;
+        const totalSize = file.size;
+
+        if (totalSize <= CHUNK_SIZE) {
+            const form = new FormData();
+            form.append('sheet_id', sheetId);
+            form.append('row_id', rowId);
+            form.append('col_id', colId);
+            form.append('personnel_name', personnelName);
+            form.append('column_name', columnName);
+            form.append('file', file);
+            const res = await fetch(`${apiBase()}/matrix/document/upload`, { method: 'POST', body: form });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            const stored = data.stored || `${data.file_id}::${file.name}`;
+            await applyCellUpdate(sheetId, rowId, colId, stored);
+            return stored;
+        }
+
+        const initForm = new FormData();
+        initForm.append('filename', file.name);
+        initForm.append('mime_type', file.type || 'application/octet-stream');
+        initForm.append('personnel_name', personnelName);
+        initForm.append('column_name', columnName);
+        const initRes = await fetch(`${apiBase()}/matrix/document/initiate-upload`, { method: 'POST', body: initForm });
+        if (!initRes.ok) {
+            const err = await initRes.json().catch(() => ({}));
+            throw new Error(err.detail || 'Gagal memulai upload');
+        }
+        const { upload_url } = await initRes.json();
+        const totalChunks = Math.ceil(totalSize / CHUNK_SIZE);
+        let stored = null;
+
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const chunk = file.slice(start, Math.min(start + CHUNK_SIZE, totalSize));
+            const chunkForm = new FormData();
+            chunkForm.append('sheet_id', sheetId);
+            chunkForm.append('row_id', rowId);
+            chunkForm.append('col_id', colId);
+            chunkForm.append('personnel_name', personnelName);
+            chunkForm.append('column_name', columnName);
+            chunkForm.append('filename', file.name);
+            chunkForm.append('upload_url', upload_url);
+            chunkForm.append('chunk_index', String(i));
+            chunkForm.append('total_chunks', String(totalChunks));
+            chunkForm.append('chunk_file', chunk, file.name);
+            chunkForm.append('start_byte', String(start));
+            chunkForm.append('total_size', String(totalSize));
+
+            const chunkRes = await fetch(`${apiBase()}/matrix/document/upload-chunk`, { method: 'POST', body: chunkForm });
+            if (!chunkRes.ok) {
+                const err = await chunkRes.json().catch(() => ({}));
+                throw new Error(err.detail || `Chunk ${i + 1} gagal`);
+            }
+            const chunkData = await chunkRes.json();
+            if (chunkData.status === 'complete') stored = chunkData.stored;
+        }
+
+        if (!stored) throw new Error('Upload selesai tanpa data dokumen');
+        await applyCellUpdate(sheetId, rowId, colId, stored);
+        return stored;
     }
 
     window.matrixOnClientFilterChange = async function (clientId) {
@@ -2025,6 +2252,7 @@
             MATRIX_STATE.workbook = await fetchWorkbook();
             await ensureStandardColumns();
             await ensureProfilePhotoColumn();
+            await ensureExpiryDocColumns();
             if (!MATRIX_STATE.activeSheetId && MATRIX_STATE.workbook.sheets?.length) {
                 MATRIX_STATE.activeSheetId = MATRIX_STATE.workbook.sheets[0].id;
             }
