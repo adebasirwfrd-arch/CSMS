@@ -1460,15 +1460,15 @@
         const src = fileId ? photoViewUrl(fileId) : defaultAvatar(gender);
         const canUpload = sheet.id === PROFILE_SHEET_ID;
         const name = profileName(profileRow) || profileName(row) || 'Personnel';
-        const uploadAttrs = canUpload
-            ? `onclick="matrixTriggerPhotoUpload('${esc(sheet.id)}','${esc(row.id)}','${esc(col.id)}')" title="Upload foto profil"`
-            : 'title="Foto dari Data Personel"';
-
-        return `<td class="mx-td mx-td-photo mx-td-edit" onclick="event.stopPropagation()">
-            <div class="mx-photo-cell" ${uploadAttrs}>
+        const uploadBtn = canUpload
+            ? `<button type="button" class="mx-doc-btn mx-photo-btn"
+                onclick="matrixTriggerPhotoUpload('${esc(row.id)}', event)">📷 Upload</button>`
+            : '';
+        return `<td class="mx-td mx-td-photo mx-td-edit">
+            <div class="mx-photo-cell" title="Foto profil">
                 <img class="mx-photo-thumb" src="${esc(src)}" alt="Profil" onerror="this.src='${defaultAvatar(gender)}'" />
-                ${canUpload ? `<span class="mx-photo-upload-hint">📷 Upload</span>
-                <input type="file" accept="image/*" class="mx-photo-input" id="mx-photo-${esc(row.id)}"
+                ${uploadBtn}
+                ${canUpload ? `<input type="file" accept="image/*" class="mx-photo-input" id="mx-photo-${esc(row.id)}"
                     data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
                     data-name="${esc(name)}" onchange="matrixOnPhotoSelected(this)" />` : ''}
             </div>
@@ -1484,15 +1484,16 @@
         const inputId = `mx-doc-${row.id}-${col.id}`;
 
         const acceptAttr = ' accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,image/*,application/pdf"';
-        return `<td class="mx-td mx-td-doc mx-td-edit" onclick="event.stopPropagation()">
+        const fileLink = fileId
+            ? `<a class="mx-doc-name" href="${docViewUrl(fileId)}" target="_blank" rel="noopener"
+                onclick="event.stopPropagation()">${esc(displayName || 'Document')}</a>`
+            : '';
+        const uploadBtn = `<button type="button" class="mx-doc-btn"
+            onclick="matrixTriggerDocUpload('${esc(inputId)}', event)">${fileId ? 'Ganti' : '📄 Upload'}</button>`;
+        return `<td class="mx-td mx-td-doc mx-td-edit">
             <div class="mx-doc-cell" title="Upload dokumen">
-                ${fileId && displayName
-                    ? `<a class="mx-doc-name" href="${docViewUrl(fileId)}" target="_blank" rel="noopener"
-                        onclick="event.stopPropagation()">${esc(displayName)}</a>`
-                    : (fileId
-                        ? `<a class="mx-doc-name" href="${docViewUrl(fileId)}" target="_blank" rel="noopener"
-                            onclick="event.stopPropagation()">Document</a>`
-                        : '<span class="mx-doc-upload-hint">📄 Upload Doc</span>')}
+                ${fileLink}
+                ${uploadBtn}
                 <input type="file" class="mx-doc-input" id="${esc(inputId)}"${acceptAttr}
                     data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
                     data-name="${esc(personnelName)}" data-column-name="${esc(columnName)}"
@@ -1596,7 +1597,7 @@
             const selected = row.id === MATRIX_STATE.selectedRowId ? ' mx-row-selected' : '';
             const cells = cols.map(c => renderCell(sheet, row, c)).join('');
             return `<tr class="mx-data-row${selected}" data-row-id="${esc(row.id)}"
-                onclick="matrixSelectRow('${esc(row.id)}')">${cells}
+                onclick="matrixOnRowClick(event, '${esc(row.id)}')">${cells}
                 <td class="mx-td mx-td-actions" onclick="event.stopPropagation()">
                     <button type="button" class="mx-btn mx-btn-danger-sm" onclick="matrixDeleteRow('${esc(sheet.id)}','${esc(row.id)}')">Hapus</button>
                 </td></tr>`;
@@ -1758,6 +1759,7 @@
                 </div>
             </div>`;
         updateUndoRedoUI();
+        bindMatrixTouchGuards();
     }
 
     window.matrixSelectRow = function (rowId) {
@@ -1767,14 +1769,48 @@
         replaceMatrixSidebar();
     };
 
+    window.matrixOnRowClick = function (event, rowId) {
+        const t = event?.target;
+        if (t && t.closest(
+            '.mx-td-edit, .mx-doc-cell, .mx-doc-btn, .mx-doc-name, .mx-td-actions, .mx-td-photo, ' +
+            'button, a, input, select, textarea, label'
+        )) {
+            return;
+        }
+        matrixSelectRow(rowId);
+    };
+
+    function bindMatrixTouchGuards() {
+        const root = document.getElementById('matrix-content');
+        if (!root || root.dataset.touchBound === '1') return;
+        root.dataset.touchBound = '1';
+        const stopRowSelect = (e) => {
+            if (e.target.closest('.mx-doc-cell, .mx-doc-btn, .mx-td-doc, .mx-td-edit, .mx-td-photo, .mx-td-actions')) {
+                e.stopPropagation();
+            }
+        };
+        root.addEventListener('touchstart', stopRowSelect, { capture: true, passive: true });
+        root.addEventListener('touchend', stopRowSelect, { capture: true, passive: true });
+    }
+
     window.matrixSetSidebarTab = function (tabId) {
         MATRIX_STATE.sidebarTab = tabId;
         replaceMatrixSidebar();
     };
 
-    window.matrixTriggerPhotoUpload = function (sheetId, rowId, colId) {
+    window.matrixTriggerPhotoUpload = function (rowId, event) {
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
         const input = document.getElementById(`mx-photo-${rowId}`);
-        if (input) input.click();
+        if (!input) return;
+        if (window.ReactNativeWebView) {
+            window.__matrixPendingPhotoInputId = `mx-photo-${rowId}`;
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pickImage', context: 'matrixPhoto' }));
+            return;
+        }
+        input.click();
     };
 
     window.matrixOnPhotoSelected = async function (input) {
@@ -1873,7 +1909,11 @@
         return fileId;
     }
 
-    window.matrixTriggerDocUpload = function (inputId) {
+    window.matrixTriggerDocUpload = function (inputId, event) {
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
         const input = document.getElementById(inputId);
         if (!input) return;
         if (window.ReactNativeWebView) {
@@ -1881,7 +1921,11 @@
             window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pickFile', context: 'matrixDoc' }));
             return;
         }
-        input.click();
+        try {
+            input.click();
+        } catch (e) {
+            showToast?.('Tidak dapat membuka pemilih file di perangkat ini', 'error');
+        }
     };
 
     async function ensureDocColumnBeforeUpload(sheetId, colId, colLabel, colKey) {

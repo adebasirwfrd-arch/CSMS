@@ -1578,30 +1578,43 @@
             text-transform: uppercase;
             letter-spacing: 0.03em;
         }
-        .mx-photo-input { display: none; }
-        .mx-td-doc { padding: 6px 8px; vertical-align: middle; min-width: 130px; }
-        .mx-doc-cell {
-            position: relative;
-            display: flex; align-items: center; justify-content: center;
-            min-height: 36px; min-width: 100px; cursor: pointer; border-radius: 6px;
-            padding: 4px 6px; transition: background 0.15s;
+        .mx-photo-input { display: none !important; }
+        .mx-photo-btn { margin-top: 4px; }
+        .mx-td-doc {
+            padding: 6px 8px; vertical-align: middle; min-width: 130px;
+            -webkit-touch-callout: none;
+            user-select: none;
+            touch-action: manipulation;
         }
-        .mx-doc-cell:hover { background: rgba(255,255,255,0.04); }
+        .mx-doc-cell {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 4px; min-height: 44px; min-width: 100px; border-radius: 6px;
+            padding: 4px 6px;
+            -webkit-touch-callout: none;
+            user-select: none;
+            touch-action: manipulation;
+        }
         .mx-doc-name {
             color: #46D369; font-weight: 600; font-size: 11px;
             text-decoration: none; word-break: break-all; text-align: center;
-            position: relative; z-index: 1; pointer-events: auto;
+            max-width: 120px;
         }
         .mx-doc-name:hover { text-decoration: underline; }
-        .mx-doc-upload-hint {
-            font-size: 11px; color: var(--text-muted); white-space: nowrap;
-            position: relative; z-index: 1; pointer-events: none;
+        .mx-doc-btn {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-height: 32px; min-width: 88px; padding: 6px 10px;
+            font-size: 11px; font-weight: 600; border-radius: 6px;
+            border: 1px solid var(--border); background: var(--bg-tertiary);
+            color: var(--text-primary); cursor: pointer;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
         }
-        /* Overlay input — Android WebView often blocks hidden file inputs */
-        .mx-doc-input {
-            position: absolute; inset: 0; width: 100%; height: 100%;
-            opacity: 0; cursor: pointer; z-index: 2;
-        }
+        .mx-doc-btn:active { background: rgba(229,9,20,0.15); border-color: var(--netflix-red); }
+        .mx-doc-input { display: none !important; }
+        .mx-data-table { -webkit-user-select: none; user-select: none; }
+        .mx-data-table .mx-cell-input,
+        .mx-data-table .mx-cell-select { -webkit-user-select: text; user-select: text; }
         .mx-th-doc { min-width: 120px; text-align: center; }
         .mx-th-doc-sub {
             display: block; font-size: 9px; font-weight: 400;
@@ -10438,7 +10451,7 @@
 </script>
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
-    <script src="/static/matrix-personnel.js?v=27"></script>
+    <script src="/static/matrix-personnel.js?v=28"></script>
 </body>
 
 </html>
