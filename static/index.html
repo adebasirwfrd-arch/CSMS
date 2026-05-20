@@ -1437,7 +1437,6 @@
     <!-- PDF Compression Library -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script src="/static/matrix-personnel.js?v=2"></script>
 </head>
 
 <!-- Header -->
@@ -5587,7 +5586,7 @@
                 window.loadMatrixWorkbook();
             } else if (tries >= 40) {
                 clearInterval(timer);
-                root.innerHTML = '<div class="mx-empty">Modul Matrix gagal dimuat. Hard refresh (Ctrl+Shift+R).</motion.div>';
+                root.innerHTML = '<div class="mx-empty">Modul Matrix gagal dimuat. Hard refresh (Ctrl+Shift+R).</div>';
             }
         }, 100);
     }
@@ -5610,15 +5609,14 @@
         const dataScreenNav = document.querySelector(`.nav-item[data-screen="${screen}"]`);
         if (dataScreenNav) dataScreenNav.classList.add('active');
 
-        const navIndex = ['home', 'projects', 'tasks', 'statistics', 'schedule', 'calendar', 'csms-pb', 'otp', 'matrix', 'll-indicator', 'related-docs'].indexOf(screen);
+        const navIndex = ['home', 'projects', 'master-data', 'tasks', 'statistics', 'schedule', 'calendar', 'csms-pb', 'otp', 'matrix', 'll-indicator', 'related-docs'].indexOf(screen);
         if (navIndex !== -1 && !dataScreenNav) {
-            document.querySelectorAll('.nav-item')[navIndex]?.classList.add('active');
-            // Drawer items are in the same relative order but with some extras like reports/download/login
-            // Better to find by onclick content
+            document.querySelectorAll('.bottom-nav .nav-item')[navIndex]?.classList.add('active');
             document.querySelectorAll('.drawer-item').forEach(item => {
-                if (item.getAttribute('onclick') === `navigateTo('${screen}')`) {
-                    item.classList.add('active');
-                }
+                const onclick = item.getAttribute('onclick') || '';
+                if (onclick === `navigateTo('${screen}')`) item.classList.add('active');
+                if (screen === 'matrix' && onclick.includes('navigateToMatrix')) item.classList.add('active');
+                if (screen === 'master-data' && onclick.includes('navigateToMasterData')) item.classList.add('active');
             });
         }
 
@@ -8905,26 +8903,10 @@
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
-    // Update navigateTo to load schedules
+    // Extend navigateTo with schedule/PB/docs loaders (delegate to core navigateTo for matrix, otp, etc.)
     const originalNavigateTo = navigateTo;
     navigateTo = function (screen) {
-        // Update screens
-        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-        document.getElementById(`screen-${screen}`).classList.add('active');
-
-        // Update nav
-        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-        document.querySelectorAll('.drawer-item').forEach(n => n.classList.remove('active'));
-
-        const navScreens = ['home', 'projects', 'tasks', 'statistics', 'schedule', 'csms-pb', 'related-docs'];
-        document.querySelectorAll('.nav-item')[navScreens.indexOf(screen)]?.classList.add('active');
-
-        // Close drawer
-        document.querySelector('.drawer').classList.remove('active');
-        document.querySelector('.drawer-overlay').classList.remove('active');
-
-        // Load specific screen data
-        if (screen === 'statistics') updateStatistics();
+        originalNavigateTo(screen);
         if (screen === 'schedule') {
             populateScheduleFormFilters().then(() => refreshScheduleProjectSelect());
             loadSchedules();
@@ -8937,7 +8919,7 @@
             populateDocFormFilters().then(() => refreshDocProjectSelect());
             loadRelatedDocs();
         }
-    }
+    };
 
     // ===== CSMS PB Functions =====
     function getPbFormFilterValues() {
@@ -10148,6 +10130,7 @@
     }
 </script>
     <script src="/static/exec-stats.js"></script>
+    <script src="/static/matrix-personnel.js?v=3"></script>
 </body>
 
 </html>

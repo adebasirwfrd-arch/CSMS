@@ -444,10 +444,4 @@
         if (MATRIX_STATE.workbook) paintMatrixScreen();
         else loadMatrixWorkbook();
     };
-
-    window.loadMatrixWorkbookReady = true;
-    if (document.getElementById('screen-matrix')?.classList.contains('active')
-        && document.body.classList.contains('admin-mode')) {
-        loadMatrixWorkbook();
-    }
 })();
