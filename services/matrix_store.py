@@ -46,10 +46,15 @@ def _find_sheet_json(data: Dict[str, Any], sheet_id: str) -> Dict[str, Any]:
 
 
 def seed_workbook(workbook: Dict[str, Any]) -> None:
-    """Seed from Excel import — Supabase if enabled, always update local JSON."""
-    _save_json(workbook)
+    """Seed from Excel import — Supabase if enabled; JSON when local/writable."""
     if SUPABASE_MATRIX and supabase_service:
         supabase_service.seed_matrix_workbook(workbook)
+        try:
+            _save_json(workbook)
+        except OSError:
+            pass  # Vercel / read-only FS — Supabase is source of truth
+    else:
+        _save_json(workbook)
 
 
 def get_workbook() -> Dict[str, Any]:

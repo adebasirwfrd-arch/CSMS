@@ -51,7 +51,17 @@ def matrix_seed_from_json():
         raise HTTPException(status_code=404, detail="matrix_workbook.json not found")
     workbook = json.loads(path.read_text(encoding="utf-8"))
     try:
-        seed_workbook(workbook)
+        from services.matrix_store import SUPABASE_MATRIX, seed_workbook
+        from services.supabase_service import supabase_service
+
+        if not SUPABASE_MATRIX:
+            raise HTTPException(
+                status_code=503,
+                detail="Supabase not configured (SUPABASE_URL / SUPABASE_KEY)",
+            )
+        supabase_service.seed_matrix_workbook(workbook)
+    except HTTPException:
+        raise
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
