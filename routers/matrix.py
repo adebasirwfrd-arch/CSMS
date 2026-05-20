@@ -161,6 +161,63 @@ def matrix_expiry_reminders_preview():
     }
 
 
+@router.post("/matrix/send-expiry-reminders/test")
+@router.get("/matrix/send-expiry-reminders/test")
+def matrix_send_expiry_reminders_test(to: Optional[str] = None):
+    """Kirim satu email contoh (format reminder) ke alamat `to` untuk uji Brevo."""
+    from services.email_service import email_service
+
+    if not email_service.api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="BREVO_API_KEY tidak dikonfigurasi di server",
+        )
+
+    recipient = (to or "").strip() or "ade.basir@weatherford.com"
+    today = date.today()
+    sample_expiry = today + timedelta(days=90)
+    sample_items = [
+        {
+            "sheet_label": "Kesehatan Personel",
+            "personnel_name": "SAMPLE — Tes Reminder MCU",
+            "column_label": "MCU Expired",
+            "expiry_date": sample_expiry.isoformat(),
+            "days_until": 90,
+            "client": "SAMPLE CLIENT",
+            "project": "SAMPLE PROJECT",
+            "product_line": "HSE",
+        },
+        {
+            "sheet_label": "Pelatihan Wajib",
+            "personnel_name": "SAMPLE — Tes Reminder BST",
+            "column_label": "BST Expiry Date",
+            "expiry_date": (sample_expiry + timedelta(days=1)).isoformat(),
+            "days_until": 91,
+            "client": "SAMPLE CLIENT",
+            "project": "SAMPLE PROJECT",
+            "product_line": "HSE",
+        },
+    ]
+
+    ok = email_service.send_matrix_expiry_reminder(
+        [recipient],
+        sample_items,
+        reminder_days=90,
+        product_line_name="HSE (TEST)",
+    )
+    if not ok:
+        raise HTTPException(status_code=502, detail="Brevo menolak pengiriman — cek log server")
+
+    return {
+        "sent": True,
+        "test": True,
+        "recipient": recipient,
+        "subject": f"[CSMS Matrix HSE (TEST)] Reminder — {len(sample_items)} dokumen akan expired (90 hari)",
+        "sample_items": sample_items,
+        "message": f"Email contoh terkirim ke {recipient}. Cek inbox/spam.",
+    }
+
+
 @router.post("/matrix/send-expiry-reminders")
 @router.get("/matrix/send-expiry-reminders")
 def matrix_send_expiry_reminders(force: bool = False):
