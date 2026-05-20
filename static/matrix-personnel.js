@@ -24,48 +24,9 @@
         storage: null,
     };
 
-    const SHEET_KPI_COLORS = ['#46D369', '#F5A623', '#e74c3c', '#4A90D9', '#9b59b6', '#E50914', '#1abc9c'];
+    const SHEET_KPI_COLORS = ['#46D369', '#F5A623', '#e74c3c', '#4A90D9', '#9b59b6', '#E50914', '#1abc9c', '#3498db', '#e67e22', '#2ecc71'];
 
-    const SHEET_KPI_RULES = {
-        employee_mandatory_training: [
-            { type: 'personnel' },
-            { label: 'BST Expired ≤30 hari', match: /bst expiry/i, warnDays: 30, status: 'soon' },
-            { label: 'SBTC Expired ≤30 hari', match: /sbtc expiry/i, warnDays: 30, status: 'soon' },
-            { label: 'One Sika Expired ≤30 hari', match: /one sika expiry/i, warnDays: 30, status: 'soon' },
-            { label: 'Training Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
-            { type: 'missing' },
-        ],
-        personnel_health: [
-            { type: 'personnel' },
-            { label: 'MCU Expired ≤90 hari', match: /mcu expired/i, warnDays: 90, status: 'soon' },
-            { label: 'MCU Sudah Expired', match: /mcu expired/i, status: 'expired' },
-            { label: 'Field Wajib Kosong', type: 'missing' },
-        ],
-        personnel_data_information: [
-            { type: 'personnel' },
-            { label: 'SKCK Expired ≤30 hari', match: /skck expiry/i, warnDays: 30, status: 'soon' },
-            { label: 'HSE Passport Expired ≤30 hari', match: /hse passport expired/i, warnDays: 30, status: 'soon' },
-            { label: 'Dokumen Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
-            { type: 'missing' },
-        ],
-        contract_information: [
-            { type: 'personnel' },
-            { label: 'Kontrak Berakhir ≤30 hari', match: /contract end date/i, warnDays: 30, status: 'soon' },
-            { label: 'Kontrak Sudah Expired', match: /contract end date/i, status: 'expired' },
-            { type: 'missing' },
-        ],
-        emergency_contact_information: [
-            { type: 'personnel' },
-            { type: 'missing' },
-        ],
-    };
-
-    const DEFAULT_KPI_RULES = [
-        { type: 'personnel' },
-        { label: 'Kadaluarsa ≤30 hari', match: /(?:expir|expired)/i, warnDays: 30, status: 'soon' },
-        { label: 'Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
-        { type: 'missing' },
-    ];
+    let matrixCharts = {};
 
     const STANDARD_COLUMN_SPECS = [
         { label: 'Personnel Name*', type: 'text', match: /personnel name/i },
@@ -615,37 +576,125 @@
         }
     }
 
-    function countDateMetric(rows, cols, rule) {
-        const matchingCols = cols.filter(c => {
-            if (!rule.match.test(c.label)) return false;
-            return c.type === 'date' || /expir|end date|expired/i.test(c.label);
-        });
-        if (!matchingCols.length) return 0;
-
-        if (rule.status === 'expired' && rule.perRow) {
-            let count = 0;
-            rows.forEach(row => {
-                for (const c of matchingCols) {
-                    const du = daysUntil(row.cells?.[c.id]);
-                    if (du != null && du < 0) {
-                        count += 1;
-                        break;
-                    }
-                }
-            });
-            return count;
+    function isExpiryColumn(col) {
+        const label = col.label.replace(/\*/g, '').trim().toLowerCase();
+        if (/^client$|^project$|^no$/.test(label)) return false;
+        if (/training date|^mcu date$|booster.*date|skck date$|hse passport date|contract start|review \(client\) date|follow up date|birth date/i.test(label)
+            && !/expir|expired|end date|berakhir|kadaluarsa/i.test(label)) {
+            return false;
         }
+        return /expir|expired|end date|berakhir|kadaluarsa/i.test(label)
+            || (col.type === 'date' && /expir|expired|end/i.test(label));
+    }
 
-        let count = 0;
-        rows.forEach(row => {
-            for (const c of matchingCols) {
-                const du = daysUntil(row.cells?.[c.id]);
-                if (du == null) continue;
-                if (rule.status === 'soon' && du >= 0 && du <= (rule.warnDays || 30)) count += 1;
-                else if (rule.status === 'expired' && du < 0) count += 1;
+    function getExpiryWarnDays(label) {
+        const l = (label || '').toLowerCase();
+        if (/mcu/i.test(l)) return 90;
+        if (/contract end|kontrak/i.test(l)) return 30;
+        return 30;
+    }
+
+    function collectExpiryColumnMetrics(activeSheetId) {
+        const items = [];
+        for (const sheet of MATRIX_STATE.workbook?.sheets || []) {
+            const rows = filterRows(sheet);
+            const cols = (sheet.columns || []).filter(isExpiryColumn);
+            for (const col of cols) {
+                const warnDays = getExpiryWarnDays(col.label);
+                let soon = 0;
+                let expired = 0;
+                rows.forEach(row => {
+                    const du = daysUntil(row.cells?.[col.id]);
+                    if (du == null) return;
+                    if (du < 0) expired += 1;
+                    else if (du <= warnDays) soon += 1;
+                });
+                const shortLabel = col.label.replace(/\*/g, '').trim();
+                const tabName = TAB_LABELS[sheet.id] || sheet.title || sheet.name;
+                const prefix = sheet.id === activeSheetId ? '' : `${tabName}: `;
+                items.push({
+                    sheetId: sheet.id,
+                    colId: col.id,
+                    label: shortLabel,
+                    displayPrefix: prefix,
+                    warnDays,
+                    soon,
+                    expired,
+                    category: tabName,
+                });
             }
+        }
+        return items;
+    }
+
+    function buildComplianceByPersonnel(activeSheet) {
+        const rows = filterRows(activeSheet);
+        const nameCol = getPersonnelNameCol(activeSheet);
+        const counts = { ok: 0, soon: 0, expired: 0, noData: 0 };
+        if (!nameCol) return counts;
+
+        const names = [...new Set(rows.map(r => (r.cells?.[nameCol.id] || '').trim()).filter(Boolean))];
+        const plName = getSelectedProductLineName();
+        const level = getCurrentFilterLevel();
+
+        names.forEach(name => {
+            let hasExpired = false;
+            let hasSoon = false;
+            let hasAnyDate = false;
+
+            for (const sheet of MATRIX_STATE.workbook?.sheets || []) {
+                const row = findPersonnelRowAtLevel(sheet, name, plName, level);
+                if (!row) continue;
+                for (const col of (sheet.columns || []).filter(isExpiryColumn)) {
+                    const du = daysUntil(row.cells?.[col.id]);
+                    if (du == null) continue;
+                    hasAnyDate = true;
+                    const warn = getExpiryWarnDays(col.label);
+                    if (du < 0) hasExpired = true;
+                    else if (du <= warn) hasSoon = true;
+                }
+            }
+
+            if (hasExpired) counts.expired += 1;
+            else if (hasSoon) counts.soon += 1;
+            else if (hasAnyDate) counts.ok += 1;
+            else counts.noData += 1;
         });
-        return count;
+        return counts;
+    }
+
+    function buildChartData(expiryMetrics, activeSheet) {
+        const compliance = buildComplianceByPersonnel(activeSheet);
+        const expiringBar = expiryMetrics
+            .filter(m => m.soon > 0)
+            .sort((a, b) => b.soon - a.soon)
+            .slice(0, 15)
+            .map(m => ({
+                label: `${m.displayPrefix}${m.label}`,
+                value: m.soon,
+            }));
+        const expiredBar = expiryMetrics
+            .filter(m => m.expired > 0)
+            .sort((a, b) => b.expired - a.expired)
+            .slice(0, 15)
+            .map(m => ({
+                label: `${m.displayPrefix}${m.label}`,
+                value: m.expired,
+            }));
+
+        const categoryMap = new Map();
+        expiryMetrics.forEach(m => {
+            const cat = m.category || 'Lainnya';
+            const prev = categoryMap.get(cat) || { soon: 0, expired: 0 };
+            prev.soon += m.soon;
+            prev.expired += m.expired;
+            categoryMap.set(cat, prev);
+        });
+        const categoryLabels = [...categoryMap.keys()];
+        const categorySoon = categoryLabels.map(k => categoryMap.get(k).soon);
+        const categoryExpired = categoryLabels.map(k => categoryMap.get(k).expired);
+
+        return { compliance, expiringBar, expiredBar, categoryLabels, categorySoon, categoryExpired, expiryMetrics };
     }
 
     function computeSheetSummary(sheet) {
@@ -673,19 +722,33 @@
             ? new Set(rows.map(r => (r.cells?.[personnelCol.id] || '').trim()).filter(Boolean)).size
             : rows.length;
 
-        const rules = SHEET_KPI_RULES[sheet.id] || DEFAULT_KPI_RULES;
-        const kpis = rules.map((rule, idx) => {
-            if (rule.type === 'personnel') {
-                return { label: 'Personel Aktif', value: uniquePersonnel, color: SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length] };
-            }
-            if (rule.type === 'missing') {
-                return { label: 'Field Wajib Kosong', value: missingRequired, color: SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length] };
-            }
-            return {
-                label: rule.label,
-                value: countDateMetric(rows, cols, rule),
-                color: SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length],
-            };
+        const expiryMetrics = collectExpiryColumnMetrics(sheet.id);
+        const kpis = [];
+        let colorIdx = 0;
+
+        kpis.push({
+            label: 'Personel Aktif',
+            value: uniquePersonnel,
+            color: '#46D369',
+        });
+
+        expiryMetrics.forEach(m => {
+            kpis.push({
+                label: `${m.displayPrefix}${m.label} ≤${m.warnDays}h`,
+                value: m.soon,
+                color: m.soon > 0 ? '#F5A623' : SHEET_KPI_COLORS[++colorIdx % SHEET_KPI_COLORS.length],
+            });
+            kpis.push({
+                label: `${m.displayPrefix}${m.label} Expired`,
+                value: m.expired,
+                color: m.expired > 0 ? '#e74c3c' : SHEET_KPI_COLORS[++colorIdx % SHEET_KPI_COLORS.length],
+            });
+        });
+
+        kpis.push({
+            label: 'Field Wajib Kosong',
+            value: missingRequired,
+            color: missingRequired > 0 ? '#9b59b6' : '#46D369',
         });
 
         if (genderCol && gender.Male + gender.Female + gender.Other > 0
@@ -697,7 +760,8 @@
             });
         }
 
-        return { uniquePersonnel, missingRequired, kpis, gender };
+        const chartData = buildChartData(expiryMetrics, sheet);
+        return { uniquePersonnel, missingRequired, kpis, chartData, gender, expiryMetrics };
     }
 
     function rowMatchesFilters(sheet, row) {
@@ -1022,11 +1086,205 @@
 
     function renderDashboard(summary) {
         const cards = summary.kpis || [];
-        return `<div class="ex-kpi-strip">${cards.map(c => `
+        return `<div class="ex-kpi-strip mx-kpi-strip">${cards.map(c => `
             <div class="ex-kpi" style="--kpi-color:${c.color}">
                 <span>${esc(c.label)}</span>
                 <strong>${esc(c.value)}</strong>
             </div>`).join('')}</div>`;
+    }
+
+    function renderDashboardCharts() {
+        return `
+        <section class="mx-charts-section">
+            <h3 class="mx-section-title">Analisis Compliance &amp; Critical Points</h3>
+            <div class="ex-stats-grid mx-charts-grid">
+                <div class="ex-chart-card">
+                    <h4>Status Compliance Personel</h4>
+                    <p class="ex-chart-desc">Donut — compliant, akan expired, sudah expired</p>
+                    <div class="ex-chart-wrap"><canvas id="mx-chart-compliance-donut"></canvas></div>
+                </div>
+                <div class="ex-chart-card">
+                    <h4>Per Kategori Sheet</h4>
+                    <p class="ex-chart-desc">Donut — distribusi issue per tab data</p>
+                    <div class="ex-chart-wrap"><canvas id="mx-chart-category-donut"></canvas></div>
+                </div>
+                <div class="ex-chart-card ex-chart-wide">
+                    <h4>Akan Expired (≤ threshold)</h4>
+                    <p class="ex-chart-desc">Bar Chart — BST, SBTC, MCU, SKCK, Kontrak, dll.</p>
+                    <div class="ex-chart-wrap ex-chart-tall"><canvas id="mx-chart-expiring-bar"></canvas></div>
+                </div>
+                <div class="ex-chart-card ex-chart-wide">
+                    <h4>Sudah Expired</h4>
+                    <p class="ex-chart-desc">Bar Chart — dokumen &amp; sertifikasi yang sudah kadaluarsa</p>
+                    <div class="ex-chart-wrap ex-chart-tall"><canvas id="mx-chart-expired-bar"></canvas></div>
+                </div>
+                <div class="ex-chart-card ex-chart-wide">
+                    <h4>Ringkasan Semua Kolom Expiry</h4>
+                    <p class="ex-chart-desc">Grouped Bar — akan expired vs sudah expired per kolom</p>
+                    <div class="ex-chart-wrap ex-chart-tall"><canvas id="mx-chart-expiry-grouped"></canvas></div>
+                </div>
+            </div>
+        </section>`;
+    }
+
+    function destroyMatrixCharts() {
+        Object.values(matrixCharts).forEach(c => { try { c.destroy(); } catch (e) { /* */ } });
+        matrixCharts = {};
+    }
+
+    function createMatrixChart(id, config) {
+        const el = document.getElementById(id);
+        if (!el || typeof Chart === 'undefined') return null;
+        if (matrixCharts[id]) {
+            try { matrixCharts[id].destroy(); } catch (e) { /* */ }
+        }
+        matrixCharts[id] = new Chart(el, config);
+        return matrixCharts[id];
+    }
+
+    function matrixChartDefaults() {
+        if (typeof Chart === 'undefined') return;
+        Chart.defaults.color = '#B3B3B3';
+        Chart.defaults.borderColor = 'rgba(255,255,255,0.08)';
+        Chart.defaults.font.family = 'Inter, sans-serif';
+    }
+
+    async function renderMatrixCharts(chartData) {
+        if (!chartData) return;
+        if (typeof window.ensureChartJs === 'function') {
+            const ok = await window.ensureChartJs();
+            if (!ok) return;
+        } else if (typeof Chart === 'undefined') {
+            return;
+        }
+        matrixChartDefaults();
+        destroyMatrixCharts();
+
+        const { compliance, expiringBar, expiredBar, categoryLabels, categorySoon, categoryExpired, expiryMetrics } = chartData;
+        const catIssueTotals = categoryLabels.map((_, i) => (categorySoon[i] || 0) + (categoryExpired[i] || 0));
+
+        createMatrixChart('mx-chart-compliance-donut', {
+            type: 'doughnut',
+            data: {
+                labels: ['Compliant', 'Akan Expired', 'Sudah Expired', 'Belum Ada Data'],
+                datasets: [{
+                    data: [compliance.ok, compliance.soon, compliance.expired, compliance.noData],
+                    backgroundColor: ['#46D369', '#F5A623', '#e74c3c', '#555555'],
+                    borderWidth: 0,
+                    hoverOffset: 8,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } } },
+            },
+        });
+
+        createMatrixChart('mx-chart-category-donut', {
+            type: 'doughnut',
+            data: {
+                labels: categoryLabels.length ? categoryLabels : ['Tidak ada data'],
+                datasets: [{
+                    data: categoryLabels.length ? catIssueTotals : [1],
+                    backgroundColor: ['#E50914', '#F5A623', '#4A90D9', '#9b59b6', '#1abc9c', '#3498db'],
+                    borderWidth: 0,
+                    hoverOffset: 8,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8 } } },
+            },
+        });
+
+        const expiringLabels = expiringBar.length
+            ? expiringBar.map(d => d.label)
+            : ['Tidak ada'];
+        const expiringValues = expiringBar.length ? expiringBar.map(d => d.value) : [0];
+
+        createMatrixChart('mx-chart-expiring-bar', {
+            type: 'bar',
+            data: {
+                labels: expiringLabels,
+                datasets: [{
+                    label: 'Akan Expired',
+                    data: expiringValues,
+                    backgroundColor: '#F5A623',
+                    borderRadius: 6,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { stepSize: 1 } },
+                    y: { ticks: { font: { size: 10 } } },
+                },
+            },
+        });
+
+        const expiredLabels = expiredBar.length
+            ? expiredBar.map(d => d.label)
+            : ['Tidak ada'];
+        const expiredValues = expiredBar.length ? expiredBar.map(d => d.value) : [0];
+
+        createMatrixChart('mx-chart-expired-bar', {
+            type: 'bar',
+            data: {
+                labels: expiredLabels,
+                datasets: [{
+                    label: 'Sudah Expired',
+                    data: expiredValues,
+                    backgroundColor: '#e74c3c',
+                    borderRadius: 6,
+                }],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { stepSize: 1 } },
+                    y: { ticks: { font: { size: 10 } } },
+                },
+            },
+        });
+
+        const groupedLabels = expiryMetrics.map(m => `${m.displayPrefix}${m.label}`);
+        createMatrixChart('mx-chart-expiry-grouped', {
+            type: 'bar',
+            data: {
+                labels: groupedLabels.length ? groupedLabels : ['Tidak ada kolom expiry'],
+                datasets: [
+                    {
+                        label: 'Akan Expired',
+                        data: groupedLabels.length ? expiryMetrics.map(m => m.soon) : [0],
+                        backgroundColor: '#F5A623',
+                        borderRadius: 4,
+                    },
+                    {
+                        label: 'Sudah Expired',
+                        data: groupedLabels.length ? expiryMetrics.map(m => m.expired) : [0],
+                        backgroundColor: '#e74c3c',
+                        borderRadius: 4,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top' } },
+                scales: {
+                    x: { ticks: { font: { size: 9 }, maxRotation: 45, minRotation: 25 } },
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                },
+            },
+        });
     }
 
     function renderStorageBadge() {
@@ -1364,6 +1622,7 @@
                     </div>
                 </header>
                 ${renderDashboard(summary)}
+                ${renderDashboardCharts()}
                 <div class="mx-layout">
                     ${renderSidebar(sheet)}
                     <div class="mx-main">
@@ -1373,6 +1632,7 @@
                 </div>
             </div>`;
         updateUndoRedoUI();
+        requestAnimationFrame(() => renderMatrixCharts(summary.chartData));
     }
 
     window.matrixSelectRow = function (rowId) {
