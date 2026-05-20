@@ -331,6 +331,124 @@
         return defaultAvatar(profileGender(profileRow));
     }
 
+    function normalizePersonnelName(name) {
+        return (name || '').trim().toLowerCase();
+    }
+
+    function personnelRowKey(sheet, row) {
+        const nameCol = getPersonnelNameCol(sheet);
+        const plCol = getProductLineCol(sheet);
+        const name = nameCol ? (row.cells?.[nameCol.id] || '').trim() : '';
+        if (!name) return null;
+        const pl = plCol ? (row.cells?.[plCol.id] || '').trim() : getSelectedProductLineName();
+        return `${normalizePersonnelName(name)}::${(pl || '').toLowerCase()}`;
+    }
+
+    function isMasterRow(sheet, row) {
+        const clientCol = getClientCol(sheet);
+        if (!clientCol) return true;
+        return !(row.cells?.[clientCol.id] || '').trim();
+    }
+
+    function rowDataScore(row) {
+        return Object.values(row?.cells || {}).filter(v => String(v).trim()).length;
+    }
+
+    function findMasterPersonnelRow(sheet, personnelName, plName) {
+        const nameCol = getPersonnelNameCol(sheet);
+        if (!nameCol || !personnelName) return null;
+        const nl = normalizePersonnelName(personnelName);
+        const candidates = (sheet?.rows || []).filter(r => {
+            const n = (r.cells?.[nameCol.id] || '').trim();
+            if (normalizePersonnelName(n) !== nl) return false;
+            const plCol = getProductLineCol(sheet);
+            if (plCol && plName) {
+                const rowPl = (r.cells?.[plCol.id] || '').trim();
+                if (rowPl && rowPl !== plName) return false;
+            }
+            return true;
+        });
+        return candidates.find(r => isMasterRow(sheet, r))
+            || candidates.sort((a, b) => rowDataScore(b) - rowDataScore(a))[0]
+            || null;
+    }
+
+    function dedupeRowsForAllView(sheet, rows) {
+        if (!isAllClients()) return rows;
+        const byKey = new Map();
+        const unnamed = [];
+        rows.forEach(row => {
+            const key = personnelRowKey(sheet, row);
+            if (!key) {
+                unnamed.push(row);
+                return;
+            }
+            const existing = byKey.get(key);
+            if (!existing) {
+                byKey.set(key, row);
+                return;
+            }
+            const keepExisting = isMasterRow(sheet, existing) && !isMasterRow(sheet, row);
+            const keepNew = isMasterRow(sheet, row) && !isMasterRow(sheet, existing);
+            if (keepNew || (!keepExisting && rowDataScore(row) > rowDataScore(existing))) {
+                byKey.set(key, row);
+            }
+        });
+        return [...byKey.values(), ...unnamed];
+    }
+
+    async function dedupeSheetPersonnel(sheetId) {
+        const sheet = sheetById(sheetId);
+        if (!sheet) return;
+        const seen = new Map();
+        for (const row of [...(sheet.rows || [])]) {
+            const key = personnelRowKey(sheet, row);
+            if (!key) continue;
+            const existing = seen.get(key);
+            if (!existing) {
+                seen.set(key, row);
+                continue;
+            }
+            let keep = existing;
+            let drop = row;
+            if (isMasterRow(sheet, row) && !isMasterRow(sheet, existing)) {
+                keep = row;
+                drop = existing;
+                seen.set(key, keep);
+            } else if (rowDataScore(row) > rowDataScore(existing) && !isMasterRow(sheet, existing)) {
+                keep = row;
+                drop = existing;
+                seen.set(key, keep);
+            }
+            try {
+                await matrixRequest('DELETE', `/matrix/sheets/${sheetId}/rows/${drop.id}`);
+                sheet.rows = sheet.rows.filter(r => r.id !== drop.id);
+            } catch (e) {
+                console.warn('dedupeSheetPersonnel:', e.message);
+            }
+        }
+    }
+
+    async function dedupeAllPersonnelInWorkbook() {
+        for (const sheet of MATRIX_STATE.workbook?.sheets || []) {
+            await dedupeSheetPersonnel(sheet.id);
+        }
+    }
+
+    async function cleanupDuplicatePersonnelRows(sheetId, personnelName) {
+        const sheet = sheetById(sheetId);
+        if (!sheet || !personnelName) return;
+        const plName = getSelectedProductLineName();
+        const master = findMasterPersonnelRow(sheet, personnelName, plName);
+        if (!master) return;
+        const key = personnelRowKey(sheet, master);
+        const dupes = (sheet.rows || []).filter(r => r.id !== master.id && personnelRowKey(sheet, r) === key);
+        for (const d of dupes) {
+            await matrixRequest('DELETE', `/matrix/sheets/${sheetId}/rows/${d.id}`);
+            sheet.rows = sheet.rows.filter(r => r.id !== d.id);
+        }
+    }
+
     function computeSheetSummary(sheet) {
         const rows = filterRows(sheet);
         const cols = sheet.columns || [];
@@ -397,6 +515,7 @@
     function filterRows(sheet) {
         if (!MATRIX_STATE.filterProductLineId) return [];
         let rows = (sheet.rows || []).filter(row => rowMatchesFilters(sheet, row));
+        rows = dedupeRowsForAllView(sheet, rows);
         const q = MATRIX_STATE.search.trim().toLowerCase();
         if (q) {
             rows = rows.filter(row =>
@@ -491,6 +610,12 @@
                     .map(r => nameCol ? (r.cells?.[nameCol.id] || '').trim() : '')
                     .filter(Boolean)
             );
+            // Include master rows (ALL source) not yet tagged to this client
+            (sheet.rows || []).forEach(r => {
+                if (!isMasterRow(sheet, r)) return;
+                const n = nameCol ? (r.cells?.[nameCol.id] || '').trim() : '';
+                if (n && !used.has(n)) names.add(n);
+            });
             return [...names].filter(n => !used.has(n)).sort((a, b) => a.localeCompare(b));
         }
 
@@ -506,25 +631,32 @@
     async function fillRowFromPersonnel(sheetId, rowId, personnelName) {
         const sheet = sheetById(sheetId);
         const profileSheet = sheetById(PROFILE_SHEET_ID);
-        if (!sheet || !profileSheet) return;
+        if (!sheet || !profileSheet) return rowId;
+
+        const plName = getSelectedProductLineName();
+        const master = findMasterPersonnelRow(sheet, personnelName, plName);
+        let targetRowId = rowId;
+
+        if (master && master.id !== rowId && !isAllClients()) {
+            targetRowId = master.id;
+        }
 
         const profileRow = profileSheet.rows.find(r => {
             const nc = getPersonnelNameCol(profileSheet);
             return nc && (r.cells?.[nc.id] || '').trim().toLowerCase() === personnelName.toLowerCase();
         });
-        if (!profileRow) return;
+        if (!profileRow) return targetRowId;
 
         const sourceRow = findRowInSheet(sheet, profileRow);
         const trainingSheet = sheetById('employee_mandatory_training');
         const trainingRow = trainingSheet ? findRowInSheet(trainingSheet, profileRow) : null;
         const clientName = getSelectedClientName();
-        const plName = getSelectedProductLineName();
         const cells = {};
 
         sheet.columns.forEach(col => {
             const labelKey = col.label.replace(/\*/g, '').trim().toLowerCase();
             if (getClientCol(sheet)?.id === col.id) {
-                cells[col.id] = clientName;
+                cells[col.id] = isAllClients() ? '' : clientName;
             } else if (getProjectCol(sheet)?.id === col.id) {
                 cells[col.id] = isAllProjects() ? '' : getSelectedProjectName();
             } else if (getProductLineCol(sheet)?.id === col.id) {
@@ -540,15 +672,28 @@
                 const profCol = profileSheet.columns.find(
                     pc => pc.label.replace(/\*/g, '').trim().toLowerCase() === labelKey
                 );
+                const targetRow = sheet.rows.find(r => r.id === targetRowId);
                 if (profCol && profileRow.cells?.[profCol.id] !== undefined) {
                     cells[col.id] = profileRow.cells[profCol.id];
                 } else {
-                    cells[col.id] = sheet.rows.find(r => r.id === rowId)?.cells?.[col.id] || '';
+                    cells[col.id] = targetRow?.cells?.[col.id] || '';
                 }
             }
         });
 
-        await applyCellsUpdate(sheetId, rowId, cells);
+        await applyCellsUpdate(sheetId, targetRowId, cells);
+
+        if (master && master.id !== rowId && !isAllClients()) {
+            try {
+                await matrixRequest('DELETE', `/matrix/sheets/${sheetId}/rows/${rowId}`);
+                sheet.rows = sheet.rows.filter(r => r.id !== rowId);
+            } catch (e) {
+                console.warn('fillRowFromPersonnel delete duplicate:', e.message);
+            }
+        }
+
+        await cleanupDuplicatePersonnelRows(sheetId, personnelName);
+        return targetRowId;
     }
 
     async function fetchWorkbook() {
@@ -1120,11 +1265,14 @@
         return fileId;
     }
 
-    window.matrixOnClientFilterChange = function (clientId) {
+    window.matrixOnClientFilterChange = async function (clientId) {
         MATRIX_STATE.filterClientId = clientId || 'ALL';
         MATRIX_STATE.filterProjectId = 'ALL';
         syncProjectFilterSelection();
         MATRIX_STATE.selectedRowId = null;
+        if (isAllClients()) {
+            await dedupeAllPersonnelInWorkbook();
+        }
         paintMatrixScreen();
     };
 
@@ -1152,16 +1300,17 @@
         if (!personnelName) return;
 
         try {
-            await fillRowFromPersonnel(sheetId, rowId, personnelName);
+            const finalRowId = await fillRowFromPersonnel(sheetId, rowId, personnelName);
+            MATRIX_STATE.selectedRowId = finalRowId;
             select.dataset.prev = personnelName;
             pushHistory({
                 desc: 'Pilih personel',
                 undo: async () => {
-                    await applyCellsUpdate(sheetId, rowId, { [colId]: oldVal });
+                    await applyCellsUpdate(sheetId, finalRowId, { [colId]: oldVal });
                     paintMatrixScreen();
                 },
                 redo: async () => {
-                    await fillRowFromPersonnel(sheetId, rowId, personnelName);
+                    await fillRowFromPersonnel(sheetId, finalRowId, personnelName);
                     paintMatrixScreen();
                 },
             });
@@ -1225,6 +1374,7 @@
             });
             const colLabel = sheetById(sheetId)?.columns?.find(c => c.id === colId)?.label || '';
             if (/personnel name/i.test(colLabel)) {
+                await cleanupDuplicatePersonnelRows(sheetId, newVal);
                 replaceMatrixSidebar();
             }
         } catch (e) {
@@ -1248,6 +1398,7 @@
         const projectCol = getProjectCol(sheet);
         const plName = getSelectedProductLineName();
         if (clientCol && !isAllClients()) initCells[clientCol.id] = getSelectedClientName();
+        else if (clientCol && isAllClients()) initCells[clientCol.id] = '';
         if (plCol && plName) initCells[plCol.id] = plName;
         if (projectCol && !isAllProjects()) initCells[projectCol.id] = getSelectedProjectName();
         try {
@@ -1428,6 +1579,7 @@
                 MATRIX_STATE.activeSheetId = MATRIX_STATE.workbook.sheets[0].id;
             }
             if (!silent) clearHistory();
+            if (isAllClients()) await dedupeAllPersonnelInWorkbook();
             paintMatrixScreen();
         } catch (e) {
             root.innerHTML = `<div class="mx-empty">Gagal memuat: ${esc(e.message)}</div>`;
