@@ -59,7 +59,14 @@ def seed_workbook(workbook: Dict[str, Any]) -> None:
 
 def get_workbook() -> Dict[str, Any]:
     if SUPABASE_MATRIX and supabase_service:
-        return supabase_service.get_matrix_workbook()
+        try:
+            return supabase_service.get_matrix_workbook()
+        except Exception as e:
+            print(f"[MATRIX WARN] Supabase workbook fetch failed, using JSON fallback: {e}")
+            try:
+                return _load_json()
+            except Exception:
+                raise e
     return _load_json()
 
 

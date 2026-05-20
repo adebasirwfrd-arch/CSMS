@@ -3,16 +3,33 @@ Supabase Database Service
 Provides persistent storage for CSMS application data
 """
 import os
+import time
 import uuid
-from typing import List, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 from datetime import datetime
 import json
 
 try:
+    import httpx
     from supabase import create_client, Client
+    from supabase.lib.client_options import SyncClientOptions
     SUPABASE_AVAILABLE = True
 except ImportError:
+    httpx = None
     SUPABASE_AVAILABLE = False
+
+T = TypeVar("T")
+
+_RETRYABLE_SUPABASE_ERRORS: tuple = ()
+if SUPABASE_AVAILABLE and httpx is not None:
+    _RETRYABLE_SUPABASE_ERRORS = (
+        httpx.RemoteProtocolError,
+        httpx.ConnectError,
+        httpx.ReadTimeout,
+        httpx.WriteTimeout,
+        httpx.PoolTimeout,
+        httpx.NetworkError,
+    )
 
 # Import logger (delayed to avoid circular import)
 def _get_logger():
@@ -48,14 +65,83 @@ class SupabaseService:
             return
         
         try:
-            self.client = create_client(self.url, self.key)
+            # HTTP/2 drops are common on serverless (Vercel) — force HTTP/1.1 + retries.
+            httpx_client = httpx.Client(
+                http2=False,
+                timeout=httpx.Timeout(60.0, connect=15.0),
+                transport=httpx.HTTPTransport(retries=2),
+            )
+            options = SyncClientOptions(
+                httpx_client=httpx_client,
+                postgrest_client_timeout=60,
+            )
+            self.client = create_client(self.url, self.key, options=options)
             self.enabled = True
             self._log_info("SUPABASE", "Client initialized successfully!")
         except Exception as e:
             self._log_error("SUPABASE", f"Initialization failed: {e}", e)
             self.enabled = False
+
+    def _execute_with_retry(self, build_request: Callable[[], Any], op_name: str, retries: int = 3):
+        """Retry transient Supabase/httpx disconnects (common on serverless)."""
+        last_err: Optional[Exception] = None
+        for attempt in range(retries):
+            try:
+                return build_request().execute()
+            except _RETRYABLE_SUPABASE_ERRORS as e:
+                last_err = e
+                if attempt < retries - 1:
+                    delay = 0.4 * (2 ** attempt)
+                    self._log_warn(
+                        "SUPABASE",
+                        f"{op_name} disconnected (attempt {attempt + 1}/{retries}), retry in {delay:.1f}s",
+                    )
+                    time.sleep(delay)
+                else:
+                    self._log_err("SUPABASE", f"{op_name} failed after {retries} attempts", e)
+                    raise
+            except Exception:
+                raise
+        if last_err:
+            raise last_err
+        raise RuntimeError(f"{op_name}: retry loop ended unexpectedly")
     
     # ==================== PROJECTS ====================
+
+    PROJECT_DB_COLUMNS = frozenset({
+        "id",
+        "name",
+        "description",
+        "status",
+        "created_at",
+        "updated_at",
+        "well_name",
+        "kontrak_no",
+        "start_date",
+        "end_date",
+        "rig_down_date",
+        "rig_down",
+        "assigned_to",
+        "pic_email",
+        "pic_manager_email",
+        "drive_folder_id",
+        "client_id",
+        "product_line_id",
+    })
+
+    def _normalize_project_row(self, row: Optional[Dict]) -> Optional[Dict]:
+        if not row:
+            return row
+        out = dict(row)
+        if out.get("rig_down") and not out.get("rig_down_date"):
+            out["rig_down_date"] = out["rig_down"]
+        if out.get("rig_down_date") and not out.get("rig_down"):
+            out["rig_down"] = out["rig_down_date"]
+        return out
+
+    def _prepare_project_payload(self, data: Dict) -> Dict:
+        row = self._normalize_project_row(dict(data)) or {}
+        return {k: v for k, v in row.items() if k in self.PROJECT_DB_COLUMNS}
     
     def get_projects(self) -> List[Dict]:
         if not self.enabled:
@@ -63,7 +149,7 @@ class SupabaseService:
         try:
             result = self.client.table('projects').select("*").execute()
             self._log_op("SELECT", "projects", success=True)
-            return result.data or []
+            return [self._normalize_project_row(p) for p in (result.data or [])]
         except Exception as e:
             self._log_err("SELECT", "projects", e)
             return []
@@ -74,7 +160,7 @@ class SupabaseService:
         try:
             result = self.client.table('projects').select("*").eq('id', project_id).execute()
             self._log_op("SELECT", "projects", project_id, success=True)
-            return result.data[0] if result.data else None
+            return self._normalize_project_row(result.data[0] if result.data else None)
         except Exception as e:
             self._log_err("SELECT", "projects", e)
             return None
@@ -85,11 +171,12 @@ class SupabaseService:
             self._log_warn("SUPABASE", "Not enabled, returning data as-is")
             return project_data
         try:
-            self._log_info("SUPABASE", "Inserting into projects table...")
-            result = self.client.table('projects').insert(project_data).execute()
+            payload = self._prepare_project_payload(project_data)
+            self._log_info("SUPABASE", f"Inserting into projects table: {list(payload.keys())}")
+            result = self.client.table('projects').insert(payload).execute()
             if result.data:
                 self._log_op("INSERT", "projects", result.data[0].get('id'), success=True)
-                return result.data[0]
+                return self._normalize_project_row(result.data[0])
             else:
                 self._log_warn("SUPABASE", "No data returned from insert")
                 raise RuntimeError("Supabase insert returned no data")
@@ -101,8 +188,11 @@ class SupabaseService:
         if not self.enabled:
             return None
         try:
-            result = self.client.table('projects').update(updates).eq('id', project_id).execute()
-            return result.data[0] if result.data else None
+            payload = self._prepare_project_payload(updates)
+            if not payload:
+                return self.get_project(project_id)
+            result = self.client.table('projects').update(payload).eq('id', project_id).execute()
+            return self._normalize_project_row(result.data[0] if result.data else None)
         except Exception as e:
             print(f"[ERROR] Error updating project: {e}")
             return None
@@ -946,30 +1036,51 @@ class SupabaseService:
             "rows": [self._matrix_row_to_api(r) for r in rows],
         }
 
+    def _fetch_matrix_rows(self, sheet_id: str) -> List[Dict]:
+        page_size = 250
+        offset = 0
+        all_rows: List[Dict] = []
+        while True:
+            start = offset
+            end = offset + page_size - 1
+
+            def _build(start=start, end=end, sid=sheet_id):
+                return (
+                    self.client.table("matrix_rows")
+                    .select("*")
+                    .eq("sheet_id", sid)
+                    .order("sort_order")
+                    .range(start, end)
+                )
+
+            result = self._execute_with_retry(_build, f"matrix_rows:{sheet_id}:{start}")
+            batch = result.data or []
+            all_rows.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        return all_rows
+
     def get_matrix_workbook(self) -> Dict:
         if not self.enabled:
             return {"version": 1, "updated_at": datetime.utcnow().isoformat() + "Z", "sheets": []}
         try:
-            sheets_r = (
-                self.client.table("matrix_sheets")
-                .select("*")
-                .order("sort_order")
-                .execute()
+            sheets_r = self._execute_with_retry(
+                lambda: self.client.table("matrix_sheets").select("*").order("sort_order"),
+                "matrix_sheets",
             )
-            cols_r = self.client.table("matrix_columns").select("*").execute()
-            rows_r = self.client.table("matrix_rows").select("*").execute()
             sheets = sheets_r.data or []
-            cols_by_sheet: Dict[str, List[Dict]] = {}
-            for c in cols_r.data or []:
-                cols_by_sheet.setdefault(c["sheet_id"], []).append(c)
-            rows_by_sheet: Dict[str, List[Dict]] = {}
-            for r in rows_r.data or []:
-                rows_by_sheet.setdefault(r["sheet_id"], []).append(r)
             out_sheets = []
-            for i, s in enumerate(sheets):
+            for s in sheets:
                 sid = s["id"]
-                cols = sorted(cols_by_sheet.get(sid, []), key=lambda x: x.get("sort_index", 0))
-                rows = sorted(rows_by_sheet.get(sid, []), key=lambda x: x.get("sort_order", 0))
+                cols_r = self._execute_with_retry(
+                    lambda sid=sid: self.client.table("matrix_columns")
+                    .select("*")
+                    .eq("sheet_id", sid),
+                    f"matrix_columns:{sid}",
+                )
+                cols = sorted(cols_r.data or [], key=lambda x: x.get("sort_index", 0))
+                rows = self._fetch_matrix_rows(sid)
                 out_sheets.append(self._matrix_sheet_to_api(s, cols, rows))
             updated = max(
                 (s.get("updated_at") for s in sheets if s.get("updated_at")),

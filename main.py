@@ -483,6 +483,10 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
     elif "title" in payload:
         payload.pop("title", None)
 
+    # Normalize rig_down alias for DB (rig_down_date is canonical in Supabase)
+    if payload.get("rig_down") and not payload.get("rig_down_date"):
+        payload["rig_down_date"] = payload["rig_down"]
+
     client_id = payload.get("client_id")
     product_line_id = payload.get("product_line_id")
 
@@ -526,6 +530,15 @@ def create_project(project: ProjectCreate, background_tasks: BackgroundTasks):
         new_project = db.create_project(payload)
     except Exception as e:
         log_error("MAIN", f"create_project DB insert failed: {e}", send_email=True)
+        err_str = str(e)
+        if "PGRST204" in err_str or "schema cache" in err_str:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Gagal menyimpan proyek: kolom database belum lengkap. "
+                    "Jalankan add_projects_columns.sql di Supabase SQL Editor, lalu coba lagi."
+                ),
+            )
         raise HTTPException(
             status_code=500,
             detail=f"Gagal menyimpan proyek ke database: {e}",
