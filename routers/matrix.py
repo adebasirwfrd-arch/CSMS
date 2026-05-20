@@ -1,6 +1,7 @@
 """HSE Personnel Matrix workbook API (admin UI)."""
 import os
 import re
+from datetime import date, timedelta
 from typing import Any, Dict, Optional
 
 import requests
@@ -80,6 +81,84 @@ class ColumnUpdateBody(BaseModel):
     label: Optional[str] = None
     type: Optional[str] = None
     filterable: Optional[bool] = None
+
+
+@router.get("/matrix/expiry-reminders/preview")
+def matrix_expiry_reminders_preview():
+    """Diagnose which matrix rows qualify for the 90-day email reminder."""
+    from database import get_product_lines
+    from services.email_service import email_service
+    from services.matrix_expiry_reminder import (
+        MATRIX_REMINDER_DAYS,
+        REMINDER_WINDOW,
+        collect_expiry_reminders,
+        group_items_by_product_line,
+        product_line_recipients,
+    )
+
+    today = date.today()
+    product_lines = get_product_lines()
+    workbook = get_workbook()
+    all_items = collect_expiry_reminders(workbook, reminder_days=MATRIX_REMINDER_DAYS)
+    pending = filter_unsent_reminders(all_items) if all_items else []
+    groups = group_items_by_product_line(pending, product_lines) if pending else {}
+
+    pl_email_status = []
+    for pl in product_lines:
+        name = (pl.get("name") or "").strip()
+        recipients = [
+            e
+            for e in (
+                pl.get("supervisor_email"),
+                pl.get("hse_email"),
+                pl.get("manager_email"),
+                pl.get("coordinator_email"),
+            )
+            if e and str(e).strip()
+        ]
+        pl_email_status.append(
+            {
+                "product_line": name,
+                "has_recipients": bool(recipients),
+                "recipients": recipients,
+            }
+        )
+
+    target_expiry = today + timedelta(days=MATRIX_REMINDER_DAYS)
+    pl_by_name = {(pl.get("name") or "").strip().lower(): pl for pl in product_lines}
+    skipped_no_email = []
+    seen_pl = set()
+    for item in pending:
+        pl_key = (item.get("product_line") or "").strip().lower()
+        if not pl_key or pl_key in seen_pl:
+            continue
+        seen_pl.add(pl_key)
+        pl = pl_by_name.get(pl_key)
+        if not pl or not product_line_recipients(pl):
+            skipped_no_email.append(item.get("product_line"))
+
+    return {
+        "today": today.isoformat(),
+        "reminder_days": MATRIX_REMINDER_DAYS,
+        "window_days": {"min": REMINDER_WINDOW[0], "max": REMINDER_WINDOW[1]},
+        "target_expiry_example": target_expiry.isoformat(),
+        "brevo_configured": bool(email_service.api_key),
+        "scans_column": "Kolom EXPIRED (bukan tanggal awal / MCU Date)",
+        "cron": "0 7 * * * UTC → /matrix/send-expiry-reminders",
+        "qualified_count": len(all_items),
+        "pending_send_count": len(pending),
+        "sendable_product_lines": len(groups),
+        "qualified_items": all_items[:50],
+        "pending_items": pending[:50],
+        "product_lines": pl_email_status,
+        "skipped_no_email": skipped_no_email,
+        "how_to_test": [
+            f"1. Isi MCU Expired* ≈ {MATRIX_REMINDER_DAYS} hari dari hari ini (contoh: {target_expiry.isoformat()})",
+            "2. Bukan MCU Date — hanya kolom berlabel Expired/Expiry",
+            "3. Baris harus punya Product Line yang sama dengan Master + email terisi",
+            f"4. GET /matrix/send-expiry-reminders?force=true untuk kirim manual (uji)",
+        ],
+    }
 
 
 @router.post("/matrix/send-expiry-reminders")

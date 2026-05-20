@@ -27,6 +27,17 @@ def _parse_date(val: Any) -> Optional[date]:
             return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         except ValueError:
             return None
+    m = re.match(r"^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$", s)
+    if m:
+        a, b, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            if a > 12:
+                return date(y, b, a)
+            if b > 12:
+                return date(y, a, b)
+            return date(y, b, a)
+        except ValueError:
+            return None
     try:
         return datetime.fromisoformat(s.replace("Z", "+00:00")).date()
     except ValueError:
