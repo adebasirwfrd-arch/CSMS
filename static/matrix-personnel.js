@@ -166,20 +166,38 @@
 
     function isDocUploadColumn(col) {
         if (!col) return false;
-        if (col.type === 'file') return true;
-        return /^doc:\s/i.test((col.label || '').replace(/\*/g, '').trim());
+        if (col._virtual) return true;
+        const label = (col.label || '').replace(/\*/g, '').trim();
+        if (/^doc:\s/i.test(label)) return true;
+        if ((col.id || '').endsWith('_doc')) return true;
+        if ((col.key || '').toLowerCase().startsWith('doc_')) return true;
+        return false;
     }
 
-    function findDocColumnForExpiry(sheet, expiryCol) {
+    function docColumnMatchesExpiry(docCol, expiryCol) {
+        if (!docCol || !expiryCol || !isDocUploadColumn(docCol)) return false;
+        if (docCol.id === docColumnIdFor(expiryCol)) return true;
         const target = normColLabel(docColumnLabelFor(expiryCol));
-        const docId = docColumnIdFor(expiryCol);
-        return (sheet?.columns || []).find(c => {
-            if (c.id === docId) return true;
-            if (normColLabel(c.label) === target) return true;
-            const key = (c.key || '').toLowerCase();
-            if (key === `doc_${(expiryCol.key || expiryCol.id).toLowerCase()}`) return true;
-            return false;
-        });
+        const docNorm = normColLabel(docCol.label);
+        const expNorm = normColLabel(expiryCol.label);
+        if (docNorm === target || docNorm === expNorm) return true;
+        const key = (docCol.key || '').toLowerCase();
+        if (key === `doc_${(expiryCol.key || expiryCol.id).toLowerCase()}`) return true;
+        return false;
+    }
+
+    function findDocColumnForExpiry(sheet, expiryCol, usedDocIds) {
+        const used = usedDocIds || new Set();
+        const matches = (sheet?.columns || []).filter(
+            c => isDocUploadColumn(c) && docColumnMatchesExpiry(c, expiryCol) && !used.has(c.id)
+        );
+        if (!matches.length) return null;
+        const preferredId = docColumnIdFor(expiryCol);
+        return (
+            matches.find(c => c.id === preferredId) ||
+            matches.find(c => /^doc:\s/i.test((c.label || '').replace(/\*/g, '').trim())) ||
+            matches[0]
+        );
     }
 
     function docColumnFolderName(col) {
@@ -412,10 +430,6 @@
         };
     }
 
-    function resolveDocColumnForExpiry(sheet, expiryCol) {
-        return findDocColumnForExpiry(sheet, expiryCol) || virtualDocColumnFor(expiryCol);
-    }
-
     function getDisplayColumns(sheet) {
         let cols = [...(sheet.columns || [])];
         cols = cols.filter(c => {
@@ -440,22 +454,20 @@
         const rest = cols.filter(c => !pinned.has(c.id));
         const orderedRest = [];
         const placed = new Set();
+        const usedDocIds = new Set();
 
         rest.forEach(c => {
             if (placed.has(c.id) || isDocUploadColumn(c)) return;
             orderedRest.push(c);
             placed.add(c.id);
             if (isExpiryDateColumn(c)) {
-                const docCol = resolveDocColumnForExpiry(sheet, c);
+                let docCol = findDocColumnForExpiry(sheet, c, usedDocIds);
+                if (!docCol) docCol = virtualDocColumnFor(c);
                 if (docCol && !placed.has(docCol.id)) {
                     orderedRest.push(docCol);
                     placed.add(docCol.id);
+                    if (!docCol._virtual) usedDocIds.add(docCol.id);
                 }
-            }
-        });
-        rest.forEach(c => {
-            if (isDocUploadColumn(c) && !placed.has(c.id)) {
-                orderedRest.push(c);
             }
         });
 
@@ -1264,8 +1276,13 @@
         let needsReload = false;
         try {
             for (const sheet of MATRIX_STATE.workbook.sheets) {
+                const usedDocIds = new Set();
                 for (const expCol of (sheet.columns || []).filter(isExpiryDateColumn)) {
-                    if (findDocColumnForExpiry(sheet, expCol)) continue;
+                    const existing = findDocColumnForExpiry(sheet, expCol, usedDocIds);
+                    if (existing) {
+                        usedDocIds.add(existing.id);
+                        continue;
+                    }
                     const docId = docColumnIdFor(expCol);
                     const docKey = `doc_${expCol.key || expCol.id}`;
                     try {

@@ -1219,6 +1219,21 @@ class SupabaseService:
             )
         )
 
+    def _doc_column_matches_expiry(self, doc_col: Dict, expiry_col: Dict) -> bool:
+        doc_label = doc_col.get("label") or ""
+        exp_label = expiry_col.get("label") or ""
+        if doc_col.get("id") == f"{expiry_col['id']}_doc":
+            return True
+        target = self._normalize_col_label(f"Doc: {exp_label.replace('*', '').strip()}")
+        doc_norm = self._normalize_col_label(doc_label)
+        exp_norm = self._normalize_col_label(exp_label)
+        if doc_norm in (target, exp_norm) and (
+            doc_col.get("col_type") == "file" or doc_label.lower().startswith("doc:")
+        ):
+            return True
+        key = (doc_col.get("col_key") or "").lower()
+        return key == f"doc_{(expiry_col.get('col_key') or expiry_col['id']).lower()}"
+
     def _list_matrix_columns_db(self, sheet_id: str) -> List[Dict]:
         result = (
             self.client.table("matrix_columns")
@@ -1248,6 +1263,8 @@ class SupabaseService:
                 doc_id = f"{col['id']}_doc"
                 doc_label = f"Doc: {label.replace('*', '').strip()}"
                 if doc_id in col_ids or self._normalize_col_label(doc_label) in norm_labels:
+                    continue
+                if any(self._doc_column_matches_expiry(c, col) for c in columns):
                     continue
                 try:
                     self.add_matrix_column(
