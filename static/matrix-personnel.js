@@ -271,6 +271,22 @@
         return null;
     }
 
+    function findRowInSheetAtCurrentLevel(targetSheet, profileRow) {
+        if (!targetSheet || !profileRow) return null;
+        if (targetSheet.id === PROFILE_SHEET_ID) return profileRow;
+
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        const profileNameCol = getPersonnelNameCol(profileSheet);
+        const name = profileNameCol ? (profileRow.cells?.[profileNameCol.id] || '').trim() : '';
+        if (name) {
+            const atLevel = findPersonnelRowAtLevel(
+                targetSheet, name, getSelectedProductLineName(), getCurrentFilterLevel()
+            );
+            if (atLevel) return atLevel;
+        }
+        return findRowInSheet(targetSheet, profileRow);
+    }
+
     function findPersonnelProfileRow(sheet, row) {
         const profileSheet = sheetById(PROFILE_SHEET_ID);
         if (!profileSheet || !row) return row;
@@ -335,42 +351,157 @@
         return (name || '').trim().toLowerCase();
     }
 
+    function getCurrentFilterLevel() {
+        if (isAllClients()) return 'master';
+        if (isAllProjects()) return 'client';
+        return 'project';
+    }
+
+    function rowHasProject(sheet, row) {
+        const projectCol = getProjectCol(sheet);
+        return !!(projectCol && (row.cells?.[projectCol.id] || '').trim());
+    }
+
+    function isMasterRow(sheet, row) {
+        const clientCol = getClientCol(sheet);
+        if (!clientCol) return !rowHasProject(sheet, row);
+        return !(row.cells?.[clientCol.id] || '').trim() && !rowHasProject(sheet, row);
+    }
+
+    function isClientLevelRow(sheet, row, clientName) {
+        const clientCol = getClientCol(sheet);
+        if (!clientCol) return false;
+        const c = (row.cells?.[clientCol.id] || '').trim();
+        if (!c) return false;
+        if (clientName && c !== clientName) return false;
+        return !rowHasProject(sheet, row);
+    }
+
+    function isProjectLevelRow(sheet, row, clientName, projectName) {
+        const clientCol = getClientCol(sheet);
+        const projectCol = getProjectCol(sheet);
+        if (!clientCol || !projectCol) return false;
+        const c = (row.cells?.[clientCol.id] || '').trim();
+        const p = (row.cells?.[projectCol.id] || '').trim();
+        if (!c || !p) return false;
+        if (clientName && c !== clientName) return false;
+        if (projectName && p !== projectName) return false;
+        return true;
+    }
+
+    function getRowLevel(sheet, row) {
+        if (isMasterRow(sheet, row)) return 'master';
+        if (isProjectLevelRow(sheet, row)) return 'project';
+        if (isClientLevelRow(sheet, row)) return 'client';
+        return 'unknown';
+    }
+
+    function rowMatchesProductLine(sheet, row, plName) {
+        const plCol = getProductLineCol(sheet);
+        const pl = plName || getSelectedProductLineName();
+        if (!plCol || !pl) return true;
+        return (row.cells?.[plCol.id] || '').trim() === pl;
+    }
+
     function personnelRowKey(sheet, row) {
         const nameCol = getPersonnelNameCol(sheet);
         const plCol = getProductLineCol(sheet);
         const name = nameCol ? (row.cells?.[nameCol.id] || '').trim() : '';
         if (!name) return null;
         const pl = plCol ? (row.cells?.[plCol.id] || '').trim() : getSelectedProductLineName();
-        return `${normalizePersonnelName(name)}::${(pl || '').toLowerCase()}`;
-    }
-
-    function isMasterRow(sheet, row) {
+        const level = getRowLevel(sheet, row);
+        const base = `${normalizePersonnelName(name)}::${(pl || '').toLowerCase()}`;
+        if (level === 'master') return `${base}::master`;
         const clientCol = getClientCol(sheet);
-        if (!clientCol) return true;
-        return !(row.cells?.[clientCol.id] || '').trim();
+        const projectCol = getProjectCol(sheet);
+        const c = clientCol ? (row.cells?.[clientCol.id] || '').trim().toLowerCase() : '';
+        if (level === 'client') return `${base}::client::${c}`;
+        const p = projectCol ? (row.cells?.[projectCol.id] || '').trim().toLowerCase() : '';
+        return `${base}::project::${c}::${p}`;
     }
 
     function rowDataScore(row) {
         return Object.values(row?.cells || {}).filter(v => String(v).trim()).length;
     }
 
-    function findMasterPersonnelRow(sheet, personnelName, plName) {
+    function findPersonnelRowAtLevel(sheet, personnelName, plName, level) {
         const nameCol = getPersonnelNameCol(sheet);
-        if (!nameCol || !personnelName) return null;
+        if (!nameCol || !personnelName || !sheet) return null;
         const nl = normalizePersonnelName(personnelName);
-        const candidates = (sheet?.rows || []).filter(r => {
+        const clientName = getSelectedClientName();
+        const projectName = getSelectedProjectName();
+        const targetLevel = level || getCurrentFilterLevel();
+
+        const candidates = (sheet.rows || []).filter(r => {
             const n = (r.cells?.[nameCol.id] || '').trim();
             if (normalizePersonnelName(n) !== nl) return false;
-            const plCol = getProductLineCol(sheet);
-            if (plCol && plName) {
-                const rowPl = (r.cells?.[plCol.id] || '').trim();
-                if (rowPl && rowPl !== plName) return false;
-            }
-            return true;
+            if (!rowMatchesProductLine(sheet, r, plName)) return false;
+            if (targetLevel === 'master') return isMasterRow(sheet, r);
+            if (targetLevel === 'client') return isClientLevelRow(sheet, r, clientName);
+            if (targetLevel === 'project') return isProjectLevelRow(sheet, r, clientName, projectName);
+            return false;
         });
-        return candidates.find(r => isMasterRow(sheet, r))
-            || candidates.sort((a, b) => rowDataScore(b) - rowDataScore(a))[0]
-            || null;
+        return candidates.sort((a, b) => rowDataScore(b) - rowDataScore(a))[0] || null;
+    }
+
+    function findMasterPersonnelRow(sheet, personnelName, plName) {
+        return findPersonnelRowAtLevel(sheet, personnelName, plName, 'master');
+    }
+
+    function findMasterPersonnelRowAnySheet(personnelName, plName) {
+        for (const s of MATRIX_STATE.workbook?.sheets || []) {
+            const row = findPersonnelRowAtLevel(s, personnelName, plName, 'master');
+            if (row) return { sheet: s, row };
+        }
+        return null;
+    }
+
+    function collectMasterRosterNames() {
+        const names = new Set();
+        const plName = getSelectedProductLineName();
+        for (const s of MATRIX_STATE.workbook?.sheets || []) {
+            const nameCol = getPersonnelNameCol(s);
+            if (!nameCol) continue;
+            (s.rows || []).forEach(r => {
+                if (!isMasterRow(s, r)) return;
+                if (!rowMatchesProductLine(s, r, plName)) return;
+                const n = (r.cells?.[nameCol.id] || '').trim();
+                if (n) names.add(n);
+            });
+        }
+        return names;
+    }
+
+    function collectClientLevelNames(sheet) {
+        const names = new Set();
+        const clientName = getSelectedClientName();
+        const plName = getSelectedProductLineName();
+        const nameCol = getPersonnelNameCol(sheet);
+        if (!nameCol) return names;
+        (sheet.rows || []).forEach(r => {
+            if (!isClientLevelRow(s, r, clientName)) return;
+            if (!rowMatchesProductLine(s, r, plName)) return;
+            const n = (r.cells?.[nameCol.id] || '').trim();
+            if (n) names.add(n);
+        });
+        return names;
+    }
+
+    function getAssignedNamesAtLevel(sheet, level) {
+        const names = new Set();
+        const nameCol = getPersonnelNameCol(sheet);
+        if (!nameCol) return names;
+        const clientName = getSelectedClientName();
+        const projectName = getSelectedProjectName();
+        const plName = getSelectedProductLineName();
+        (sheet.rows || []).forEach(r => {
+            if (!rowMatchesProductLine(s, r, plName)) return;
+            if (level === 'client' && !isClientLevelRow(s, r, clientName)) return;
+            if (level === 'project' && !isProjectLevelRow(s, r, clientName, projectName)) return;
+            const n = (r.cells?.[nameCol.id] || '').trim();
+            if (n) names.add(n);
+        });
+        return names;
     }
 
     function dedupeRowsForAllView(sheet, rows) {
@@ -388,9 +519,7 @@
                 byKey.set(key, row);
                 return;
             }
-            const keepExisting = isMasterRow(sheet, existing) && !isMasterRow(sheet, row);
-            const keepNew = isMasterRow(sheet, row) && !isMasterRow(sheet, existing);
-            if (keepNew || (!keepExisting && rowDataScore(row) > rowDataScore(existing))) {
+            if (rowDataScore(row) > rowDataScore(existing)) {
                 byKey.set(key, row);
             }
         });
@@ -409,17 +538,9 @@
                 seen.set(key, row);
                 continue;
             }
-            let keep = existing;
-            let drop = row;
-            if (isMasterRow(sheet, row) && !isMasterRow(sheet, existing)) {
-                keep = row;
-                drop = existing;
-                seen.set(key, keep);
-            } else if (rowDataScore(row) > rowDataScore(existing) && !isMasterRow(sheet, existing)) {
-                keep = row;
-                drop = existing;
-                seen.set(key, keep);
-            }
+            const keep = rowDataScore(row) > rowDataScore(existing) ? row : existing;
+            const drop = keep.id === row.id ? existing : row;
+            seen.set(key, keep);
             try {
                 await matrixRequest('DELETE', `/matrix/sheets/${sheetId}/rows/${drop.id}`);
                 sheet.rows = sheet.rows.filter(r => r.id !== drop.id);
@@ -439,10 +560,11 @@
         const sheet = sheetById(sheetId);
         if (!sheet || !personnelName) return;
         const plName = getSelectedProductLineName();
-        const master = findMasterPersonnelRow(sheet, personnelName, plName);
-        if (!master) return;
-        const key = personnelRowKey(sheet, master);
-        const dupes = (sheet.rows || []).filter(r => r.id !== master.id && personnelRowKey(sheet, r) === key);
+        const level = getCurrentFilterLevel();
+        const keep = findPersonnelRowAtLevel(sheet, personnelName, plName, level);
+        if (!keep) return;
+        const key = personnelRowKey(sheet, keep);
+        const dupes = (sheet.rows || []).filter(r => r.id !== keep.id && personnelRowKey(sheet, r) === key);
         for (const d of dupes) {
             await matrixRequest('DELETE', `/matrix/sheets/${sheetId}/rows/${d.id}`);
             sheet.rows = sheet.rows.filter(r => r.id !== d.id);
@@ -495,21 +617,23 @@
             if (rowPl !== plName) return false;
         }
 
-        if (!isAllClients()) {
-            const clientCol = getClientCol(sheet);
-            const clientName = getSelectedClientName();
-            if (!clientCol || !clientName) return false;
-            if ((row.cells?.[clientCol.id] || '').trim() !== clientName) return false;
+        if (isAllClients()) {
+            return isMasterRow(sheet, row);
         }
 
-        if (!isAllProjects()) {
-            const projectCol = getProjectCol(sheet);
-            const projectName = getSelectedProjectName();
-            if (!projectCol || !projectName) return false;
-            if ((row.cells?.[projectCol.id] || '').trim() !== projectName) return false;
+        const clientCol = getClientCol(sheet);
+        const clientName = getSelectedClientName();
+        if (!clientCol || !clientName) return false;
+        if ((row.cells?.[clientCol.id] || '').trim() !== clientName) return false;
+
+        if (isAllProjects()) {
+            return isClientLevelRow(sheet, row, clientName);
         }
 
-        return true;
+        const projectCol = getProjectCol(sheet);
+        const projectName = getSelectedProjectName();
+        if (!projectCol || !projectName) return false;
+        return isProjectLevelRow(sheet, row, clientName, projectName);
     }
 
     function filterRows(sheet) {
@@ -579,47 +703,23 @@
     }
 
     function getPersonnelPool(sheet) {
-        const names = new Set();
-        const plName = getSelectedProductLineName();
+        if (isAllClients()) return [];
 
-        const collectFromSheet = (srcSheet) => {
-            if (!srcSheet) return;
-            const nameCol = getPersonnelNameCol(srcSheet);
-            const plCol = getProductLineCol(srcSheet);
-            if (!nameCol) return;
-            srcSheet.rows.forEach(r => {
-                const rowPl = plCol ? (r.cells?.[plCol.id] || '').trim() : '';
-                if (plName && plCol && rowPl && rowPl !== plName) return;
-                const n = (r.cells?.[nameCol.id] || '').trim();
-                if (n) names.add(n);
-            });
-        };
+        const nameCol = getPersonnelNameCol(sheet);
+        if (!nameCol) return [];
 
-        collectFromSheet(sheetById(PROFILE_SHEET_ID));
-        collectFromSheet(sheetById('employee_mandatory_training'));
-        collectFromSheet(sheetById('personnel_health'));
-        collectFromSheet(sheetById('emergency_contact_information'));
+        let pool;
+        let assigned;
 
-        if (!isAllClients()) {
-            const clientName = getSelectedClientName();
-            const clientCol = getClientCol(sheet);
-            const nameCol = getPersonnelNameCol(sheet);
-            const used = new Set(
-                (sheet.rows || [])
-                    .filter(r => clientCol && (r.cells?.[clientCol.id] || '').trim() === clientName)
-                    .map(r => nameCol ? (r.cells?.[nameCol.id] || '').trim() : '')
-                    .filter(Boolean)
-            );
-            // Include master rows (ALL source) not yet tagged to this client
-            (sheet.rows || []).forEach(r => {
-                if (!isMasterRow(sheet, r)) return;
-                const n = nameCol ? (r.cells?.[nameCol.id] || '').trim() : '';
-                if (n && !used.has(n)) names.add(n);
-            });
-            return [...names].filter(n => !used.has(n)).sort((a, b) => a.localeCompare(b));
+        if (isAllProjects()) {
+            pool = collectMasterRosterNames();
+            assigned = getAssignedNamesAtLevel(sheet, 'client');
+        } else {
+            pool = collectClientLevelNames(sheet);
+            assigned = getAssignedNamesAtLevel(sheet, 'project');
         }
 
-        return [...names].sort((a, b) => a.localeCompare(b));
+        return [...pool].filter(n => !assigned.has(n)).sort((a, b) => a.localeCompare(b));
     }
 
     async function applyCellsUpdate(sheetId, rowId, cells) {
@@ -634,23 +734,43 @@
         if (!sheet || !profileSheet) return rowId;
 
         const plName = getSelectedProductLineName();
-        const master = findMasterPersonnelRow(sheet, personnelName, plName);
+        const clientName = getSelectedClientName();
+        const level = getCurrentFilterLevel();
+        const existingAtLevel = findPersonnelRowAtLevel(sheet, personnelName, plName, level);
         let targetRowId = rowId;
 
-        if (master && master.id !== rowId && !isAllClients()) {
-            targetRowId = master.id;
+        if (existingAtLevel && existingAtLevel.id !== rowId) {
+            targetRowId = existingAtLevel.id;
         }
 
         const profileRow = profileSheet.rows.find(r => {
             const nc = getPersonnelNameCol(profileSheet);
             return nc && (r.cells?.[nc.id] || '').trim().toLowerCase() === personnelName.toLowerCase();
         });
-        if (!profileRow) return targetRowId;
 
-        const sourceRow = findRowInSheet(sheet, profileRow);
+        let sourceRow = null;
+        if (level === 'project') {
+            sourceRow = findPersonnelRowAtLevel(sheet, personnelName, plName, 'client');
+        } else if (level === 'client') {
+            sourceRow = findPersonnelRowAtLevel(sheet, personnelName, plName, 'master')
+                || findMasterPersonnelRowAnySheet(personnelName, plName)?.row
+                || null;
+        }
+
+        if (!sourceRow && profileRow) {
+            sourceRow = findRowInSheet(sheet, profileRow);
+            if (sourceRow && !isMasterRow(sheet, sourceRow) && level === 'client') {
+                sourceRow = findPersonnelRowAtLevel(sheet, personnelName, plName, 'master')
+                    || findMasterPersonnelRowAnySheet(personnelName, plName)?.row
+                    || null;
+            }
+            if (sourceRow && level === 'project' && !isClientLevelRow(sheet, sourceRow, clientName)) {
+                sourceRow = findPersonnelRowAtLevel(sheet, personnelName, plName, 'client');
+            }
+        }
+
         const trainingSheet = sheetById('employee_mandatory_training');
         const trainingRow = trainingSheet ? findRowInSheet(trainingSheet, profileRow) : null;
-        const clientName = getSelectedClientName();
         const cells = {};
 
         sheet.columns.forEach(col => {
@@ -668,7 +788,7 @@
             } else if (getPositionCol(sheet)?.id === col.id && trainingRow) {
                 const tPos = getPositionCol(trainingSheet);
                 cells[col.id] = tPos ? (trainingRow.cells?.[tPos.id] || '') : '';
-            } else {
+            } else if (profileRow) {
                 const profCol = profileSheet.columns.find(
                     pc => pc.label.replace(/\*/g, '').trim().toLowerCase() === labelKey
                 );
@@ -678,12 +798,14 @@
                 } else {
                     cells[col.id] = targetRow?.cells?.[col.id] || '';
                 }
+            } else {
+                cells[col.id] = sheet.rows.find(r => r.id === targetRowId)?.cells?.[col.id] || '';
             }
         });
 
         await applyCellsUpdate(sheetId, targetRowId, cells);
 
-        if (master && master.id !== rowId && !isAllClients()) {
+        if (targetRowId !== rowId) {
             try {
                 await matrixRequest('DELETE', `/matrix/sheets/${sheetId}/rows/${rowId}`);
                 sheet.rows = sheet.rows.filter(r => r.id !== rowId);
@@ -1006,7 +1128,7 @@
     function sidebarFieldRowsForSheet(sheetId, profileRow) {
         const sheet = sheetById(sheetId);
         if (!sheet) return { items: [], hasRow: false };
-        const row = findRowInSheet(sheet, profileRow);
+        const row = findRowInSheetAtCurrentLevel(sheet, profileRow);
         if (!row) return { items: [], hasRow: false };
 
         const items = [];
@@ -1334,7 +1456,7 @@
 
         const newSheet = sheetById(sheetId);
         if (profileRow && newSheet) {
-            const match = findRowInSheet(newSheet, profileRow);
+            const match = findRowInSheetAtCurrentLevel(newSheet, profileRow);
             MATRIX_STATE.selectedRowId = match?.id || null;
         } else {
             MATRIX_STATE.selectedRowId = null;
@@ -1400,7 +1522,7 @@
         if (clientCol && !isAllClients()) initCells[clientCol.id] = getSelectedClientName();
         else if (clientCol && isAllClients()) initCells[clientCol.id] = '';
         if (plCol && plName) initCells[plCol.id] = plName;
-        if (projectCol && !isAllProjects()) initCells[projectCol.id] = getSelectedProjectName();
+        if (projectCol) initCells[projectCol.id] = isAllProjects() ? '' : getSelectedProjectName();
         try {
             const row = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/rows`, { cells: initCells });
             sheet.rows.push(row);
