@@ -1306,6 +1306,90 @@
             background: var(--netflix-red);
         }
 
+        /* Personnel Matrix (PTS Wells Excel tabs) */
+        .mx-page { padding: 0 16px 24px; }
+        .mx-tabs-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .mx-tab-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px;
+            text-align: left;
+            cursor: pointer;
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .mx-tab-card strong { font-size: 11px; line-height: 1.3; }
+        .mx-tab-card span { font-size: 10px; color: var(--text-muted); }
+        .mx-tab-card-active { border-color: var(--netflix-red); box-shadow: 0 0 0 1px var(--netflix-red); }
+        .mx-tab-warn { color: #F5A623 !important; }
+        .mx-dash-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .mx-dash-card {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 10px 12px;
+            border-left: 3px solid var(--mx-color, #E50914);
+        }
+        .mx-dash-card span { display: block; font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+        .mx-dash-card strong { font-size: 18px; font-weight: 700; margin-top: 4px; display: block; }
+        .mx-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+        .mx-toolbar #mx-tab-select { min-width: 180px; }
+        .mx-toolbar #mx-search { flex: 1; min-width: 160px; }
+        .mx-filter-row { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+        .mx-filter-select { min-width: 140px; max-width: 200px; font-size: 11px; padding: 6px 8px; }
+        .mx-actions { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        .mx-table-wrap {
+            overflow: auto;
+            max-height: calc(100vh - 420px);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg-secondary);
+        }
+        .mx-data-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 11px; }
+        .mx-th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #2a2a2a;
+            padding: 8px;
+            border-bottom: 1px solid #444;
+            min-width: 120px;
+            vertical-align: top;
+        }
+        .mx-th-inner { display: flex; justify-content: space-between; align-items: flex-start; gap: 4px; }
+        .mx-th-actions button {
+            background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 12px; padding: 0 2px;
+        }
+        .mx-th-actions button:hover { color: var(--netflix-red); }
+        .mx-td { padding: 4px; border-bottom: 1px solid #333; vertical-align: top; }
+        .mx-cell-input {
+            width: 100%; min-width: 110px;
+            background: var(--bg-tertiary);
+            border: 1px solid transparent;
+            color: var(--text-primary);
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .mx-cell-input:focus { border-color: var(--netflix-red); outline: none; }
+        .mx-td-actions { min-width: 72px; }
+        .mx-header-meta h3 { margin: 0 0 4px; font-size: 16px; }
+        .mx-header-meta p { margin: 0 0 12px; font-size: 12px; color: var(--text-muted); }
+        .mx-loading, .mx-empty, .mx-locked { padding: 24px; text-align: center; color: var(--text-muted); }
+        .mx-locked { background: var(--bg-secondary); border-radius: 12px; margin: 16px; }
+
         body.preview-mode .main {
             padding-top: 90px;
         }
@@ -1440,7 +1524,7 @@
             </svg>
             <span>OTP</span>
         </div>
-        <div class="drawer-item" onclick="navigateTo('matrix')">
+        <div class="drawer-item admin-only hide-in-preview" onclick="navigateToMatrix()">
             <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M4 14l6-6 4 4 6-6V3H4v11z" />
                 <path d="M20 18v3H4v-3l6-6 4 4 6-6z" />
@@ -2597,8 +2681,8 @@
     <!-- Matrix Screen -->
     <section class="screen" id="screen-matrix" style="overflow-y: auto; height: calc(100vh - 130px);">
         <div class="status-section">
-            <h2 class="status-section-title">HSE Program Matrix</h2>
-            <p style="font-size: 14px; opacity: 0.9;">Quarterly and Monthly program tracking</p>
+            <h2 class="status-section-title">HSE Personnel Matrix</h2>
+            <p style="font-size: 14px; opacity: 0.9;">PTS Wells Block A — Pelatihan, Kesehatan, Data, Kontrak & Kontak Darurat</p>
         </div>
         <div id="matrix-content"></div>
     </section>
@@ -2804,7 +2888,7 @@
         </svg>
         <span>OTP</span>
     </div>
-    <div class="nav-item" onclick="navigateTo('matrix')">
+    <div class="nav-item admin-only hide-in-preview" onclick="navigateToMatrix()">
         <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M4 14l6-6 4 4 6-6V3H4v11z" />
             <path d="M20 18v3H4v-3l6-6 4 4 6-6z" />
@@ -5469,7 +5553,20 @@
     }
     window.navigateToMasterData = navigateToMasterData;
 
+    function navigateToMatrix() {
+        if (!document.body.classList.contains('admin-mode')) {
+            alert('Akses Ditolak: Halaman Matrix hanya untuk Admin.');
+            return;
+        }
+        navigateTo('matrix');
+    }
+    window.navigateToMatrix = navigateToMatrix;
+
     function navigateTo(screen) {
+        if (screen === 'matrix' && !document.body.classList.contains('admin-mode')) {
+            alert('Akses Ditolak: Halaman Matrix hanya untuk Admin.');
+            return;
+        }
         // Update screens
         document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         const screenEl = document.getElementById(`screen-${screen}`);
@@ -6291,54 +6388,8 @@
         showToast('CSV berhasil diunduh', 'success');
     }
 
-    // ===== MATRIX SCREEN =====
-    function renderMatrixScreen() {
-        const content = document.getElementById('matrix-content');
-        const filteredTasks = selectedProjectId === 'all' ?
-            allTasks.filter(t => t.category && t.category.includes('Matrix')) :
-            allTasks.filter(t => t.category && t.category.includes('Matrix') && t.project_id === selectedProjectId);
+    // Matrix screen: see static/matrix-personnel.js (renderMatrixScreen)
 
-        if (filteredTasks.length === 0) {
-            content.innerHTML = '<div class="empty-message">No Matrix data found for the selected project.</div>';
-            return;
-        }
-
-        let html = `
-            <div class="indicator-card" style="padding: 0; overflow-x: auto;">
-                <table class="matrix-table">
-                    <thead>
-                        <tr>
-                            <th>Indicator</th>
-                            <th>Status</th>
-                            <th>Progress</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-
-        filteredTasks.forEach(task => {
-            const progress = task.status === 'Completed' ? 100 : (task.status === 'In Progress' ? 50 : 0);
-            html += `
-                <tr>
-                    <td>${task.title}</td>
-                    <td><span class="status-badge ${task.status === 'Completed' ? 'status-achieved' : 'status-on-track'}">${task.status}</span></td>
-                    <td>
-                        <div class="matrix-progress-cell">
-                            <div class="matrix-progress-bar">
-                                <div class="matrix-progress-fill" style="width: ${progress}%"></div>
-                            </div>
-                            <span>${progress}%</span>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        });
-
-        html += '</tbody></table></div>';
-        content.innerHTML = html;
-    }
-
-    // ===== LL INDICATOR SCREEN =====
     // ===== LL INDICATOR SCREEN =====
     async function renderLLScreen() {
         const content = document.getElementById('ll-indicator-content');
@@ -10066,6 +10117,7 @@
     }
 </script>
     <script src="/static/exec-stats.js"></script>
+    <script src="/static/matrix-personnel.js"></script>
 </body>
 
 </html>

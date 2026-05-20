@@ -45,6 +45,7 @@ except ImportError:
 
 from routers.reports import router as reports_router
 from routers.master_data import router as master_data_router
+from routers.matrix import router as matrix_router
 from services.logger_service import (
     app_logger, log_request, log_response, log_info, log_error, log_warning
 )
@@ -82,6 +83,7 @@ if static_dir.exists():
 # Include Routers
 app.include_router(reports_router)
 app.include_router(master_data_router)
+app.include_router(matrix_router)
 
 # Global Exception Handler - sends email on any unhandled exception
 from fastapi import Request

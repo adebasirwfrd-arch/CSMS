@@ -3,6 +3,7 @@ Supabase Database Service
 Provides persistent storage for CSMS application data
 """
 import os
+import uuid
 from typing import List, Dict, Optional
 from datetime import datetime
 import json
@@ -913,6 +914,279 @@ class SupabaseService:
         except Exception as e:
             self._log_err("UPSERT", "client_product_templates", e)
             raise
+
+    # ==================== PERSONNEL MATRIX (PTS Wells) ====================
+
+    def _matrix_col_to_api(self, row: Dict) -> Dict:
+        return {
+            "id": row["id"],
+            "key": row.get("col_key") or row["id"],
+            "label": row.get("label", ""),
+            "type": row.get("col_type") or "text",
+            "filterable": bool(row.get("filterable", True)),
+            "required": bool(row.get("is_required", False)),
+            "index": row.get("sort_index") or 0,
+        }
+
+    def _matrix_row_to_api(self, row: Dict) -> Dict:
+        cells = row.get("cells") or {}
+        if isinstance(cells, str):
+            try:
+                cells = json.loads(cells)
+            except Exception:
+                cells = {}
+        return {"id": row["id"], "cells": cells}
+
+    def _matrix_sheet_to_api(self, sheet: Dict, columns: List[Dict], rows: List[Dict]) -> Dict:
+        return {
+            "id": sheet["id"],
+            "name": sheet.get("name", ""),
+            "title": sheet.get("title", ""),
+            "columns": [self._matrix_col_to_api(c) for c in columns],
+            "rows": [self._matrix_row_to_api(r) for r in rows],
+        }
+
+    def get_matrix_workbook(self) -> Dict:
+        if not self.enabled:
+            return {"version": 1, "updated_at": datetime.utcnow().isoformat() + "Z", "sheets": []}
+        try:
+            sheets_r = (
+                self.client.table("matrix_sheets")
+                .select("*")
+                .order("sort_order")
+                .execute()
+            )
+            cols_r = self.client.table("matrix_columns").select("*").execute()
+            rows_r = self.client.table("matrix_rows").select("*").execute()
+            sheets = sheets_r.data or []
+            cols_by_sheet: Dict[str, List[Dict]] = {}
+            for c in cols_r.data or []:
+                cols_by_sheet.setdefault(c["sheet_id"], []).append(c)
+            rows_by_sheet: Dict[str, List[Dict]] = {}
+            for r in rows_r.data or []:
+                rows_by_sheet.setdefault(r["sheet_id"], []).append(r)
+            out_sheets = []
+            for i, s in enumerate(sheets):
+                sid = s["id"]
+                cols = sorted(cols_by_sheet.get(sid, []), key=lambda x: x.get("sort_index", 0))
+                rows = sorted(rows_by_sheet.get(sid, []), key=lambda x: x.get("sort_order", 0))
+                out_sheets.append(self._matrix_sheet_to_api(s, cols, rows))
+            updated = max(
+                (s.get("updated_at") for s in sheets if s.get("updated_at")),
+                default=datetime.utcnow().isoformat() + "Z",
+            )
+            return {"version": 1, "updated_at": str(updated), "sheets": out_sheets}
+        except Exception as e:
+            self._log_err("SELECT", "matrix_workbook", e)
+            raise
+
+    def get_matrix_sheet(self, sheet_id: str) -> Dict:
+        wb = self.get_matrix_workbook()
+        for s in wb.get("sheets", []):
+            if s.get("id") == sheet_id:
+                return s
+        raise KeyError(f"Sheet not found: {sheet_id}")
+
+    def seed_matrix_workbook(self, workbook: Dict) -> None:
+        """Replace all matrix data from imported workbook (Excel / JSON)."""
+        if not self.enabled:
+            raise RuntimeError("Supabase not enabled")
+        try:
+            for i, sheet in enumerate(workbook.get("sheets", [])):
+                sid = sheet["id"]
+                self.client.table("matrix_sheets").upsert(
+                    {
+                        "id": sid,
+                        "name": sheet.get("name", sid),
+                        "title": sheet.get("title", ""),
+                        "sort_order": i,
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }
+                ).execute()
+                self.client.table("matrix_columns").delete().eq("sheet_id", sid).execute()
+                self.client.table("matrix_rows").delete().eq("sheet_id", sid).execute()
+                col_rows = []
+                for col in sheet.get("columns", []):
+                    col_rows.append(
+                        {
+                            "sheet_id": sid,
+                            "id": col["id"],
+                            "col_key": col.get("key", col["id"]),
+                            "label": col.get("label", ""),
+                            "col_type": col.get("type", "text"),
+                            "filterable": bool(col.get("filterable", True)),
+                            "is_required": bool(col.get("required", False)),
+                            "sort_index": col.get("index", 0),
+                        }
+                    )
+                if col_rows:
+                    self.client.table("matrix_columns").insert(col_rows).execute()
+                row_rows = []
+                for j, row in enumerate(sheet.get("rows", [])):
+                    row_rows.append(
+                        {
+                            "id": row["id"],
+                            "sheet_id": sid,
+                            "cells": row.get("cells") or {},
+                            "sort_order": j,
+                            "updated_at": datetime.utcnow().isoformat(),
+                        }
+                    )
+                if row_rows:
+                    self.client.table("matrix_rows").insert(row_rows).execute()
+            self._log_op("SEED", "matrix_workbook", success=True)
+        except Exception as e:
+            self._log_err("SEED", "matrix_workbook", e)
+            raise
+
+    def add_matrix_row(self, sheet_id: str, cells: Optional[Dict[str, str]] = None) -> Dict:
+        if not self.enabled:
+            raise RuntimeError("Supabase not enabled")
+        sheet = self.get_matrix_sheet(sheet_id)
+        row_cells = {}
+        for col in sheet.get("columns", []):
+            cid = col["id"]
+            row_cells[cid] = (cells or {}).get(cid, "")
+        row_id = f"row_{uuid.uuid4().hex[:12]}"
+        payload = {
+            "id": row_id,
+            "sheet_id": sheet_id,
+            "cells": row_cells,
+            "sort_order": len(sheet.get("rows", [])),
+        }
+        result = self.client.table("matrix_rows").insert(payload).execute()
+        self.client.table("matrix_sheets").update(
+            {"updated_at": datetime.utcnow().isoformat()}
+        ).eq("id", sheet_id).execute()
+        return self._matrix_row_to_api(result.data[0] if result.data else payload)
+
+    def update_matrix_row(self, sheet_id: str, row_id: str, cells: Dict[str, str]) -> Dict:
+        if not self.enabled:
+            raise RuntimeError("Supabase not enabled")
+        result = (
+            self.client.table("matrix_rows")
+            .select("*")
+            .eq("id", row_id)
+            .eq("sheet_id", sheet_id)
+            .execute()
+        )
+        if not result.data:
+            raise KeyError(f"Row not found: {row_id}")
+        current = self._matrix_row_to_api(result.data[0])
+        merged = {**current["cells"], **cells}
+        upd = (
+            self.client.table("matrix_rows")
+            .update({"cells": merged, "updated_at": datetime.utcnow().isoformat()})
+            .eq("id", row_id)
+            .execute()
+        )
+        self.client.table("matrix_sheets").update(
+            {"updated_at": datetime.utcnow().isoformat()}
+        ).eq("id", sheet_id).execute()
+        return self._matrix_row_to_api(upd.data[0] if upd.data else {"id": row_id, "cells": merged})
+
+    def delete_matrix_row(self, sheet_id: str, row_id: str) -> bool:
+        if not self.enabled:
+            raise RuntimeError("Supabase not enabled")
+        self.client.table("matrix_rows").delete().eq("id", row_id).eq("sheet_id", sheet_id).execute()
+        self.client.table("matrix_sheets").update(
+            {"updated_at": datetime.utcnow().isoformat()}
+        ).eq("id", sheet_id).execute()
+        return True
+
+    def add_matrix_column(
+        self, sheet_id: str, label: str, col_type: str = "text", filterable: bool = True
+    ) -> Dict:
+        if not self.enabled:
+            raise RuntimeError("Supabase not enabled")
+        sheet = self.get_matrix_sheet(sheet_id)
+        max_idx = max((c.get("index", 0) for c in sheet.get("columns", [])), default=0)
+        new_index = max_idx + 1
+        col_id = f"col_{new_index}"
+        key_base = label.lower().replace("*", "").strip().replace(" ", "_")[:40]
+        col_payload = {
+            "sheet_id": sheet_id,
+            "id": col_id,
+            "col_key": f"{key_base}_{new_index}",
+            "label": label,
+            "col_type": col_type,
+            "filterable": filterable,
+            "is_required": "*" in label,
+            "sort_index": new_index,
+        }
+        self.client.table("matrix_columns").insert(col_payload).execute()
+        rows_r = (
+            self.client.table("matrix_rows").select("id,cells").eq("sheet_id", sheet_id).execute()
+        )
+        for row in rows_r.data or []:
+            cells = row.get("cells") or {}
+            if isinstance(cells, str):
+                try:
+                    cells = json.loads(cells)
+                except Exception:
+                    cells = {}
+            cells[col_id] = ""
+            self.client.table("matrix_rows").update({"cells": cells}).eq("id", row["id"]).execute()
+        self.client.table("matrix_sheets").update(
+            {"updated_at": datetime.utcnow().isoformat()}
+        ).eq("id", sheet_id).execute()
+        return self._matrix_col_to_api(col_payload)
+
+    def update_matrix_column(self, sheet_id: str, col_id: str, updates: Dict) -> Dict:
+        if not self.enabled:
+            raise RuntimeError("Supabase not enabled")
+        result = (
+            self.client.table("matrix_columns")
+            .select("*")
+            .eq("sheet_id", sheet_id)
+            .eq("id", col_id)
+            .execute()
+        )
+        if not result.data:
+            raise KeyError(f"Column not found: {col_id}")
+        col = result.data[0]
+        patch: Dict = {}
+        if updates.get("label"):
+            patch["label"] = updates["label"]
+            patch["is_required"] = "*" in updates["label"]
+        if updates.get("type"):
+            patch["col_type"] = updates["type"]
+        if "filterable" in updates and updates["filterable"] is not None:
+            patch["filterable"] = bool(updates["filterable"])
+        if patch:
+            upd = (
+                self.client.table("matrix_columns")
+                .update(patch)
+                .eq("sheet_id", sheet_id)
+                .eq("id", col_id)
+                .execute()
+            )
+            col = upd.data[0] if upd.data else {**col, **patch}
+        self.client.table("matrix_sheets").update(
+            {"updated_at": datetime.utcnow().isoformat()}
+        ).eq("id", sheet_id).execute()
+        return self._matrix_col_to_api(col)
+
+    def delete_matrix_column(self, sheet_id: str, col_id: str) -> bool:
+        if not self.enabled:
+            raise RuntimeError("Supabase not enabled")
+        self.client.table("matrix_columns").delete().eq("sheet_id", sheet_id).eq("id", col_id).execute()
+        rows_r = (
+            self.client.table("matrix_rows").select("id,cells").eq("sheet_id", sheet_id).execute()
+        )
+        for row in rows_r.data or []:
+            cells = row.get("cells") or {}
+            if isinstance(cells, str):
+                try:
+                    cells = json.loads(cells)
+                except Exception:
+                    cells = {}
+            cells.pop(col_id, None)
+            self.client.table("matrix_rows").update({"cells": cells}).eq("id", row["id"]).execute()
+        self.client.table("matrix_sheets").update(
+            {"updated_at": datetime.utcnow().isoformat()}
+        ).eq("id", sheet_id).execute()
+        return True
 
 
 # Global instance
