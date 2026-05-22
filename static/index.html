@@ -1437,6 +1437,11 @@
             font-size: 12px;
             --mx-sticky-no-w: 48px;
             --mx-sticky-name-w: 180px;
+            --mx-sticky-fill: #1F1F1F;
+            --mx-sticky-fill-hover: #262020;
+            --mx-sticky-fill-selected: #2E2224;
+            --mx-sticky-input-fill: #2A2A2A;
+            --mx-sticky-header-fill: #252525;
         }
         .mx-th {
             position: sticky; top: 0; z-index: 2;
@@ -1458,6 +1463,10 @@
         .mx-cell-input:focus { border-color: var(--netflix-red); outline: none; background: #1a1a1a; }
         .mx-cell-select { cursor: pointer; appearance: auto; }
         .mx-td-edit { position: relative; }
+        .mx-td.mx-sticky-no.mx-td-edit,
+        .mx-td.mx-sticky-name.mx-td-edit {
+            background-color: var(--mx-sticky-fill) !important;
+        }
         .mx-td-edit .mx-cell-input { pointer-events: auto; }
         .mx-empty-row, .mx-loading, .mx-empty, .mx-locked { padding: 32px 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
         .mx-locked { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 14px; margin: 16px 0; }
@@ -1651,72 +1660,97 @@
         .mx-data-row:hover { background: rgba(229,9,20,0.04); }
         .mx-row-selected { background: rgba(229,9,20,0.08) !important; }
 
-        /* Sticky No + Personnel Name saat scroll horizontal */
+        /* Sticky No + Personnel Name — solid opaque layer (no bleed on horizontal scroll) */
+        .mx-th.mx-sticky-no,
+        .mx-td.mx-sticky-no,
+        .mx-th.mx-sticky-name,
+        .mx-td.mx-sticky-name {
+            position: sticky;
+            box-sizing: border-box;
+            isolation: isolate;
+        }
         .mx-th.mx-sticky-no,
         .mx-td.mx-sticky-no {
-            position: sticky;
             left: 0;
             width: var(--mx-sticky-no-w);
             min-width: var(--mx-sticky-no-w) !important;
             max-width: var(--mx-sticky-no-w);
             padding: 8px 6px;
             text-align: center;
-            box-sizing: border-box;
-            background: #252525 !important;
-            background-clip: padding-box;
-            z-index: 12;
-        }
-        .mx-td.mx-sticky-no .mx-cell-input {
-            min-width: 0 !important;
-            width: 100%;
-            max-width: 100%;
-            padding: 6px 4px;
-            text-align: center;
-            box-sizing: border-box;
+            z-index: 20;
         }
         .mx-th.mx-sticky-name,
         .mx-td.mx-sticky-name {
-            position: sticky;
             left: var(--mx-sticky-no-w);
             width: var(--mx-sticky-name-w);
             min-width: var(--mx-sticky-name-w) !important;
             max-width: var(--mx-sticky-name-w);
-            box-sizing: border-box;
-            background: #252525 !important;
-            background-clip: padding-box;
-            border-right: 2px solid rgba(255, 255, 255, 0.14);
-            box-shadow: 8px 0 16px rgba(0, 0, 0, 0.55);
-            z-index: 11;
+            z-index: 19;
             overflow: hidden;
+            border-right: 2px solid #3a3a3a;
+            box-shadow: 10px 0 18px rgba(0, 0, 0, 0.65);
         }
-        .mx-th.mx-sticky-no { z-index: 14; }
-        .mx-th.mx-sticky-name { z-index: 13; }
-        .mx-th.mx-sticky-name .mx-th-inner {
-            min-width: 0;
-            overflow: hidden;
+        .mx-th.mx-sticky-no,
+        .mx-th.mx-sticky-name {
+            z-index: 30;
+            background-color: var(--mx-sticky-header-fill) !important;
         }
-        .mx-td.mx-sticky-no {
-            z-index: 12;
-            background: var(--bg-secondary) !important;
-        }
+        .mx-td.mx-sticky-no,
         .mx-td.mx-sticky-name {
-            z-index: 11;
-            background: var(--bg-secondary) !important;
+            position: sticky;
+            background-color: var(--mx-sticky-fill) !important;
         }
+        .mx-td.mx-sticky-no::before,
+        .mx-td.mx-sticky-name::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-color: inherit;
+            z-index: 0;
+            pointer-events: none;
+        }
+        .mx-td.mx-sticky-no > *,
+        .mx-td.mx-sticky-name > * {
+            position: relative;
+            z-index: 1;
+        }
+        .mx-td.mx-sticky-no .mx-cell-input,
         .mx-td.mx-sticky-name .mx-cell-input,
         .mx-td.mx-sticky-name .mx-cell-select {
             min-width: 0 !important;
             width: 100%;
             max-width: 100%;
             box-sizing: border-box;
+            background-color: var(--mx-sticky-input-fill) !important;
+            border-color: #333 !important;
+        }
+        .mx-td.mx-sticky-no .mx-cell-input {
+            padding: 6px 4px;
+            text-align: center;
+        }
+        .mx-th.mx-sticky-name .mx-th-inner {
+            min-width: 0;
+            overflow: hidden;
+            position: relative;
+            z-index: 1;
         }
         .mx-data-row:hover .mx-td.mx-sticky-no,
         .mx-data-row:hover .mx-td.mx-sticky-name {
-            background: rgba(229, 9, 20, 0.08) !important;
+            background-color: var(--mx-sticky-fill-hover) !important;
         }
         .mx-row-selected .mx-td.mx-sticky-no,
         .mx-row-selected .mx-td.mx-sticky-name {
-            background: rgba(229, 9, 20, 0.12) !important;
+            background-color: var(--mx-sticky-fill-selected) !important;
+        }
+        .mx-data-row:hover .mx-td.mx-sticky-no .mx-cell-input,
+        .mx-data-row:hover .mx-td.mx-sticky-no .mx-cell-select,
+        .mx-data-row:hover .mx-td.mx-sticky-name .mx-cell-input,
+        .mx-data-row:hover .mx-td.mx-sticky-name .mx-cell-select,
+        .mx-row-selected .mx-td.mx-sticky-no .mx-cell-input,
+        .mx-row-selected .mx-td.mx-sticky-no .mx-cell-select,
+        .mx-row-selected .mx-td.mx-sticky-name .mx-cell-input,
+        .mx-row-selected .mx-td.mx-sticky-name .mx-cell-select {
+            background-color: var(--mx-sticky-input-fill) !important;
         }
 
         @media (max-width: 960px) {
@@ -10546,7 +10580,7 @@
 </script>
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
-    <script src="/static/matrix-personnel.js?v=33"></script>
+    <script src="/static/matrix-personnel.js?v=34"></script>
 </body>
 
 </html>
