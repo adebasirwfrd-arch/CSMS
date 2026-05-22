@@ -1,7 +1,7 @@
 """HSE Personnel Matrix workbook API (admin UI)."""
 import os
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, Optional
 
 import requests
@@ -33,6 +33,12 @@ MATRIX_PROFILE_ROOT = os.getenv(
     "1FXk8egsOPNfNpclsis4tjL_QHazXcxwU",
 )
 
+PERSONNEL_HEALTH_SHEET_ID = "personnel_health"
+PROFILE_SHEET_ID = "personnel_data_information"
+_MCU_EXPIRY_LABEL_RE = re.compile(r"mcu\s*expired", re.I)
+_MCU_DOC_KEY_RE = re.compile(r"doc_.*mcu.*expired|mcu.*expired.*doc", re.I)
+_MCU_MONTH_ABBR = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+
 
 def _sanitize_folder_name(name: str) -> str:
     cleaned = re.sub(r'[\\/:*?"<>|]+', "-", (name or "").strip())
@@ -63,6 +69,198 @@ def _document_upload_folder(column_name: str, personnel_name: str) -> str:
 def _format_doc_cell(file_id: str, filename: str) -> str:
     safe = re.sub(r'[\\/:*?"<>|]+', "-", (filename or "document").strip()) or "document"
     return f"{file_id}::{safe}"
+
+
+def _sanitize_doc_filename(name: str) -> str:
+    return re.sub(r'[\\/:*?"<>|]+', "-", (name or "document").strip()) or "document"
+
+
+def _parse_matrix_date(value: str) -> Optional[date]:
+    s = (value or "").strip()
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s[:10] if fmt == "%Y-%m-%d" else s, fmt).date()
+        except ValueError:
+            continue
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        try:
+            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+    return None
+
+
+def _format_mcu_expiry_suffix(value: str) -> str:
+    """MCU Expired date → MAY27 (3-letter month + 2-digit year)."""
+    d = _parse_matrix_date(value)
+    if not d:
+        return "UNKNOWN"
+    return f"{_MCU_MONTH_ABBR[d.month - 1]}{d.year % 100:02d}"
+
+
+def _abbreviate_product_line(name: str) -> str:
+    s = re.sub(r'[\\/:*?"<>|]+', "-", (name or "").strip())
+    if not s:
+        return "UNKNOWN"
+    if len(s) <= 6 and " " not in s:
+        return s.upper()
+    words = re.findall(r"[A-Za-z0-9]+", s)
+    if not words:
+        return "UNKNOWN"
+    return "".join(w[0].upper() for w in words if w)[:12] or "UNKNOWN"
+
+
+def _find_product_line_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        if re.search(r"product\s*line", col.get("label", ""), re.I):
+            return col.get("id")
+    return None
+
+
+def _find_row_by_personnel_name(sheet: Dict[str, Any], personnel_name: str) -> Optional[Dict[str, Any]]:
+    name_col = _find_personnel_name_col_id(sheet)
+    if not name_col or not personnel_name:
+        return None
+    key = personnel_name.strip().lower()
+    for row in sheet.get("rows", []):
+        val = (row.get("cells", {}).get(name_col) or "").strip().lower()
+        if val == key:
+            return row
+    return None
+
+
+def _resolve_product_line_code(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    hint = (product_line_hint or "").strip()
+    if hint:
+        return _abbreviate_product_line(hint)
+
+    pl_col = _find_product_line_col_id(sheet)
+    if pl_col:
+        val = (row.get("cells", {}).get(pl_col) or "").strip()
+        if val:
+            return _abbreviate_product_line(val)
+
+    try:
+        workbook = get_workbook()
+        for sh in workbook.get("sheets", []):
+            if sh.get("id") != PROFILE_SHEET_ID:
+                continue
+            prow = _find_row_by_personnel_name(sh, personnel_name)
+            if not prow:
+                continue
+            pl_col2 = _find_product_line_col_id(sh)
+            if pl_col2:
+                val = (prow.get("cells", {}).get(pl_col2) or "").strip()
+                if val:
+                    return _abbreviate_product_line(val)
+            break
+    except Exception:
+        pass
+
+    return "UNKNOWN"
+
+
+def _is_mcu_doc_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != PERSONNEL_HEALTH_SHEET_ID:
+        return False
+    if _MCU_EXPIRY_LABEL_RE.search((column_name or "").strip()):
+        return True
+    if col_id and col_id.endswith("_doc"):
+        exp_id = col_id[:-4]
+        if sheet:
+            exp_col = next((c for c in sheet.get("columns", []) if c.get("id") == exp_id), None)
+            if exp_col and _MCU_EXPIRY_LABEL_RE.search((exp_col.get("label") or "").replace("*", "")):
+                return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col:
+            label = (col.get("label") or "").replace("Doc:", "", 1).replace("*", "").strip()
+            key = (col.get("key") or "").lower()
+            if _MCU_EXPIRY_LABEL_RE.search(label):
+                return True
+            if _MCU_DOC_KEY_RE.search(key):
+                return True
+    return False
+
+
+def _find_personnel_name_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        if re.search(r"personnel\s*name", col.get("label", ""), re.I):
+            return col.get("id")
+    return None
+
+
+def _find_mcu_expired_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        label = (col.get("label") or "").replace("*", "").strip()
+        if col.get("type") == "date" and _MCU_EXPIRY_LABEL_RE.search(label):
+            return col.get("id")
+    return None
+
+
+def _build_mcu_upload_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+
+    expiry_col = _find_mcu_expired_col_id(sheet)
+    expiry_raw = cells.get(expiry_col, "") if expiry_col else ""
+    suffix = _format_mcu_expiry_suffix(str(expiry_raw))
+
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"MCU_{pl_code}_{pname}_{suffix}"
+    return f"{base}.{ext}" if ext else base
+
+
+def _resolve_matrix_document_filename(
+    sheet_id: str,
+    row_id: str,
+    col_id: str,
+    personnel_name: str,
+    column_name: str,
+    original_filename: str,
+    product_line: str = "",
+) -> str:
+    try:
+        sheet = get_sheet(sheet_id)
+    except KeyError:
+        return _sanitize_doc_filename(original_filename)
+
+    if not _is_mcu_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _sanitize_doc_filename(original_filename)
+
+    row = next((r for r in sheet.get("rows", []) if r.get("id") == row_id), None)
+    if not row:
+        return _sanitize_doc_filename(original_filename)
+
+    return _build_mcu_upload_filename(
+        sheet, row, original_filename, personnel_name, product_line_hint=product_line
+    )
 
 
 class RowCellsBody(BaseModel):
@@ -554,9 +752,20 @@ def matrix_initiate_document_upload(
     mime_type: str = Form(default="application/octet-stream"),
     personnel_name: str = Form(...),
     column_name: str = Form(...),
+    sheet_id: Optional[str] = Form(default=None),
+    row_id: Optional[str] = Form(default=None),
+    col_id: Optional[str] = Form(default=None),
+    product_line: Optional[str] = Form(default=None),
 ):
     if not drive_service.enabled:
         raise HTTPException(status_code=503, detail="Google Drive not configured")
+    if sheet_id and row_id and col_id:
+        filename = _resolve_matrix_document_filename(
+            sheet_id, row_id, col_id, personnel_name, column_name, filename,
+            product_line=product_line or "",
+        )
+    else:
+        filename = _sanitize_doc_filename(filename)
     parent_id = _document_upload_folder(column_name, personnel_name)
     upload_url, _ = drive_service.get_resumable_upload_session(filename, mime_type, parent_id=parent_id)
     if not upload_url:
@@ -578,6 +787,7 @@ async def matrix_document_upload_chunk(
     start_byte: int = Form(...),
     total_size: int = Form(...),
     chunk_file: UploadFile = File(...),
+    product_line: Optional[str] = Form(default=None),
 ):
     try:
         chunk_data = await chunk_file.read()
@@ -599,9 +809,13 @@ async def matrix_document_upload_chunk(
         if not file_id:
             raise HTTPException(status_code=500, detail="Upload selesai tanpa file_id dari Google Drive")
 
-        stored = _format_doc_cell(file_id, filename)
+        stored_name = _resolve_matrix_document_filename(
+            sheet_id, row_id, col_id, personnel_name, column_name, filename,
+            product_line=product_line or "",
+        )
+        stored = _format_doc_cell(file_id, stored_name)
         update_row(sheet_id, row_id, {col_id: stored})
-        return {"status": "complete", "file_id": file_id, "filename": filename, "stored": stored}
+        return {"status": "complete", "file_id": file_id, "filename": stored_name, "stored": stored}
     except HTTPException:
         raise
     except Exception as e:
@@ -616,13 +830,22 @@ async def matrix_document_upload_simple(
     personnel_name: str = Form(...),
     column_name: str = Form(...),
     file: UploadFile = File(...),
+    product_line: Optional[str] = Form(default=None),
 ):
     """Direct upload — stored under root / {column_name} / {personnel_name}."""
     if not drive_service.enabled:
         raise HTTPException(status_code=503, detail="Google Drive not configured")
     content = await file.read()
     parent_id = _document_upload_folder(column_name, personnel_name)
-    safe_name = re.sub(r'[\\/:*?"<>|]+', "-", file.filename or "document")
+    safe_name = _resolve_matrix_document_filename(
+        sheet_id,
+        row_id,
+        col_id,
+        personnel_name,
+        column_name,
+        file.filename or "document",
+        product_line=product_line or "",
+    )
     file_id = drive_service.upload_file_to_parent(safe_name, content, parent_id)
     if not file_id:
         raise HTTPException(status_code=500, detail="Gagal mengunggah dokumen ke Google Drive")

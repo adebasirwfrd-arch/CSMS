@@ -206,6 +206,81 @@
         return (col?.label || '').replace(/^Doc:\s/i, '').replace(/\*/g, '').trim() || 'Documents';
     }
 
+    const MCU_MONTH_ABBR = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+    function parseMatrixDate(val) {
+        if (!val) return null;
+        const s = String(val).trim();
+        const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) return new Date(+iso[1], +iso[2] - 1, +iso[3]);
+        const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        if (dmy) return new Date(+dmy[3], +dmy[2] - 1, +dmy[1]);
+        const d = new Date(s);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    function formatMcuExpirySuffix(val) {
+        const d = parseMatrixDate(val);
+        if (!d) return 'UNKNOWN';
+        return `${MCU_MONTH_ABBR[d.getMonth()]}${String(d.getFullYear() % 100).padStart(2, '0')}`;
+    }
+
+    function abbreviateProductLine(name) {
+        const s = String(name || '').replace(/[\\/:*?"<>|]+/g, '-').trim();
+        if (!s) return 'UNKNOWN';
+        if (s.length <= 6 && !/\s/.test(s)) return s.toUpperCase();
+        const words = s.match(/[A-Za-z0-9]+/g);
+        if (!words?.length) return 'UNKNOWN';
+        return words.map(w => w[0].toUpperCase()).join('').slice(0, 12);
+    }
+
+    function resolveProductLineForRow(sheet, row, personnelName) {
+        const plCol = getProductLineCol(sheet);
+        const fromRow = plCol ? (row?.cells?.[plCol.id] || '').trim() : '';
+        if (fromRow) return fromRow;
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        const profileRow = findPersonnelProfileRow(sheet, row);
+        const fromProfile = personnelFieldFromRows(/product line/i, profileSheet, profileRow, sheet, row);
+        if (fromProfile) return fromProfile;
+        return getSelectedProductLineName();
+    }
+
+    function isMcuDocUpload(sheet, col, columnName) {
+        if (!sheet || sheet.id !== PERSONNEL_HEALTH_SHEET_ID) return false;
+        const folder = (columnName || docColumnFolderName(col) || '').trim();
+        if (/mcu\s*expired/i.test(folder)) return true;
+        if (!col) return false;
+        if (col.id && String(col.id).endsWith('_doc')) {
+            const expId = col.id.replace(/_doc$/, '');
+            const expCol = (sheet.columns || []).find(c => c.id === expId);
+            if (expCol && /mcu\s*expired/i.test((expCol.label || '').replace(/\*/g, ''))) return true;
+        }
+        const label = (col.label || '').replace(/^Doc:\s/i, '').replace(/\*/g, '').trim();
+        const key = (col.key || '').toLowerCase();
+        return /mcu\s*expired/i.test(label) || /doc_.*mcu.*expired|mcu.*expired.*doc/i.test(key);
+    }
+
+    function findMcuExpiredColumn(sheet) {
+        return (sheet?.columns || []).find(c =>
+            c.type === 'date' && /mcu\s*expired/i.test((c.label || '').replace(/\*/g, '').trim())
+        ) || null;
+    }
+
+    function buildMatrixDocFilename(sheet, row, col, file, personnelName, columnName) {
+        if (!isMcuDocUpload(sheet, col, columnName)) return file.name;
+        const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
+        const safeName = String(pname).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Unknown Personnel';
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const expiryCol = findMcuExpiredColumn(sheet);
+        const expiryRaw = expiryCol ? (row?.cells?.[expiryCol.id] || '') : '';
+        const suffix = formatMcuExpirySuffix(expiryRaw);
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `MCU_${plCode}_${safeName}_${suffix}`;
+        return ext ? `${base}.${ext}` : base;
+    }
+
     function parseDocCellValue(val) {
         if (!val) return { fileId: '', fileName: '' };
         const s = String(val).trim();
@@ -2089,6 +2164,14 @@
     async function uploadMatrixDocument(sheetId, rowId, colId, personnelName, columnName, file) {
         const CHUNK_SIZE = 2 * 1024 * 1024;
         const totalSize = file.size;
+        const sheet = sheetById(sheetId);
+        const row = sheet?.rows?.find(r => r.id === rowId);
+        const col = (sheet?.columns || []).find(c => c.id === colId);
+        const productLine = resolveProductLineForRow(sheet, row, personnelName);
+        const uploadFilename = buildMatrixDocFilename(sheet, row, col, file, personnelName, columnName);
+        const uploadFile = uploadFilename !== file.name
+            ? new File([file], uploadFilename, { type: file.type || 'application/octet-stream' })
+            : file;
 
         if (totalSize <= CHUNK_SIZE) {
             const form = new FormData();
@@ -2097,23 +2180,28 @@
             form.append('col_id', colId);
             form.append('personnel_name', personnelName);
             form.append('column_name', columnName);
-            form.append('file', file);
+            form.append('product_line', productLine);
+            form.append('file', uploadFile);
             const res = await fetch(`${apiBase()}/matrix/document/upload`, { method: 'POST', body: form });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 throw new Error(err.detail || `HTTP ${res.status}`);
             }
             const data = await res.json();
-            const stored = data.stored || `${data.file_id}::${file.name}`;
+            const stored = data.stored || `${data.file_id}::${uploadFilename}`;
             await applyCellUpdate(sheetId, rowId, colId, stored);
             return stored;
         }
 
         const initForm = new FormData();
-        initForm.append('filename', file.name);
-        initForm.append('mime_type', file.type || 'application/octet-stream');
+        initForm.append('filename', uploadFilename);
+        initForm.append('mime_type', uploadFile.type || 'application/octet-stream');
         initForm.append('personnel_name', personnelName);
         initForm.append('column_name', columnName);
+        initForm.append('sheet_id', sheetId);
+        initForm.append('row_id', rowId);
+        initForm.append('col_id', colId);
+        initForm.append('product_line', productLine);
         const initRes = await fetch(`${apiBase()}/matrix/document/initiate-upload`, { method: 'POST', body: initForm });
         if (!initRes.ok) {
             const err = await initRes.json().catch(() => ({}));
@@ -2132,11 +2220,12 @@
             chunkForm.append('col_id', colId);
             chunkForm.append('personnel_name', personnelName);
             chunkForm.append('column_name', columnName);
-            chunkForm.append('filename', file.name);
+            chunkForm.append('product_line', productLine);
+            chunkForm.append('filename', uploadFilename);
             chunkForm.append('upload_url', upload_url);
             chunkForm.append('chunk_index', String(i));
             chunkForm.append('total_chunks', String(totalChunks));
-            chunkForm.append('chunk_file', chunk, file.name);
+            chunkForm.append('chunk_file', chunk, uploadFilename);
             chunkForm.append('start_byte', String(start));
             chunkForm.append('total_size', String(totalSize));
 
