@@ -7,8 +7,10 @@
     const MCU_AUTO_VALIDITY_MONTHS = 12;
     const SKCK_AUTO_VALIDITY_MONTHS = 6;
     const SKCK_EMAIL_REMINDER_DAYS = 30;
+    const HSE_PASSPORT_AUTO_VALIDITY_MONTHS = 12;
     const MCU_RESULT_DOC_COL_ID = 'col_7_mcu_result_doc';
     const CV_DOC_COL_ID = 'col_cv_doc';
+    const KTP_UPLOAD_DOC_COL_ID = 'col_ktp_upload_doc';
     const MCU_SHARED_DRIVE_FOLDER = 'MCU Expired';
     const PHOTO_COL_ID = 'col_photo';
     const AVATAR_MALE = '/static/images/matrix-avatar-male.png';
@@ -51,7 +53,7 @@
         personnel_data_information: [
             { type: 'personnel' },
             { label: 'SKCK Expired ≤30 hari', match: /skck expiry/i, warnDays: 30, status: 'soon' },
-            { label: 'HSE Passport Expired ≤30 hari', match: /hse passport expired/i, warnDays: 30, status: 'soon' },
+            { label: 'HSE Passport Expired ≤3 bulan (90 hari)', match: /hse passport expired/i, warnDays: 90, status: 'soon' },
             { label: 'Dokumen Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
             { type: 'missing' },
         ],
@@ -178,6 +180,7 @@
         if (/^doc:\s/i.test(label)) return true;
         if (/mcu\s*result\s*doc/i.test(label)) return true;
         if (/^cv$/i.test(label)) return true;
+        if (/upload\s*ktp/i.test(label)) return true;
         if ((col.id || '').endsWith('_doc')) return true;
         if ((col.key || '').toLowerCase().startsWith('doc_')) return true;
         return false;
@@ -248,6 +251,46 @@
         };
     }
 
+    function getKtpIdCol(sheet) {
+        return getColByLabel(sheet, /ktp\s*id/i);
+    }
+
+    function isKtpUploadDocColumn(sheet, col) {
+        if (!sheet || sheet.id !== PROFILE_SHEET_ID || !col) return false;
+        const label = (col.label || '').replace(/\*/g, '').trim();
+        const key = (col.key || '').toLowerCase();
+        return /upload\s*ktp/i.test(label) || col.id === KTP_UPLOAD_DOC_COL_ID || key.includes('doc_ktp');
+    }
+
+    function findKtpUploadDocColumn(sheet) {
+        return (sheet?.columns || []).find(c => isKtpUploadDocColumn(sheet, c)) || null;
+    }
+
+    function virtualKtpUploadDocColumn() {
+        return {
+            id: KTP_UPLOAD_DOC_COL_ID,
+            key: 'doc_ktp_upload',
+            label: 'Upload KTP',
+            type: 'file',
+            filterable: false,
+            _virtual: true,
+        };
+    }
+
+    function reorderKtpUploadDocColumn(sheet) {
+        if (!sheet || sheet.id !== PROFILE_SHEET_ID) return;
+        const docCol = findKtpUploadDocColumn(sheet);
+        const ktpCol = getKtpIdCol(sheet);
+        if (!docCol || !ktpCol) return;
+        const cols = sheet.columns;
+        const docIdx = cols.findIndex(c => c.id === docCol.id);
+        const ktpIdx = cols.findIndex(c => c.id === ktpCol.id);
+        if (docIdx < 0 || ktpIdx < 0 || docIdx === ktpIdx + 1) return;
+        cols.splice(docIdx, 1);
+        const newKtpIdx = cols.findIndex(c => c.id === ktpCol.id);
+        cols.splice(newKtpIdx + 1, 0, docCol);
+    }
+
     function reorderCvDocColumn(sheet) {
         if (!sheet || sheet.id !== PROFILE_SHEET_ID) return;
         const docCol = findCvDocColumn(sheet);
@@ -303,7 +346,61 @@
         return ext ? `${base}.${ext}` : base;
     }
 
+    function isHsePassportDateColumn(sheet, col) {
+        if (!sheet || !col) return false;
+        const label = (col.label || '').replace(/\*/g, '').trim().toLowerCase();
+        return /^hse passport date$/i.test(label);
+    }
+
+    function isHsePassportDocUpload(sheet, col, columnName) {
+        if (!sheet || sheet.id !== PROFILE_SHEET_ID) return false;
+        const folder = (columnName || docColumnFolderName(col) || '').trim();
+        if (/hse passport.*expir/i.test(folder)) return true;
+        if (!col) return false;
+        if (col.id && String(col.id).endsWith('_doc')) {
+            const expId = col.id.replace(/_doc$/, '');
+            const expCol = (sheet.columns || []).find(c => c.id === expId);
+            if (expCol && /hse passport.*expir/i.test((expCol.label || '').replace(/\*/g, ''))) return true;
+        }
+        const label = (col.label || '').replace(/^Doc:\s/i, '').replace(/\*/g, '').trim();
+        const key = (col.key || '').toLowerCase();
+        return /hse passport.*expir/i.test(label) || /doc_.*hse passport.*expir|hse passport.*expir.*doc/i.test(key);
+    }
+
+    function findHsePassportExpiredColumn(sheet) {
+        return (sheet?.columns || []).find(c =>
+            c.type === 'date' && /hse passport.*expir/i.test((c.label || '').replace(/\*/g, '').trim())
+        ) || null;
+    }
+
+    function buildHsePassportDocFilename(sheet, row, file, personnelName) {
+        const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
+        const safeName = String(pname).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Unknown Personnel';
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const expiryCol = findHsePassportExpiredColumn(sheet);
+        const expiryRaw = expiryCol ? (row?.cells?.[expiryCol.id] || '') : '';
+        const suffix = formatMcuExpirySuffix(expiryRaw);
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `HSE PASSPORT_${plCode}_${safeName}_${suffix}`;
+        return ext ? `${base}.${ext}` : base;
+    }
+
+    function buildKtpUploadDocFilename(sheet, row, file, personnelName) {
+        const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
+        const safeName = String(pname).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Unknown Personnel';
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `KTP_${plCode}_${safeName}`;
+        return ext ? `${base}.${ext}` : base;
+    }
+
     function docUploadFolderName(sheet, col) {
+        if (isHsePassportDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
+        if (isKtpUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
         if (isCvDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
         if (isSkckDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
         if (isMcuResultDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
@@ -456,6 +553,12 @@
     }
 
     function buildMatrixDocFilename(sheet, row, col, file, personnelName, columnName) {
+        if (isKtpUploadDocColumn(sheet, col)) {
+            return buildKtpUploadDocFilename(sheet, row, file, personnelName);
+        }
+        if (isHsePassportDocUpload(sheet, col, columnName)) {
+            return buildHsePassportDocFilename(sheet, row, file, personnelName);
+        }
         if (isCvDocColumn(sheet, col)) {
             return buildCvDocFilename(sheet, row, file, personnelName);
         }
@@ -548,6 +651,7 @@
         if (isExpiryDateColumn(col)) return false;
         if (isMcuDateColumn(sheet, col)) return false;
         if (isSkckDateColumn(sheet, col)) return false;
+        if (isHsePassportDateColumn(sheet, col)) return false;
         const label = col.label.replace(/\*/g, '').trim().toLowerCase();
         if (/birth date|booster.*date|review \(client\) date|follow up date/i.test(label)) return false;
         return !!findPairedExpiryColumn(sheet, col);
@@ -607,6 +711,65 @@
         } catch (e) {
             input.value = oldVal;
             showToast?.(e.message || 'Gagal menyimpan SKCK Date', 'error');
+        } finally {
+            delete input.dataset.saving;
+        }
+    }
+
+    async function applyHsePassportDateWithAutoExpiry(input, sheet, col) {
+        const sheetId = input.dataset.sheet;
+        const rowId = input.dataset.row;
+        const colId = input.dataset.col;
+        const newVal = input.value;
+        const oldVal = input.dataset.prev ?? '';
+        if (oldVal === newVal) return;
+
+        if (!newVal) {
+            await matrixOnCellChange(input);
+            return;
+        }
+
+        const expiryCol = findPairedExpiryColumn(sheet, col);
+        if (!expiryCol) {
+            await matrixOnCellChange(input);
+            return;
+        }
+
+        const expiryVal = addMonthsToIsoDate(newVal, HSE_PASSPORT_AUTO_VALIDITY_MONTHS);
+        const row = sheetById(sheetId)?.rows?.find(r => r.id === rowId);
+        const oldExpiry = row?.cells?.[expiryCol.id] ?? '';
+
+        input.dataset.saving = '1';
+        try {
+            await applyCellsUpdate(sheetId, rowId, {
+                [colId]: newVal,
+                [expiryCol.id]: expiryVal,
+            });
+            input.dataset.prev = newVal;
+            pushHistory({
+                desc: 'HSE Passport Date + auto HSE Passport Expired (+12 bulan)',
+                undo: async () => {
+                    await applyCellsUpdate(sheetId, rowId, { [colId]: oldVal, [expiryCol.id]: oldExpiry });
+                    paintMatrixScreen();
+                },
+                redo: async () => {
+                    await applyCellsUpdate(sheetId, rowId, { [colId]: newVal, [expiryCol.id]: expiryVal });
+                    paintMatrixScreen();
+                },
+            });
+            const fmt = (v) => {
+                const d = parseDate(v);
+                if (!d) return v;
+                return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+            };
+            showToast?.(
+                `HSE Passport Expired otomatis ${fmt(expiryVal)} (+12 bulan). Email reminder ~3 bulan sebelum expired.`,
+                'success'
+            );
+            paintMatrixScreen();
+        } catch (e) {
+            input.value = oldVal;
+            showToast?.(e.message || 'Gagal menyimpan HSE Passport Date', 'error');
         } finally {
             delete input.dataset.saving;
         }
@@ -847,6 +1010,17 @@
         const pinned = new Set();
         const ordered = [];
         if (noCol) { ordered.push(noCol); pinned.add(noCol.id); }
+        const ktpCol = sheet.id === PROFILE_SHEET_ID ? getKtpIdCol(sheet) : null;
+        if (ktpCol) {
+            ordered.push(ktpCol);
+            pinned.add(ktpCol.id);
+            let ktpUpload = findKtpUploadDocColumn(sheet);
+            if (!ktpUpload) ktpUpload = virtualKtpUploadDocColumn();
+            if (!pinned.has(ktpUpload.id)) {
+                ordered.push(ktpUpload);
+                pinned.add(ktpUpload.id);
+            }
+        }
         if (nameCol) { ordered.push(nameCol); pinned.add(nameCol.id); }
         if (photoCol) { ordered.push(photoCol); pinned.add(photoCol.id); }
         if (posCol && !pinned.has(posCol.id)) { ordered.push(posCol); pinned.add(posCol.id); }
@@ -1606,6 +1780,7 @@
             ensureExpiryDocColumns(),
             ensureMcuResultDocColumn(),
             ensureCvDocColumn(),
+            ensureKtpUploadDocColumn(),
         ];
         Promise.allSettled(tasks).then(() => {
             if (MATRIX_STATE.workbook) paintMatrixScreen();
@@ -1726,6 +1901,48 @@
                 return;
             }
             console.warn('ensureCvDocColumn:', msg);
+        }
+    }
+
+    async function ensureKtpUploadDocColumn() {
+        const sheet = sheetById(PROFILE_SHEET_ID);
+        if (!sheet) return;
+        if (findKtpUploadDocColumn(sheet)) {
+            reorderKtpUploadDocColumn(sheet);
+            return;
+        }
+        try {
+            const col = await matrixRequest('POST', `/matrix/sheets/${PROFILE_SHEET_ID}/columns`, {
+                label: 'Upload KTP',
+                type: 'file',
+                filterable: false,
+                col_id: KTP_UPLOAD_DOC_COL_ID,
+                col_key: 'doc_ktp_upload',
+            });
+            if (col?.id) {
+                const ktpCol = getKtpIdCol(sheet);
+                const ktpIdx = ktpCol ? (sheet.columns || []).findIndex(c => c.id === ktpCol.id) : -1;
+                if (ktpIdx >= 0) sheet.columns.splice(ktpIdx + 1, 0, col);
+                else if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
+                sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                reorderKtpUploadDocColumn(sheet);
+            }
+        } catch (e) {
+            const msg = e.message || String(e);
+            if (/duplicate|23505|already exists/i.test(msg)) {
+                try {
+                    const fresh = await matrixRequest('GET', `/matrix/sheets/${PROFILE_SHEET_ID}`);
+                    if (fresh?.columns) {
+                        const idx = MATRIX_STATE.workbook.sheets.findIndex(s => s.id === PROFILE_SHEET_ID);
+                        if (idx >= 0) MATRIX_STATE.workbook.sheets[idx] = fresh;
+                        reorderKtpUploadDocColumn(fresh);
+                    }
+                } catch (reloadErr) {
+                    console.warn('ensureKtpUploadDocColumn reload:', reloadErr.message);
+                }
+                return;
+            }
+            console.warn('ensureKtpUploadDocColumn:', msg);
         }
     }
 
@@ -2496,7 +2713,11 @@
         try {
             if (input.dataset.virtual === '1') {
                 const sheet = sheetById(sheetId);
-                if (colId === CV_DOC_COL_ID || isCvDocColumn(sheet, { id: colId, label: 'CV' })) {
+                if (colId === KTP_UPLOAD_DOC_COL_ID || isKtpUploadDocColumn(sheet, { id: colId, label: 'Upload KTP' })) {
+                    colId = await ensureDocColumnBeforeUpload(
+                        sheetId, KTP_UPLOAD_DOC_COL_ID, 'Upload KTP', 'doc_ktp_upload'
+                    );
+                } else if (colId === CV_DOC_COL_ID || isCvDocColumn(sheet, { id: colId, label: 'CV' })) {
                     colId = await ensureDocColumnBeforeUpload(sheetId, CV_DOC_COL_ID, 'CV', 'doc_cv');
                 } else if (colId === MCU_RESULT_DOC_COL_ID || isMcuResultDocColumn(sheet, { id: colId, label: 'MCU Result Doc' })) {
                     colId = await ensureDocColumnBeforeUpload(
@@ -2716,6 +2937,11 @@
 
         if (isSkckDateColumn(sheet, col)) {
             await applySkckDateWithAutoExpiry(input, sheet, col);
+            return;
+        }
+
+        if (isHsePassportDateColumn(sheet, col)) {
+            await applyHsePassportDateWithAutoExpiry(input, sheet, col);
             return;
         }
 

@@ -15,8 +15,8 @@ def reminder_days_for_column(col: Dict[str, Any]) -> int:
     label = (col.get("label") or "").replace("*", "").strip().lower()
     if re.search(r"skck.*expir", label):
         return 30  # 1 bulan sebelum SKCK Expiry
-    if re.search(r"mcu.*expir", label):
-        return 90
+    if re.search(r"mcu.*expir", label) or re.search(r"hse passport.*expir", label):
+        return 90  # 3 bulan sebelum MCU / HSE Passport Expired
     return MATRIX_REMINDER_DAYS
 
 

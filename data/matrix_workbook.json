@@ -634,6 +634,15 @@
           "index": 2
         },
         {
+          "id": "col_ktp_upload_doc",
+          "key": "doc_ktp_upload",
+          "label": "Upload KTP",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 21
+        },
+        {
           "id": "col_3",
           "key": "personnel_name_3",
           "label": "Personnel Name*",
