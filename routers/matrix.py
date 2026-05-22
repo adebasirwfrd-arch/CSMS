@@ -2,7 +2,7 @@
 import os
 import re
 from datetime import date, datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -38,12 +38,29 @@ PROFILE_SHEET_ID = "personnel_data_information"
 EMERGENCY_CONTACT_SHEET_ID = "emergency_contact_information"
 TRAINING_SHEET_ID = "employee_mandatory_training"
 PELATIHAN_DRIVE_FOLDER = "PELATIHAN"
-_BST_EXPIRY_RE = re.compile(r"bst.*expir", re.I)
-_SBTC_EXPIRY_RE = re.compile(r"sbtc.*expir", re.I)
-_ONE_SIKA_EXPIRY_RE = re.compile(r"one\s*sika.*expir", re.I)
-_BST_DOC_KEY_RE = re.compile(r"doc_.*bst.*expir|bst.*expir.*doc", re.I)
-_SBTC_DOC_KEY_RE = re.compile(r"doc_.*sbtc.*expir|sbtc.*expir.*doc", re.I)
-_ONE_SIKA_DOC_KEY_RE = re.compile(r"doc_.*one\s*sika.*expir|one\s*sika.*expir.*doc", re.I)
+# Longest token first so HSE 301 matches before HSE 101 / HSE
+_PELATIHAN_FILE_PREFIXES: List[Tuple[str, str]] = [
+    ("hse 301", "HSE 301"),
+    ("hse 201", "HSE 201"),
+    ("hse 101", "HSE 101"),
+    ("hse demo room", "HSE DEMO ROOM"),
+    ("sea survival", "SEA SURVIVAL"),
+    ("well control", "WELL CONTROL"),
+    ("first aid", "FIRST AID"),
+    ("k3 umum", "K3 UMUM"),
+    ("t-bosiet", "T-BOSIET"),
+    ("one sika", "ONE SIKA"),
+    ("radiation", "RADIATION"),
+    ("forklift", "FORKLIFT"),
+    ("handak", "HANDAK"),
+    ("sbtc", "SBTC"),
+    ("h2s", "H2S"),
+    ("fire", "FIRE"),
+    ("tkpk", "TKPK"),
+    ("tkdn", "TKDN"),
+    ("bst", "BST"),
+    ("ohc", "OHC"),
+]
 _MCU_EXPIRY_LABEL_RE = re.compile(r"mcu\s*expired", re.I)
 _MCU_DOC_KEY_RE = re.compile(r"doc_.*mcu.*expired|mcu.*expired.*doc", re.I)
 _MCU_RESULT_DOC_RE = re.compile(r"mcu\s*result\s*doc", re.I)
@@ -158,6 +175,16 @@ def _document_upload_parent_for_matrix(
     return _document_upload_folder(folder, personnel_name)
 
 
+def _pelatihan_file_prefix_from_label(label: str) -> Optional[str]:
+    text = (label or "").replace("*", "").strip().lower()
+    if not re.search(r"expir", text):
+        return None
+    for token, prefix in _PELATIHAN_FILE_PREFIXES:
+        if token in text:
+            return prefix
+    return None
+
+
 def _pelatihan_doc_prefix(
     sheet_id: str,
     col_id: str,
@@ -165,36 +192,23 @@ def _pelatihan_doc_prefix(
     sheet: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     text = (column_name or "").strip()
-    if _BST_EXPIRY_RE.search(text):
-        return "BST"
-    if _SBTC_EXPIRY_RE.search(text):
-        return "SBTC"
-    if _ONE_SIKA_EXPIRY_RE.search(text):
-        return "ONE SIKA"
+    hit = _pelatihan_file_prefix_from_label(text)
+    if hit:
+        return hit
     if not sheet or not col_id:
         return None
     col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
     if not col:
         return None
     label = (col.get("label") or "").replace("Doc:", "", 1).replace("*", "").strip()
-    key = (col.get("key") or "").lower()
-    if _BST_EXPIRY_RE.search(label) or _BST_DOC_KEY_RE.search(key) or (col_id.endswith("_doc") and "bst" in col_id.lower()):
-        return "BST"
-    if _SBTC_EXPIRY_RE.search(label) or _SBTC_DOC_KEY_RE.search(key):
-        return "SBTC"
-    if _ONE_SIKA_EXPIRY_RE.search(label) or _ONE_SIKA_DOC_KEY_RE.search(key):
-        return "ONE SIKA"
+    hit = _pelatihan_file_prefix_from_label(label)
+    if hit:
+        return hit
     if col_id.endswith("_doc"):
         exp_id = col_id[:-4]
         exp_col = next((c for c in sheet.get("columns", []) if c.get("id") == exp_id), None)
         if exp_col:
-            exp_label = (exp_col.get("label") or "").replace("*", "").strip()
-            if _BST_EXPIRY_RE.search(exp_label):
-                return "BST"
-            if _SBTC_EXPIRY_RE.search(exp_label):
-                return "SBTC"
-            if _ONE_SIKA_EXPIRY_RE.search(exp_label):
-                return "ONE SIKA"
+            return _pelatihan_file_prefix_from_label((exp_col.get("label") or "").replace("*", "").strip())
     return None
 
 
@@ -210,17 +224,11 @@ def _is_pelatihan_training_doc_upload(
 
 
 def _find_training_expiry_col_id(sheet: Dict[str, Any], prefix: str) -> Optional[str]:
-    patterns = {
-        "BST": _BST_EXPIRY_RE,
-        "SBTC": _SBTC_EXPIRY_RE,
-        "ONE SIKA": _ONE_SIKA_EXPIRY_RE,
-    }
-    pattern = patterns.get(prefix)
-    if not pattern:
-        return None
     for col in sheet.get("columns", []):
+        if col.get("type") != "date":
+            continue
         label = (col.get("label") or "").replace("*", "").strip()
-        if col.get("type") == "date" and pattern.search(label):
+        if _pelatihan_file_prefix_from_label(label) == prefix:
             return col.get("id")
     return None
 

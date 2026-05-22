@@ -51,7 +51,7 @@
     function isExpiryColumn(col) {
         const label = col.label.replace(/\*/g, '').trim().toLowerCase();
         if (/^client$|^project$|^no$/.test(label)) return false;
-        if (/training date|^mcu date$|booster.*date|skck date$|hse passport date|sim date$|siml(?:\s+\d+)?\s+date$|bst training|sbtc date$|one\s*sika.*(train|traiin)|contract start|review \(client\) date|follow up date|birth date/i.test(label)
+        if (/training date|^mcu date$|booster.*date|skck date$|hse passport date|sim date$|siml(?:\s+\d+)?\s+date$|bst training|sbtc date$|one\s*sika.*(train|traiin)|t-bosiet date$|h2s training date$|sea survival training date$|hse demo room training date$|well control training date$|first aid training date$|fire training date$|ohc training date$|forklift training date$|radiation training date$|handak training date$|k3 umum training date$|tkpk training date$|tkdn training date$|hse 101 training date$|hse 201 training date$|hse 301 training date$|training agency$|contract start|review \(client\) date|follow up date|birth date/i.test(label)
             && !/expir|expired|end date|berakhir|kadaluarsa/i.test(label)) {
             return false;
         }
@@ -65,7 +65,7 @@
         if (/hse passport.*expir/i.test(l)) return 90;
         if (/siml\s*expir/i.test(l)) return 90;
         if (/^sim\s*expir/i.test(l)) return 90;
-        if (/bst.*expir|sbtc.*expir|one\s*sika.*expir/i.test(l)) return 90;
+        if (/bst.*expir|sbtc.*expir|one\s*sika.*expir|t-bosiet.*expir|h2s.*expir|sea survival.*expir|hse demo room.*expir|well control.*expir|first aid.*expir|fire.*expir|ohc.*expir|forklift.*expir|radiation.*expir|handak.*expir|k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir/i.test(l)) return 90;
         if (/skck.*expir/i.test(l)) return 30;
         if (/contract end|kontrak/i.test(l)) return 30;
         return 30;

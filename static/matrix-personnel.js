@@ -7,6 +7,33 @@
     const EMERGENCY_CONTACT_SHEET_ID = 'emergency_contact_information';
     const TRAINING_SHEET_ID = 'employee_mandatory_training';
     const PELATIHAN_SHARED_DRIVE_FOLDER = 'PELATIHAN';
+    const PELATIHAN_FILE_PREFIXES = [
+        ['hse 301', 'HSE 301'], ['hse 201', 'HSE 201'], ['hse 101', 'HSE 101'],
+        ['hse demo room', 'HSE DEMO ROOM'], ['sea survival', 'SEA SURVIVAL'],
+        ['well control', 'WELL CONTROL'], ['first aid', 'FIRST AID'], ['k3 umum', 'K3 UMUM'],
+        ['t-bosiet', 'T-BOSIET'], ['one sika', 'ONE SIKA'], ['radiation', 'RADIATION'],
+        ['forklift', 'FORKLIFT'], ['handak', 'HANDAK'], ['sbtc', 'SBTC'], ['h2s', 'H2S'],
+        ['fire', 'FIRE'], ['tkpk', 'TKPK'], ['tkdn', 'TKDN'], ['bst', 'BST'], ['ohc', 'OHC'],
+    ];
+    const PELATIHAN_EXTRA_TRAININGS = [
+        { filePrefix: 'T-BOSIET', dateLabel: 'T-BOSIET DATE', expiryLabel: 'T-BOSIET Expiry Date', agencyLabel: 'T-BOSIET TRAINING AGENCY', dateColId: 'col_25', expiryColId: 'col_26', agencyColId: 'col_27', slug: 't_bosiet' },
+        { filePrefix: 'H2S', dateLabel: 'H2S TRAINING DATE', expiryLabel: 'H2S TRAINING Expiry Date', agencyLabel: 'H2S TRAINING AGENCY', dateColId: 'col_28', expiryColId: 'col_29', agencyColId: 'col_30', slug: 'h2s' },
+        { filePrefix: 'SEA SURVIVAL', dateLabel: 'SEA SURVIVAL TRAINING DATE', expiryLabel: 'SEA SURVIVAL TRAINING Expiry Date', agencyLabel: 'SEA SURVIVAL TRAINING AGENCY', dateColId: 'col_31', expiryColId: 'col_32', agencyColId: 'col_33', slug: 'sea_survival' },
+        { filePrefix: 'HSE DEMO ROOM', dateLabel: 'HSE DEMO ROOM TRAINING DATE', expiryLabel: 'HSE DEMO ROOM TRAINING Expiry Date', agencyLabel: 'HSE DEMO ROOM TRAINING AGENCY', dateColId: 'col_34', expiryColId: 'col_35', agencyColId: 'col_36', slug: 'hse_demo_room' },
+        { filePrefix: 'WELL CONTROL', dateLabel: 'WELL CONTROL TRAINING DATE', expiryLabel: 'WELL CONTROL TRAINING Expiry Date', agencyLabel: 'WELL CONTROL TRAINING AGENCY', dateColId: 'col_37', expiryColId: 'col_38', agencyColId: 'col_39', slug: 'well_control' },
+        { filePrefix: 'FIRST AID', dateLabel: 'FIRST AID TRAINING DATE', expiryLabel: 'FIRST AID TRAINING Expiry Date', agencyLabel: 'FIRST AID TRAINING AGENCY', dateColId: 'col_40', expiryColId: 'col_41', agencyColId: 'col_42', slug: 'first_aid' },
+        { filePrefix: 'FIRE', dateLabel: 'FIRE TRAINING DATE', expiryLabel: 'FIRE TRAINING Expiry Date', agencyLabel: 'FIRE TRAINING AGENCY', dateColId: 'col_43', expiryColId: 'col_44', agencyColId: 'col_45', slug: 'fire' },
+        { filePrefix: 'OHC', dateLabel: 'OHC TRAINING DATE', expiryLabel: 'OHC TRAINING Expiry Date', agencyLabel: 'OHC TRAINING AGENCY', dateColId: 'col_46', expiryColId: 'col_47', agencyColId: 'col_48', slug: 'ohc' },
+        { filePrefix: 'FORKLIFT', dateLabel: 'FORKLIFT TRAINING DATE', expiryLabel: 'FORKLIFT TRAINING Expiry Date', agencyLabel: 'FORKLIFT TRAINING AGENCY', dateColId: 'col_49', expiryColId: 'col_50', agencyColId: 'col_51', slug: 'forklift' },
+        { filePrefix: 'RADIATION', dateLabel: 'RADIATION TRAINING DATE', expiryLabel: 'RADIATION TRAINING Expiry Date', agencyLabel: 'RADIATION TRAINING AGENCY', dateColId: 'col_52', expiryColId: 'col_53', agencyColId: 'col_54', slug: 'radiation' },
+        { filePrefix: 'HANDAK', dateLabel: 'HANDAK TRAINING DATE', expiryLabel: 'HANDAK TRAINING Expiry Date', agencyLabel: 'HANDAK TRAINING AGENCY', dateColId: 'col_55', expiryColId: 'col_56', agencyColId: 'col_57', slug: 'handak' },
+        { filePrefix: 'K3 UMUM', dateLabel: 'K3 UMUM TRAINING DATE', expiryLabel: 'K3 UMUM TRAINING Expiry Date', agencyLabel: 'K3 UMUM TRAINING AGENCY', dateColId: 'col_58', expiryColId: 'col_59', agencyColId: 'col_60', slug: 'k3_umum' },
+        { filePrefix: 'TKPK', dateLabel: 'TKPK TRAINING DATE', expiryLabel: 'TKPK TRAINING Expiry Date', agencyLabel: 'TKPK TRAINING AGENCY', dateColId: 'col_61', expiryColId: 'col_62', agencyColId: 'col_63', slug: 'tkpk' },
+        { filePrefix: 'TKDN', dateLabel: 'TKDN TRAINING DATE', expiryLabel: 'TKDN TRAINING Expiry Date', agencyLabel: 'TKDN TRAINING AGENCY', dateColId: 'col_64', expiryColId: 'col_65', agencyColId: 'col_66', slug: 'tkdn' },
+        { filePrefix: 'HSE 101', dateLabel: 'HSE 101 TRAINING DATE', expiryLabel: 'HSE 101 TRAINING Expiry Date', agencyLabel: 'HSE 101 TRAINING AGENCY', dateColId: 'col_67', expiryColId: 'col_68', agencyColId: 'col_69', slug: 'hse_101' },
+        { filePrefix: 'HSE 201', dateLabel: 'HSE 201 TRAINING DATE', expiryLabel: 'HSE 201 TRAINING Expiry Date', agencyLabel: 'HSE 201 TRAINING AGENCY', dateColId: 'col_70', expiryColId: 'col_71', agencyColId: 'col_72', slug: 'hse_201' },
+        { filePrefix: 'HSE 301', dateLabel: 'HSE 301 TRAINING DATE', expiryLabel: 'HSE 301 TRAINING Expiry Date', agencyLabel: 'HSE 301 TRAINING AGENCY', dateColId: 'col_73', expiryColId: 'col_74', agencyColId: 'col_75', slug: 'hse_301' },
+    ];
     const MCU_AUTO_VALIDITY_MONTHS = 12;
     const SKCK_AUTO_VALIDITY_MONTHS = 6;
     const SKCK_EMAIL_REMINDER_DAYS = 30;
@@ -84,6 +111,12 @@
             { label: 'BST Expired ≤3 bulan (90 hari)', match: /bst expiry/i, warnDays: 90, status: 'soon' },
             { label: 'SBTC Expired ≤3 bulan (90 hari)', match: /sbtc expiry/i, warnDays: 90, status: 'soon' },
             { label: 'One Sika Expired ≤3 bulan (90 hari)', match: /one sika expiry/i, warnDays: 90, status: 'soon' },
+            {
+                label: 'Pelatihan Tambahan ≤3 bulan (90 hari)',
+                match: /t-bosiet.*expir|h2s.*expir|sea survival.*expir|hse demo room.*expir|well control.*expir|first aid.*expir|fire.*expir|ohc.*expir|forklift.*expir|radiation.*expir|handak.*expir|k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir/i,
+                warnDays: 90,
+                status: 'soon',
+            },
             { label: 'Training Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
             { type: 'missing' },
         ],
@@ -878,24 +911,27 @@
         return ext ? `${base}.${ext}` : base;
     }
 
+    function pelatihanFilePrefixFromLabel(label) {
+        const l = (label || '').replace(/\*/g, '').trim().toLowerCase();
+        if (!/expir/i.test(l)) return null;
+        for (const [token, prefix] of PELATIHAN_FILE_PREFIXES) {
+            if (l.includes(token)) return prefix;
+        }
+        return null;
+    }
+
     function getPelatihanDocPrefix(sheet, col, columnName) {
         const folder = (columnName || docColumnFolderName(col) || '').trim();
-        if (/bst.*expir/i.test(folder)) return 'BST';
-        if (/sbtc.*expir/i.test(folder)) return 'SBTC';
-        if (/one\s*sika.*expir/i.test(folder)) return 'ONE SIKA';
+        const fromFolder = pelatihanFilePrefixFromLabel(folder);
+        if (fromFolder) return fromFolder;
         if (!sheet || !col) return null;
         const label = (col.label || '').replace(/^Doc:\s/i, '').replace(/\*/g, '').trim();
-        const key = (col.key || '').toLowerCase();
-        if (/bst.*expir/i.test(label) || /doc_.*bst.*expir/i.test(key)) return 'BST';
-        if (/sbtc.*expir/i.test(label) || /doc_.*sbtc.*expir/i.test(key)) return 'SBTC';
-        if (/one\s*sika.*expir/i.test(label) || /doc_.*one\s*sika.*expir/i.test(key)) return 'ONE SIKA';
+        const fromLabel = pelatihanFilePrefixFromLabel(label);
+        if (fromLabel) return fromLabel;
         if (col.id && String(col.id).endsWith('_doc')) {
             const expId = col.id.replace(/_doc$/, '');
             const expCol = (sheet.columns || []).find(c => c.id === expId);
-            const expLabel = (expCol?.label || '').replace(/\*/g, '').trim();
-            if (/bst.*expir/i.test(expLabel)) return 'BST';
-            if (/sbtc.*expir/i.test(expLabel)) return 'SBTC';
-            if (/one\s*sika.*expir/i.test(expLabel)) return 'ONE SIKA';
+            if (expCol) return pelatihanFilePrefixFromLabel(expCol.label);
         }
         return null;
     }
@@ -906,16 +942,42 @@
     }
 
     function findTrainingExpiryColumn(sheet, prefix) {
-        const patterns = {
-            BST: /bst.*expir/i,
-            SBTC: /sbtc.*expir/i,
-            'ONE SIKA': /one\s*sika.*expir/i,
-        };
-        const re = patterns[prefix];
-        if (!re) return null;
         return (sheet?.columns || []).find(c =>
-            c.type === 'date' && re.test((c.label || '').replace(/\*/g, '').trim())
+            c.type === 'date' && pelatihanFilePrefixFromLabel(c.label) === prefix
         ) || null;
+    }
+
+    function sortPelatihanDisplayColumns(cols, sheet) {
+        if (!sheet || sheet.id !== TRAINING_SHEET_ID || !cols.length) return cols;
+        const packageLabelSet = new Set();
+        PELATIHAN_EXTRA_TRAININGS.forEach(t => {
+            packageLabelSet.add(normColLabel(t.dateLabel));
+            packageLabelSet.add(normColLabel(t.expiryLabel));
+            packageLabelSet.add(normColLabel(t.agencyLabel));
+        });
+        const isPackageDataCol = c => packageLabelSet.has(normColLabel(c.label));
+        const isPackageDocCol = c =>
+            isDocUploadColumn(c) && getPelatihanDocPrefix(sheet, c, docColumnFolderName(c));
+        const anchorIdx = cols.findIndex(c => normColLabel(c.label) === 'one sika training location');
+        if (anchorIdx < 0) return cols;
+        const before = cols.slice(0, anchorIdx + 1);
+        const after = cols.slice(anchorIdx + 1).filter(c => !isPackageDataCol(c) && !isPackageDocCol(c));
+        const packages = [];
+        PELATIHAN_EXTRA_TRAININGS.forEach(spec => {
+            const dateCol = cols.find(c => normColLabel(c.label) === normColLabel(spec.dateLabel));
+            const expCol = cols.find(c => normColLabel(c.label) === normColLabel(spec.expiryLabel));
+            const agencyCol = cols.find(c => normColLabel(c.label) === normColLabel(spec.agencyLabel));
+            if (dateCol) packages.push(dateCol);
+            if (expCol) packages.push(expCol);
+            if (agencyCol) packages.push(agencyCol);
+            if (expCol) {
+                const docCol = cols.find(c =>
+                    (c.id === docColumnIdFor(expCol) || docColumnMatchesExpiry(c, expCol)) && isDocUploadColumn(c)
+                );
+                if (docCol) packages.push(docCol);
+            }
+        });
+        return before.concat(packages, after);
     }
 
     function buildPelatihanDocFilename(sheet, row, file, personnelName, col, columnName) {
@@ -1178,6 +1240,10 @@
             [/hse passport date/i, /hse passport expired/i],
             [/^sim date$/i, /^sim expiry date$/i],
             [/contract start/i, /contract end/i],
+            ...PELATIHAN_EXTRA_TRAININGS.map(t => [
+                new RegExp(`^${t.dateLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
+                new RegExp(t.expiryLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+            ]),
         ];
 
         for (const [srcRe, expRe] of labelPairs) {
@@ -1793,7 +1859,8 @@
             }
         });
 
-        return ordered.concat(orderedRest);
+        const merged = ordered.concat(orderedRest);
+        return sheet.id === TRAINING_SHEET_ID ? sortPelatihanDisplayColumns(merged, sheet) : merged;
     }
 
     function getColByExactLabel(sheet, label) {
@@ -2504,10 +2571,53 @@
         }
     }
 
+    async function ensurePelatihanExtraColumns() {
+        const sheet = sheetById(TRAINING_SHEET_ID);
+        if (!sheet) return;
+        let needsReload = false;
+        for (const spec of PELATIHAN_EXTRA_TRAININGS) {
+            for (const entry of [
+                { label: spec.dateLabel, type: 'date', colId: spec.dateColId, key: `${spec.slug}_date` },
+                { label: spec.expiryLabel, type: 'date', colId: spec.expiryColId, key: `${spec.slug}_expiry` },
+                { label: spec.agencyLabel, type: 'text', colId: spec.agencyColId, key: `${spec.slug}_agency` },
+            ]) {
+                const exists = (sheet.columns || []).some(c =>
+                    normColLabel(c.label) === normColLabel(entry.label) || c.id === entry.colId
+                );
+                if (exists) continue;
+                try {
+                    const col = await matrixRequest('POST', `/matrix/sheets/${TRAINING_SHEET_ID}/columns`, {
+                        label: entry.label,
+                        type: entry.type,
+                        filterable: entry.type === 'date',
+                        col_id: entry.colId,
+                        col_key: entry.key,
+                    });
+                    if (col?.id) {
+                        if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
+                        sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                        needsReload = true;
+                    }
+                } catch (e) {
+                    console.warn(`ensurePelatihanExtraColumns ${entry.label}:`, e.message);
+                }
+            }
+        }
+        if (needsReload) {
+            try {
+                const fresh = await fetchWorkbook();
+                MATRIX_STATE.workbook = fresh;
+            } catch (e) {
+                console.warn('ensurePelatihanExtraColumns reload:', e.message);
+            }
+        }
+    }
+
     function runMatrixBackgroundSetup() {
         const tasks = [
             ensureStandardColumns(),
             ensureProfilePhotoColumn(),
+            ensurePelatihanExtraColumns(),
             ensureExpiryDocColumns(),
             ensureMcuResultDocColumn(),
             ensureCvDocColumn(),
