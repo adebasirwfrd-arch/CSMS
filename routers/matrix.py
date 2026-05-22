@@ -47,6 +47,8 @@ _SKCK_DOC_KEY_RE = re.compile(r"doc_.*skck.*expir|skck.*expir.*doc", re.I)
 _KTP_UPLOAD_RE = re.compile(r"upload\s*ktp", re.I)
 _HSE_PASSPORT_EXPIRY_RE = re.compile(r"hse passport.*expir", re.I)
 _HSE_PASSPORT_DOC_KEY_RE = re.compile(r"doc_.*hse passport.*expir|hse passport.*expir.*doc", re.I)
+_SIM_EXPIRY_RE = re.compile(r"sim\s*expir", re.I)
+_SIM_UPLOAD_RE = re.compile(r"upload\s*sim", re.I)
 _MCU_MONTH_ABBR = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 
 
@@ -80,6 +82,7 @@ def _resolve_upload_folder_name(
         or _is_skck_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_ktp_upload_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_hse_passport_doc_upload(sheet_id, col_id, column_name, sheet)
+        or _is_sim_upload_doc_upload(sheet_id, col_id, column_name, sheet)
     ):
         return _MCU_DRIVE_FOLDER
     return column_name
@@ -340,6 +343,62 @@ def _build_hse_passport_upload_filename(
     return f"{base}.{ext}" if ext else base
 
 
+def _is_sim_upload_doc_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != PROFILE_SHEET_ID:
+        return False
+    if _SIM_UPLOAD_RE.search((column_name or "").strip()):
+        return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col:
+            label = (col.get("label") or "").replace("*", "").strip()
+            key = (col.get("key") or "").lower()
+            if _SIM_UPLOAD_RE.search(label):
+                return True
+            if col_id == "col_sim_upload_doc" or "doc_sim" in key:
+                return True
+    return False
+
+
+def _find_sim_expiry_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        label = (col.get("label") or "").replace("*", "").strip()
+        if col.get("type") == "date" and _SIM_EXPIRY_RE.search(label):
+            return col.get("id")
+    return None
+
+
+def _build_sim_upload_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+
+    expiry_col = _find_sim_expiry_col_id(sheet)
+    expiry_raw = cells.get(expiry_col, "") if expiry_col else ""
+    suffix = _format_mcu_expiry_suffix(str(expiry_raw))
+
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"SIM_{pl_code}_{pname}_{suffix}"
+    return f"{base}.{ext}" if ext else base
+
+
 def _is_ktp_upload_doc_upload(
     sheet_id: str,
     col_id: str,
@@ -593,6 +652,11 @@ def _resolve_matrix_document_filename(
 
     if _is_ktp_upload_doc_upload(sheet_id, col_id, column_name, sheet):
         return _build_ktp_upload_filename(
+            sheet, row, original_filename, personnel_name, product_line_hint=product_line
+        )
+
+    if _is_sim_upload_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _build_sim_upload_filename(
             sheet, row, original_filename, personnel_name, product_line_hint=product_line
         )
 

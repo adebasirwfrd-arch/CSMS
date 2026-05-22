@@ -625,13 +625,22 @@
           "index": 1
         },
         {
+          "id": "col_3",
+          "key": "personnel_name_3",
+          "label": "Personnel Name*",
+          "type": "text",
+          "filterable": true,
+          "required": true,
+          "index": 2
+        },
+        {
           "id": "col_2",
           "key": "ktp_id_2",
           "label": "KTP ID*",
           "type": "text",
           "filterable": true,
           "required": true,
-          "index": 2
+          "index": 3
         },
         {
           "id": "col_ktp_upload_doc",
@@ -640,16 +649,34 @@
           "type": "file",
           "filterable": false,
           "required": false,
-          "index": 21
+          "index": 4
         },
         {
-          "id": "col_3",
-          "key": "personnel_name_3",
-          "label": "Personnel Name*",
-          "type": "text",
+          "id": "col_sim_date",
+          "key": "sim_date",
+          "label": "SIM Date",
+          "type": "date",
           "filterable": true,
-          "required": true,
-          "index": 3
+          "required": false,
+          "index": 5
+        },
+        {
+          "id": "col_sim_expiry",
+          "key": "sim_expiry_date",
+          "label": "SIM Expiry Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 6
+        },
+        {
+          "id": "col_sim_upload_doc",
+          "key": "doc_sim_upload",
+          "label": "Upload SIM",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 7
         },
         {
           "id": "col_photo",
