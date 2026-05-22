@@ -1691,6 +1691,24 @@
         return getColByLabel(sheet, /personnel name/i);
     }
 
+    function isStickyPinColumn(col) {
+        if (!col) return false;
+        const label = normColLabel(col.label);
+        return label === 'no' || /personnel\s*name/.test(label);
+    }
+
+    function stickyThClass(col) {
+        if (!isStickyPinColumn(col)) return '';
+        const label = normColLabel(col.label);
+        if (label === 'no') return ' mx-sticky-no';
+        if (/personnel\s*name/.test(label)) return ' mx-sticky-name';
+        return '';
+    }
+
+    function stickyTdClass(col) {
+        return stickyThClass(col);
+    }
+
     function getPositionCol(sheet) {
         return getColByLabel(sheet, /position/i);
     }
@@ -3356,7 +3374,7 @@
         if (val && !pool.includes(val)) {
             options.push(`<option value="${esc(val)}" selected>${esc(val)}</option>`);
         }
-        return `<td class="mx-td mx-td-edit" onclick="event.stopPropagation()">
+        return `<td class="mx-td mx-td-edit${stickyTdClass(col)}" onclick="event.stopPropagation()">
             <select class="mx-cell-input mx-cell-select"
                 data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
                 onclick="event.stopPropagation()"
@@ -3387,7 +3405,7 @@
             ? 'onchange="matrixOnDateCellChange(this)"'
             : 'onchange="matrixOnCellChange(this)"';
         const blurHandler = inputType === 'date' ? '' : 'onblur="matrixOnCellBlur(this)"';
-        return `<td class="mx-td mx-td-edit" onclick="event.stopPropagation()">
+        return `<td class="mx-td mx-td-edit${stickyTdClass(c)}" onclick="event.stopPropagation()">
             <input class="mx-cell-input" type="${inputType}" value="${esc(val)}"
                 data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(c.id)}"
                 onclick="event.stopPropagation()"
@@ -3400,15 +3418,16 @@
     function renderTable(sheet, rows) {
         const cols = getDisplayColumns(sheet);
         const head = cols.map(c => {
+            const sticky = stickyThClass(c);
             if (c.type === 'image' || c.id === PHOTO_COL_ID) {
-                return `<th class="mx-th mx-th-photo"><span>${esc(c.label.replace(/\*/g, ''))}</span></th>`;
+                return `<th class="mx-th mx-th-photo${sticky}"><span>${esc(c.label.replace(/\*/g, ''))}</span></th>`;
             }
             if (isDocUploadColumn(c)) {
                 const shortLabel = (c.label || '').replace(/^Doc:\s/i, '').trim();
-                return `<th class="mx-th mx-th-doc"><span title="${esc(c.label.replace(/\*/g, ''))}">Upload Doc</span><span class="mx-th-doc-sub">${esc(shortLabel)}</span></th>`;
+                return `<th class="mx-th mx-th-doc${sticky}"><span title="${esc(c.label.replace(/\*/g, ''))}">Upload Doc</span><span class="mx-th-doc-sub">${esc(shortLabel)}</span></th>`;
             }
             return `
-            <th class="mx-th">
+            <th class="mx-th${sticky}">
                 <div class="mx-th-inner">
                     <span title="${esc(c.label)}">${esc(c.label.replace(/\*/g, ''))}</span>
                     <div class="mx-th-actions">
@@ -3417,7 +3436,7 @@
                     </div>
                 </div>
             </th>`;
-        }).join('') + '<th class="mx-th mx-th-sticky">Aksi</th>';
+        }).join('') + '<th class="mx-th">Aksi</th>';
 
         const body = rows.map(row => {
             const selected = row.id === MATRIX_STATE.selectedRowId ? ' mx-row-selected' : '';

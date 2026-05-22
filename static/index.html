@@ -1644,6 +1644,54 @@
         .mx-data-row:hover { background: rgba(229,9,20,0.04); }
         .mx-row-selected { background: rgba(229,9,20,0.08) !important; }
 
+        /* Sticky No + Personnel Name saat scroll horizontal */
+        .mx-th.mx-sticky-no,
+        .mx-td.mx-sticky-no {
+            position: sticky;
+            left: 0;
+            z-index: 4;
+            min-width: 28px !important;
+            width: 28px;
+            max-width: 32px;
+            padding: 8px 4px;
+            text-align: center;
+            box-sizing: border-box;
+            background: #252525;
+        }
+        .mx-td.mx-sticky-no .mx-cell-input {
+            min-width: 0 !important;
+            width: 100%;
+            max-width: 24px;
+            padding: 4px 2px;
+            text-align: center;
+            box-sizing: border-box;
+        }
+        .mx-th.mx-sticky-name,
+        .mx-td.mx-sticky-name {
+            position: sticky;
+            left: 28px;
+            z-index: 3;
+            min-width: 160px;
+            max-width: 240px;
+            background: #252525;
+            box-shadow: 4px 0 12px rgba(0, 0, 0, 0.4);
+        }
+        .mx-th.mx-sticky-no { z-index: 6; }
+        .mx-th.mx-sticky-name { z-index: 5; }
+        .mx-td.mx-sticky-no,
+        .mx-td.mx-sticky-name {
+            z-index: 2;
+            background: var(--bg-secondary);
+        }
+        .mx-data-row:hover .mx-td.mx-sticky-no,
+        .mx-data-row:hover .mx-td.mx-sticky-name {
+            background: rgba(229, 9, 20, 0.04);
+        }
+        .mx-row-selected .mx-td.mx-sticky-no,
+        .mx-row-selected .mx-td.mx-sticky-name {
+            background: rgba(229, 9, 20, 0.08) !important;
+        }
+
         @media (max-width: 960px) {
             .mx-layout { flex-direction: column; }
             .mx-sidebar { width: 100%; position: static; }
@@ -10471,7 +10519,7 @@
 </script>
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
-    <script src="/static/matrix-personnel.js?v=30"></script>
+    <script src="/static/matrix-personnel.js?v=32"></script>
 </body>
 
 </html>
