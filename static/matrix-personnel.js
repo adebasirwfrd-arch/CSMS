@@ -182,6 +182,14 @@
         'emergency_contact_information',
     ];
 
+    /** Sheets included in matrix CSV export (filter: product line, client, project). */
+    const CSV_EXPORT_SHEET_IDS = [
+        PROFILE_SHEET_ID,
+        TRAINING_SHEET_ID,
+        PERSONNEL_HEALTH_SHEET_ID,
+        EMERGENCY_CONTACT_SHEET_ID,
+    ];
+
     const SIDEBAR_TABS = SIDEBAR_SHEET_ORDER.map(id => ({ id, label: TAB_LABELS[id] }));
 
     function esc(s) {
@@ -2419,6 +2427,63 @@
         return rows;
     }
 
+    function filterRowsForExport(sheet) {
+        if (!MATRIX_STATE.filterProductLineId) return [];
+        const rows = (sheet.rows || []).filter(row => rowMatchesFilters(sheet, row));
+        return dedupeRowsForAllView(sheet, rows);
+    }
+
+    function csvEscape(val) {
+        const s = String(val ?? '').replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' ');
+        if (/[",]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+    }
+
+    function csvSafeNamePart(name) {
+        return (name || 'Unknown').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '_').slice(0, 48);
+    }
+
+    function buildMatrixCsvFilename() {
+        const pl = csvSafeNamePart(getSelectedProductLineName());
+        const client = isAllClients() ? 'ALL' : csvSafeNamePart(getSelectedClientName());
+        const project = isAllProjects() ? 'ALL' : csvSafeNamePart(getSelectedProjectName());
+        const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        return `CSMS_${pl}_${client}_${project}_Matrix_${date}.csv`;
+    }
+
+    function buildMatrixCsvExport() {
+        if (!MATRIX_STATE.workbook) throw new Error('Workbook belum dimuat');
+        if (!MATRIX_STATE.filterProductLineId) throw new Error('Pilih Product Line terlebih dahulu');
+
+        const lines = [];
+        lines.push([csvEscape('Filter Product Line'), csvEscape(getSelectedProductLineName() || '')].join(','));
+        lines.push([csvEscape('Filter Client'), csvEscape(isAllClients() ? 'ALL' : (getSelectedClientName() || ''))].join(','));
+        lines.push([csvEscape('Filter Project'), csvEscape(isAllProjects() ? 'ALL' : (getSelectedProjectName() || ''))].join(','));
+        lines.push([csvEscape('Exported At'), csvEscape(new Date().toLocaleString('id-ID'))].join(','));
+        lines.push('');
+
+        for (const sheetId of CSV_EXPORT_SHEET_IDS) {
+            const sheet = sheetById(sheetId);
+            if (!sheet) continue;
+            const title = TAB_LABELS[sheetId] || sheet.title || sheet.name;
+            const rows = filterRowsForExport(sheet);
+            const cols = getDisplayColumns(sheet).filter(c =>
+                c.type !== 'image' && c.id !== PHOTO_COL_ID
+            );
+
+            lines.push(csvEscape(`[ ${title} ]`));
+            lines.push(cols.map(c => csvEscape((c.label || '').replace(/\*/g, '').trim())).join(','));
+            for (const row of rows) {
+                lines.push(cols.map(c =>
+                    csvEscape(formatCellForPdf(sheet, c, row.cells?.[c.id]))
+                ).join(','));
+            }
+            lines.push('');
+        }
+
+        return '\uFEFF' + lines.join('\n');
+    }
+
     async function loadMasterFilters() {
         try {
             const [clientsRes, plRes, projectsRes] = await Promise.all([
@@ -3325,7 +3390,10 @@
                     <button type="button" class="mx-btn mx-btn-secondary" onclick="matrixAddColumn()">+ Kolom</button>
                     <button type="button" class="mx-btn mx-btn-secondary" onclick="matrixReload()">↻ Muat Ulang</button>
                     <button type="button" class="mx-btn mx-btn-secondary mx-btn-pdf" onclick="matrixDownloadPdf()" title="Download laporan PDF personel terpilih">
-                        <span class="mx-btn-pdf-icon" aria-hidden="true">↓</span> PDF
+                        <span class="mx-btn-dl-icon" aria-hidden="true">↓</span> PDF
+                    </button>
+                    <button type="button" class="mx-btn mx-btn-secondary mx-btn-csv" onclick="matrixDownloadCsv()" title="Download CSV semua sheet matrix sesuai filter">
+                        <span class="mx-btn-dl-icon" aria-hidden="true">↓</span> CSV
                     </button>
                 </div>
             </div>
@@ -4536,6 +4604,29 @@
                 : {},
         };
     }
+
+    window.matrixDownloadCsv = function () {
+        const btn = document.querySelector('.mx-btn-csv');
+        try {
+            const content = buildMatrixCsvExport();
+            const filename = buildMatrixCsvFilename();
+            if (btn) btn.disabled = true;
+            const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showToast?.('CSV berhasil diunduh', 'success');
+        } catch (e) {
+            showToast?.(e.message || 'Gagal mengunduh CSV', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
 
     window.matrixDownloadPdf = async function () {
         const btn = document.querySelector('.mx-btn-pdf');
