@@ -848,6 +848,240 @@
           "filterable": true,
           "required": true,
           "index": 20
+        },
+        {
+          "id": "col_hse_passport_number",
+          "key": "hse_passport_number",
+          "label": "HSE Passport Number",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 21
+        },
+        {
+          "id": "col_siml_number",
+          "key": "siml_number",
+          "label": "SIML Number",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 22
+        },
+        {
+          "id": "col_siml_location",
+          "key": "siml_location",
+          "label": "SIML Location",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 23
+        },
+        {
+          "id": "col_siml_date",
+          "key": "siml_date",
+          "label": "SIML Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 24
+        },
+        {
+          "id": "col_siml_expiry",
+          "key": "siml_expiry_date",
+          "label": "SIML Expiry Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 25
+        },
+        {
+          "id": "col_siml_upload_doc",
+          "key": "doc_siml_upload",
+          "label": "Upload SIML",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 26
+        },
+        {
+          "id": "col_siml2_number",
+          "key": "siml2_number",
+          "label": "SIML 2 Number",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 27
+        },
+        {
+          "id": "col_siml2_location",
+          "key": "siml2_location",
+          "label": "SIML 2 Location",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 28
+        },
+        {
+          "id": "col_siml2_date",
+          "key": "siml2_date",
+          "label": "SIML 2 Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 29
+        },
+        {
+          "id": "col_siml2_expiry",
+          "key": "siml2_expiry_date",
+          "label": "SIML 2 Expiry Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 30
+        },
+        {
+          "id": "col_siml2_upload_doc",
+          "key": "doc_siml2_upload",
+          "label": "Upload SIML 2",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 31
+        },
+        {
+          "id": "col_siml3_number",
+          "key": "siml3_number",
+          "label": "SIML 3 Number",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 32
+        },
+        {
+          "id": "col_siml3_location",
+          "key": "siml3_location",
+          "label": "SIML 3 Location",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 33
+        },
+        {
+          "id": "col_siml3_date",
+          "key": "siml3_date",
+          "label": "SIML 3 Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 34
+        },
+        {
+          "id": "col_siml3_expiry",
+          "key": "siml3_expiry_date",
+          "label": "SIML 3 Expiry Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 35
+        },
+        {
+          "id": "col_siml3_upload_doc",
+          "key": "doc_siml3_upload",
+          "label": "Upload SIML 3",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 36
+        },
+        {
+          "id": "col_siml4_number",
+          "key": "siml4_number",
+          "label": "SIML 4 Number",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 37
+        },
+        {
+          "id": "col_siml4_location",
+          "key": "siml4_location",
+          "label": "SIML 4 Location",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 38
+        },
+        {
+          "id": "col_siml4_date",
+          "key": "siml4_date",
+          "label": "SIML 4 Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 39
+        },
+        {
+          "id": "col_siml4_expiry",
+          "key": "siml4_expiry_date",
+          "label": "SIML 4 Expiry Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 40
+        },
+        {
+          "id": "col_siml4_upload_doc",
+          "key": "doc_siml4_upload",
+          "label": "Upload SIML 4",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 41
+        },
+        {
+          "id": "col_siml5_number",
+          "key": "siml5_number",
+          "label": "SIML 5 Number",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 42
+        },
+        {
+          "id": "col_siml5_location",
+          "key": "siml5_location",
+          "label": "SIML 5 Location",
+          "type": "text",
+          "filterable": true,
+          "required": false,
+          "index": 43
+        },
+        {
+          "id": "col_siml5_date",
+          "key": "siml5_date",
+          "label": "SIML 5 Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 44
+        },
+        {
+          "id": "col_siml5_expiry",
+          "key": "siml5_expiry_date",
+          "label": "SIML 5 Expiry Date",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 45
+        },
+        {
+          "id": "col_siml5_upload_doc",
+          "key": "doc_siml5_upload",
+          "label": "Upload SIML 5",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 46
         }
       ],
       "rows": [
@@ -874,6 +1108,7 @@
             "col_18": "",
             "col_19": "19/04/2026",
             "col_20": "18/04/2029",
+            "col_hse_passport_number": "",
             "col_photo": ""
           }
         },
@@ -900,6 +1135,7 @@
             "col_18": "",
             "col_19": "19/04/2026",
             "col_20": "18/04/2029",
+            "col_hse_passport_number": "",
             "col_photo": ""
           }
         },
@@ -926,6 +1162,7 @@
             "col_18": "",
             "col_19": "19/04/2026",
             "col_20": "18/04/2029",
+            "col_hse_passport_number": "",
             "col_photo": ""
           }
         },

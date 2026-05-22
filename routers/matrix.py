@@ -49,11 +49,15 @@ _KTP_UPLOAD_RE = re.compile(r"upload\s*ktp", re.I)
 _HSE_PASSPORT_EXPIRY_RE = re.compile(r"hse passport.*expir", re.I)
 _HSE_PASSPORT_DOC_KEY_RE = re.compile(r"doc_.*hse passport.*expir|hse passport.*expir.*doc", re.I)
 _SIM_EXPIRY_RE = re.compile(r"sim\s*expir", re.I)
-_SIM_UPLOAD_RE = re.compile(r"upload\s*sim", re.I)
+_SIM_UPLOAD_RE = re.compile(r"upload\s*sim$", re.I)
 _BPJS_UPLOAD_RE = re.compile(r"upload\s*bpjs", re.I)
 _BPJS_NUMBER_RE = re.compile(r"bpjs\s*number", re.I)
 _INSURANCE_UPLOAD_RE = re.compile(r"upload\s*insurance", re.I)
 _OTHER_INSURANCE_NUMBER_RE = re.compile(r"other\s*insurance\s*number", re.I)
+_SIML_UPLOAD_RE = re.compile(r"upload\s*siml(?:\s+(\d+))?$", re.I)
+_SIML_EXPIRY_RE = re.compile(r"siml(?:\s+\d+)?\s*expir", re.I)
+_SIML_LOCATION_RE = re.compile(r"siml(?:\s+\d+)?\s*location", re.I)
+_SIML_SLOT_COUNT = 5
 _MCU_MONTH_ABBR = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 
 
@@ -88,6 +92,7 @@ def _resolve_upload_folder_name(
         or _is_ktp_upload_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_hse_passport_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_sim_upload_doc_upload(sheet_id, col_id, column_name, sheet)
+        or _is_siml_upload_doc_upload(sheet_id, col_id, column_name, sheet)
     ):
         return _MCU_DRIVE_FOLDER
     if sheet_id == EMERGENCY_CONTACT_SHEET_ID and (
@@ -406,6 +411,108 @@ def _build_sim_upload_filename(
     if "." in orig:
         ext = orig.rsplit(".", 1)[-1].strip().lower()
     base = f"SIM_{pl_code}_{pname}_{suffix}"
+    return f"{base}.{ext}" if ext else base
+
+
+def _sanitize_doc_segment(value: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|]+', "-", (value or "").strip())
+    return cleaned or "UNKNOWN"
+
+
+def _siml_id_tag(slot: int) -> str:
+    return "" if slot == 1 else str(slot)
+
+
+def _siml_expected_col_id(slot: int, field: str) -> str:
+    tag = _siml_id_tag(slot)
+    if field == "upload":
+        return f"col_siml{tag}_upload_doc"
+    return f"col_siml{tag}_{field}"
+
+
+def _parse_siml_slot(col_id: str = "", label: str = "") -> int:
+    cid = (col_id or "").strip()
+    m = re.match(r"^col_siml(\d*)_", cid)
+    if m:
+        return int(m.group(1)) if m.group(1) else 1
+    text = (label or "").strip()
+    um = _SIML_UPLOAD_RE.search(text)
+    if um:
+        return int(um.group(1)) if um.group(1) else 1
+    return 1
+
+
+def _is_siml_upload_doc_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != PROFILE_SHEET_ID:
+        return False
+    if _SIML_UPLOAD_RE.search((column_name or "").strip()):
+        return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col:
+            label = (col.get("label") or "").replace("*", "").strip()
+            key = (col.get("key") or "").lower()
+            if _SIML_UPLOAD_RE.search(label):
+                return True
+            if re.match(r"^col_siml\d*_upload_doc$", col_id or "") or re.match(r"^doc_siml\d*_upload$", key):
+                return True
+    return False
+
+
+def _find_siml_col_id_for_slot(sheet: Dict[str, Any], slot: int, field: str) -> Optional[str]:
+    expected = _siml_expected_col_id(slot, field)
+    for col in sheet.get("columns", []):
+        if col.get("id") == expected:
+            return col.get("id")
+    for col in sheet.get("columns", []):
+        label = (col.get("label") or "").replace("*", "").strip()
+        if field == "location" and _SIML_LOCATION_RE.search(label):
+            if slot == 1 and re.match(r"^SIML\s+Location$", label, re.I):
+                return col.get("id")
+            if slot > 1 and re.match(rf"^SIML\s+{slot}\s+Location$", label, re.I):
+                return col.get("id")
+        if field == "expiry" and col.get("type") == "date" and _SIML_EXPIRY_RE.search(label):
+            if slot == 1 and re.match(r"^SIML\s+Expiry\s+Date$", label, re.I):
+                return col.get("id")
+            if slot > 1 and re.match(rf"^SIML\s+{slot}\s+Expiry\s+Date$", label, re.I):
+                return col.get("id")
+    return None
+
+
+def _build_siml_upload_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+    col_id: str = "",
+    column_name: str = "",
+) -> str:
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = _sanitize_doc_segment(pname)
+
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+
+    slot = _parse_siml_slot(col_id, column_name)
+    loc_col = _find_siml_col_id_for_slot(sheet, slot, "location")
+    location = _sanitize_doc_segment(cells.get(loc_col, "") if loc_col else "")
+
+    expiry_col = _find_siml_col_id_for_slot(sheet, slot, "expiry")
+    expiry_raw = cells.get(expiry_col, "") if expiry_col else ""
+    suffix = _format_mcu_expiry_suffix(str(expiry_raw))
+
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"SIML_{location}_{pl_code}_{pname}_{suffix}"
     return f"{base}.{ext}" if ext else base
 
 
@@ -798,6 +905,17 @@ def _resolve_matrix_document_filename(
     if _is_insurance_upload_doc_upload(sheet_id, col_id, column_name, sheet):
         return _build_insurance_upload_filename(
             sheet, row, original_filename, personnel_name, product_line_hint=product_line
+        )
+
+    if _is_siml_upload_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _build_siml_upload_filename(
+            sheet,
+            row,
+            original_filename,
+            personnel_name,
+            product_line_hint=product_line,
+            col_id=col_id,
+            column_name=column_name,
         )
 
     if _is_skck_doc_upload(sheet_id, col_id, column_name, sheet):

@@ -16,6 +16,40 @@
     const SIM_DATE_COL_ID = 'col_sim_date';
     const SIM_EXPIRY_COL_ID = 'col_sim_expiry';
     const SIM_UPLOAD_DOC_COL_ID = 'col_sim_upload_doc';
+    const HSE_PASSPORT_NUMBER_COL_ID = 'col_hse_passport_number';
+    const SIML_SLOT_COUNT = 5;
+    const SIML_AUTO_VALIDITY_MONTHS = 12;
+
+    function buildSimlSlotConfigs() {
+        const slots = [];
+        for (let n = 1; n <= SIML_SLOT_COUNT; n++) {
+            const tag = n === 1 ? '' : ` ${n}`;
+            const idTag = n === 1 ? '' : `${n}`;
+            slots.push({
+                slot: n,
+                numberColId: `col_siml${idTag}_number`,
+                locationColId: `col_siml${idTag}_location`,
+                dateColId: `col_siml${idTag}_date`,
+                expiryColId: `col_siml${idTag}_expiry`,
+                uploadColId: `col_siml${idTag}_upload_doc`,
+                numberKey: `siml${idTag}_number`,
+                locationKey: `siml${idTag}_location`,
+                dateKey: `siml${idTag}_date`,
+                expiryKey: `siml${idTag}_expiry_date`,
+                uploadKey: `doc_siml${idTag}_upload`,
+                labels: {
+                    number: `SIML${tag} Number`,
+                    location: `SIML${tag} Location`,
+                    date: `SIML${tag} Date`,
+                    expiry: `SIML${tag} Expiry Date`,
+                    upload: n === 1 ? 'Upload SIML' : `Upload SIML ${n}`,
+                },
+            });
+        }
+        return slots;
+    }
+
+    const SIML_SLOTS = buildSimlSlotConfigs();
     const BPJS_UPLOAD_DOC_COL_ID = 'col_bpjs_upload_doc';
     const INSURANCE_UPLOAD_DOC_COL_ID = 'col_insurance_upload_doc';
     const MCU_SHARED_DRIVE_FOLDER = 'MCU Expired';
@@ -61,7 +95,8 @@
             { type: 'personnel' },
             { label: 'SKCK Expired ≤30 hari', match: /skck expiry/i, warnDays: 30, status: 'soon' },
             { label: 'HSE Passport Expired ≤3 bulan (90 hari)', match: /hse passport expired/i, warnDays: 90, status: 'soon' },
-            { label: 'SIM Expiry Date ≤3 bulan (90 hari)', match: /sim expiry date/i, warnDays: 90, status: 'soon' },
+            { label: 'SIM Expiry Date ≤3 bulan (90 hari)', match: /^sim expiry date$/i, warnDays: 90, status: 'soon' },
+            { label: 'SIML Expiry ≤3 bulan (90 hari)', match: /siml(?:\s+\d+)?\s*expiry date/i, warnDays: 90, status: 'soon' },
             { label: 'Dokumen Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
             { type: 'missing' },
         ],
@@ -189,7 +224,8 @@
         if (/mcu\s*result\s*doc/i.test(label)) return true;
         if (/^cv$/i.test(label)) return true;
         if (/upload\s*ktp/i.test(label)) return true;
-        if (/upload\s*sim/i.test(label)) return true;
+        if (/^upload\s*siml(\s+\d+)?$/i.test(label)) return true;
+        if (/^upload\s*sim$/i.test(label)) return true;
         if (/upload\s*bpjs/i.test(label)) return true;
         if (/upload\s*insurance/i.test(label)) return true;
         if ((col.id || '').endsWith('_doc')) return true;
@@ -419,14 +455,161 @@
 
     function isSimExpiryColumn(col) {
         if (!col) return false;
-        return /sim\s*expir/i.test((col.label || '').replace(/\*/g, '').trim());
+        const label = (col.label || '').replace(/\*/g, '').trim().toLowerCase();
+        if (/siml/i.test(label)) return false;
+        return label === 'sim expiry date';
     }
 
     function isSimUploadDocColumn(sheet, col) {
         if (!sheet || sheet.id !== PROFILE_SHEET_ID || !col) return false;
         const label = (col.label || '').replace(/\*/g, '').trim();
         const key = (col.key || '').toLowerCase();
-        return /upload\s*sim/i.test(label) || col.id === SIM_UPLOAD_DOC_COL_ID || key.includes('doc_sim');
+        return /^upload\s*sim$/i.test(label) || col.id === SIM_UPLOAD_DOC_COL_ID || key === 'doc_sim_upload';
+    }
+
+    function getSimlSlot(slot) {
+        return SIML_SLOTS.find(s => s.slot === slot) || null;
+    }
+
+    function parseSimlSlotFromCol(col) {
+        if (!col) return null;
+        for (const s of SIML_SLOTS) {
+            const ids = [s.numberColId, s.locationColId, s.dateColId, s.expiryColId, s.uploadColId];
+            if (ids.includes(col.id)) return s.slot;
+            const label = normColLabel(col.label);
+            if ([s.labels.number, s.labels.location, s.labels.date, s.labels.expiry, s.labels.upload]
+                .some(l => normColLabel(l) === label)) {
+                return s.slot;
+            }
+        }
+        return null;
+    }
+
+    function isSimlProfileColumn(col) {
+        return parseSimlSlotFromCol(col) !== null;
+    }
+
+    function isSimlExpiryColumn(col) {
+        if (!col) return false;
+        const slot = parseSimlSlotFromCol(col);
+        if (!slot) return /siml(?:\s+\d+)?\s*expir/i.test((col.label || '').replace(/\*/g, '').trim());
+        const s = getSimlSlot(slot);
+        return col.id === s.expiryColId || normColLabel(col.label) === normColLabel(s.labels.expiry);
+    }
+
+    function isSimlDateColumn(sheet, col) {
+        if (!sheet || !col || sheet.id !== PROFILE_SHEET_ID) return false;
+        const slot = parseSimlSlotFromCol(col);
+        if (!slot) return false;
+        const s = getSimlSlot(slot);
+        return col.id === s.dateColId || normColLabel(col.label) === normColLabel(s.labels.date);
+    }
+
+    function getSimlColBySlot(sheet, slot, field) {
+        const s = getSimlSlot(slot);
+        if (!s || !sheet) return null;
+        const colId = s[`${field}ColId`];
+        return (sheet.columns || []).find(c =>
+            c.id === colId || normColLabel(c.label) === normColLabel(s.labels[field])
+        ) || null;
+    }
+
+    function isSimlUploadDocColumn(sheet, col) {
+        if (!sheet || sheet.id !== PROFILE_SHEET_ID || !col) return false;
+        const slot = parseSimlSlotFromCol(col);
+        if (!slot) return false;
+        const s = getSimlSlot(slot);
+        const label = (col.label || '').replace(/\*/g, '').trim();
+        const key = (col.key || '').toLowerCase();
+        return col.id === s.uploadColId
+            || normColLabel(label) === normColLabel(s.labels.upload)
+            || key === s.uploadKey;
+    }
+
+    function virtualSimlColumn(slot, field) {
+        const s = getSimlSlot(slot);
+        const types = { number: 'text', location: 'text', date: 'date', expiry: 'date', upload: 'file' };
+        return {
+            id: s[`${field}ColId`],
+            key: s[`${field}Key`],
+            label: s.labels[field],
+            type: types[field],
+            filterable: field !== 'upload',
+            _virtual: true,
+        };
+    }
+
+    function sanitizeSimlSegment(val) {
+        return String(val || '').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'UNKNOWN';
+    }
+
+    function findHsePassportDocColumn(sheet, usedDocIds) {
+        const expCol = findHsePassportExpiredColumn(sheet);
+        if (!expCol) return null;
+        return findDocColumnForExpiry(sheet, expCol, usedDocIds || new Set());
+    }
+
+    function simlPackageColumnsForSlot(sheet, slot) {
+        const s = getSimlSlot(slot);
+        return [
+            getSimlColBySlot(sheet, slot, 'number') || virtualSimlColumn(slot, 'number'),
+            getSimlColBySlot(sheet, slot, 'location') || virtualSimlColumn(slot, 'location'),
+            getSimlColBySlot(sheet, slot, 'date') || virtualSimlColumn(slot, 'date'),
+            getSimlColBySlot(sheet, slot, 'expiry') || virtualSimlColumn(slot, 'expiry'),
+            getSimlColBySlot(sheet, slot, 'upload') || virtualSimlColumn(slot, 'upload'),
+        ];
+    }
+
+    function appendSimlColumnsToOrder(sheet, orderedRest, placed) {
+        if (sheet.id !== PROFILE_SHEET_ID) return;
+        for (const s of SIML_SLOTS) {
+            simlPackageColumnsForSlot(sheet, s.slot).forEach(c => {
+                if (!placed.has(c.id)) {
+                    orderedRest.push(c);
+                    placed.add(c.id);
+                }
+            });
+        }
+    }
+
+    function reorderSimlColumns(sheet) {
+        if (!sheet || sheet.id !== PROFILE_SHEET_ID) return;
+        const anchor = findHsePassportDocColumn(sheet) || getHsePassportNumberCol(sheet) || findHsePassportExpiredColumn(sheet);
+        if (!anchor) return;
+        const toInsert = SIML_SLOTS.flatMap(s => [
+            getSimlColBySlot(sheet, s.slot, 'number'),
+            getSimlColBySlot(sheet, s.slot, 'location'),
+            getSimlColBySlot(sheet, s.slot, 'date'),
+            getSimlColBySlot(sheet, s.slot, 'expiry'),
+            getSimlColBySlot(sheet, s.slot, 'upload'),
+        ]).filter(Boolean);
+        if (!toInsert.length) return;
+        const cols = sheet.columns;
+        toInsert.forEach(c => {
+            const idx = cols.findIndex(x => x.id === c.id);
+            if (idx >= 0) cols.splice(idx, 1);
+        });
+        const anchorIdx = cols.findIndex(c => c.id === anchor.id);
+        if (anchorIdx < 0) return;
+        cols.splice(anchorIdx + 1, 0, ...toInsert);
+    }
+
+    function buildSimlDocFilename(sheet, row, file, personnelName, slotOrCol) {
+        const slot = typeof slotOrCol === 'number' ? slotOrCol : parseSimlSlotFromCol(slotOrCol);
+        const s = getSimlSlot(slot || 1);
+        const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
+        const safeName = sanitizeSimlSegment(pname);
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const locCol = getSimlColBySlot(sheet, s.slot, 'location');
+        const location = sanitizeSimlSegment(locCol ? (row?.cells?.[locCol.id] || '') : '');
+        const expiryCol = getSimlColBySlot(sheet, s.slot, 'expiry');
+        const expiryRaw = expiryCol ? (row?.cells?.[expiryCol.id] || '') : '';
+        const suffix = formatMcuExpirySuffix(expiryRaw);
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `SIML_${location}_${plCode}_${safeName}_${suffix}`;
+        return ext ? `${base}.${ext}` : base;
     }
 
     function findSimUploadDocColumn(sheet) {
@@ -554,9 +737,17 @@
     function isSimDocUpload(sheet, col, columnName) {
         if (!sheet || sheet.id !== PROFILE_SHEET_ID) return false;
         const folder = (columnName || docColumnFolderName(col) || '').trim();
-        if (/upload\s*sim/i.test(folder)) return true;
+        if (/^upload\s*sim$/i.test(folder)) return true;
         if (!col) return false;
         return isSimUploadDocColumn(sheet, col);
+    }
+
+    function isSimlDocUpload(sheet, col, columnName) {
+        if (!sheet || sheet.id !== PROFILE_SHEET_ID) return false;
+        const folder = (columnName || docColumnFolderName(col) || '').trim();
+        if (/^upload\s*siml(\s+\d+)?$/i.test(folder)) return true;
+        if (!col) return false;
+        return isSimlUploadDocColumn(sheet, col);
     }
 
     function buildSimDocFilename(sheet, row, file, personnelName) {
@@ -592,6 +783,46 @@
         return (sheet?.columns || []).find(c =>
             c.type === 'date' && /hse passport.*expir/i.test((c.label || '').replace(/\*/g, '').trim())
         ) || null;
+    }
+
+    function isHsePassportExpiredColumn(col) {
+        if (!col) return false;
+        return /hse passport.*expir/i.test((col.label || '').replace(/\*/g, '').trim());
+    }
+
+    function isHsePassportNumberColumn(col) {
+        if (!col) return false;
+        return /hse passport.*number/i.test((col.label || '').replace(/\*/g, '').trim())
+            || col.id === HSE_PASSPORT_NUMBER_COL_ID;
+    }
+
+    function getHsePassportNumberCol(sheet) {
+        return (sheet?.columns || []).find(c => isHsePassportNumberColumn(c)) || null;
+    }
+
+    function virtualHsePassportNumberColumn() {
+        return {
+            id: HSE_PASSPORT_NUMBER_COL_ID,
+            key: 'hse_passport_number',
+            label: 'HSE Passport Number',
+            type: 'text',
+            filterable: true,
+            _virtual: true,
+        };
+    }
+
+    function reorderHsePassportNumberColumn(sheet) {
+        if (!sheet || sheet.id !== PROFILE_SHEET_ID) return;
+        const numCol = getHsePassportNumberCol(sheet);
+        const expCol = findHsePassportExpiredColumn(sheet);
+        if (!numCol || !expCol) return;
+        const cols = sheet.columns;
+        const numIdx = cols.findIndex(c => c.id === numCol.id);
+        const expIdx = cols.findIndex(c => c.id === expCol.id);
+        if (numIdx < 0 || expIdx < 0 || numIdx === expIdx + 1) return;
+        cols.splice(numIdx, 1);
+        const newExpIdx = cols.findIndex(c => c.id === expCol.id);
+        cols.splice(newExpIdx + 1, 0, numCol);
     }
 
     function buildHsePassportDocFilename(sheet, row, file, personnelName) {
@@ -646,6 +877,7 @@
     }
 
     function docUploadFolderName(sheet, col) {
+        if (isSimlUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
         if (isInsuranceUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
         if (isBpjsUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
         if (isSimDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
@@ -803,6 +1035,9 @@
     }
 
     function buildMatrixDocFilename(sheet, row, col, file, personnelName, columnName) {
+        if (isSimlUploadDocColumn(sheet, col) || isSimlDocUpload(sheet, col, columnName)) {
+            return buildSimlDocFilename(sheet, row, file, personnelName, col);
+        }
         if (isInsuranceUploadDocColumn(sheet, col)) {
             return buildInsuranceDocFilename(sheet, row, file, personnelName);
         }
@@ -866,6 +1101,13 @@
         const cols = sheet.columns || [];
         const srcLabel = sourceCol.label.replace(/\*/g, '').trim().toLowerCase();
 
+        for (const s of SIML_SLOTS) {
+            if (normColLabel(sourceCol.label) === normColLabel(s.labels.date)) {
+                const found = cols.find(c => normColLabel(c.label) === normColLabel(s.labels.expiry));
+                if (found) return found;
+            }
+        }
+
         const labelPairs = [
             [/bst training/i, /bst expiry/i],
             [/sbtc date/i, /sbtc expiry/i],
@@ -873,7 +1115,7 @@
             [/^mcu date$/i, /mcu expired/i],
             [/skck date/i, /skck expiry/i],
             [/hse passport date/i, /hse passport expired/i],
-            [/sim date/i, /sim expiry date/i],
+            [/^sim date$/i, /^sim expiry date$/i],
             [/contract start/i, /contract end/i],
         ];
 
@@ -913,6 +1155,7 @@
         if (isSkckDateColumn(sheet, col)) return false;
         if (isHsePassportDateColumn(sheet, col)) return false;
         if (isSimDateColumn(sheet, col)) return false;
+        if (isSimlDateColumn(sheet, col)) return false;
         const label = col.label.replace(/\*/g, '').trim().toLowerCase();
         if (/birth date|booster.*date|review \(client\) date|follow up date/i.test(label)) return false;
         return !!findPairedExpiryColumn(sheet, col);
@@ -1031,6 +1274,67 @@
         } catch (e) {
             input.value = oldVal;
             showToast?.(e.message || 'Gagal menyimpan SIM Date', 'error');
+        } finally {
+            delete input.dataset.saving;
+        }
+    }
+
+    async function applySimlDateWithAutoExpiry(input, sheet, col) {
+        const sheetId = input.dataset.sheet;
+        const rowId = input.dataset.row;
+        const colId = input.dataset.col;
+        const newVal = input.value;
+        const oldVal = input.dataset.prev ?? '';
+        if (oldVal === newVal) return;
+
+        if (!newVal) {
+            await matrixOnCellChange(input);
+            return;
+        }
+
+        const expiryCol = findPairedExpiryColumn(sheet, col);
+        if (!expiryCol) {
+            await matrixOnCellChange(input);
+            return;
+        }
+
+        const slot = parseSimlSlotFromCol(col) || 1;
+        const slotCfg = getSimlSlot(slot);
+        const expiryVal = addMonthsToIsoDate(newVal, SIML_AUTO_VALIDITY_MONTHS);
+        const row = sheetById(sheetId)?.rows?.find(r => r.id === rowId);
+        const oldExpiry = row?.cells?.[expiryCol.id] ?? '';
+
+        input.dataset.saving = '1';
+        try {
+            await applyCellsUpdate(sheetId, rowId, {
+                [colId]: newVal,
+                [expiryCol.id]: expiryVal,
+            });
+            input.dataset.prev = newVal;
+            pushHistory({
+                desc: `${slotCfg.labels.date} + auto ${slotCfg.labels.expiry} (+1 tahun)`,
+                undo: async () => {
+                    await applyCellsUpdate(sheetId, rowId, { [colId]: oldVal, [expiryCol.id]: oldExpiry });
+                    paintMatrixScreen();
+                },
+                redo: async () => {
+                    await applyCellsUpdate(sheetId, rowId, { [colId]: newVal, [expiryCol.id]: expiryVal });
+                    paintMatrixScreen();
+                },
+            });
+            const fmt = (v) => {
+                const d = parseDate(v);
+                if (!d) return v;
+                return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+            };
+            showToast?.(
+                `${slotCfg.labels.expiry} otomatis ${fmt(expiryVal)} (+1 tahun). Email reminder ~3 bulan sebelum expired.`,
+                'success'
+            );
+            paintMatrixScreen();
+        } catch (e) {
+            input.value = oldVal;
+            showToast?.(e.message || `Gagal menyimpan ${slotCfg.labels.date}`, 'error');
         } finally {
             delete input.dataset.saving;
         }
@@ -1379,15 +1683,27 @@
 
         rest.forEach(c => {
             if (placed.has(c.id) || isDocUploadColumn(c)) return;
+            if (isHsePassportNumberColumn(c) || isSimlProfileColumn(c)) return;
             orderedRest.push(c);
             placed.add(c.id);
-            if (isExpiryDateColumn(c) && !isSimExpiryColumn(c)) {
+            if (isExpiryDateColumn(c) && !isSimExpiryColumn(c) && !isSimlExpiryColumn(c)) {
+                if (sheet.id === PROFILE_SHEET_ID && isHsePassportExpiredColumn(c)) {
+                    let hseNum = getHsePassportNumberCol(sheet);
+                    if (!hseNum) hseNum = virtualHsePassportNumberColumn();
+                    if (!placed.has(hseNum.id)) {
+                        orderedRest.push(hseNum);
+                        placed.add(hseNum.id);
+                    }
+                }
                 let docCol = findDocColumnForExpiry(sheet, c, usedDocIds);
                 if (!docCol) docCol = virtualDocColumnFor(c);
                 if (docCol && !placed.has(docCol.id)) {
                     orderedRest.push(docCol);
                     placed.add(docCol.id);
                     if (!docCol._virtual) usedDocIds.add(docCol.id);
+                    if (sheet.id === PROFILE_SHEET_ID && isHsePassportExpiredColumn(c)) {
+                        appendSimlColumnsToOrder(sheet, orderedRest, placed);
+                    }
                 }
             }
             if (sheet.id === EMERGENCY_CONTACT_SHEET_ID && isBpjsNumberColumn(c)) {
@@ -2136,6 +2452,8 @@
             ensureCvDocColumn(),
             ensureKtpUploadDocColumn(),
             ensureSimColumns(),
+            ensureHsePassportNumberColumn(),
+            ensureSimlColumns(),
             ensureBpjsUploadDocColumn(),
             ensureInsuranceUploadDocColumn(),
         ];
@@ -2356,6 +2674,99 @@
         }
     }
 
+    async function ensureHsePassportNumberColumn() {
+        const sheet = sheetById(PROFILE_SHEET_ID);
+        if (!sheet) return;
+        if (getHsePassportNumberCol(sheet)) {
+            reorderHsePassportNumberColumn(sheet);
+            return;
+        }
+        try {
+            const col = await matrixRequest('POST', `/matrix/sheets/${PROFILE_SHEET_ID}/columns`, {
+                label: 'HSE Passport Number',
+                type: 'text',
+                filterable: true,
+                col_id: HSE_PASSPORT_NUMBER_COL_ID,
+                col_key: 'hse_passport_number',
+            });
+            if (col?.id) {
+                const expCol = findHsePassportExpiredColumn(sheet);
+                const expIdx = expCol ? (sheet.columns || []).findIndex(c => c.id === expCol.id) : -1;
+                if (expIdx >= 0) sheet.columns.splice(expIdx + 1, 0, col);
+                else if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
+                sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                reorderHsePassportNumberColumn(sheet);
+            }
+        } catch (e) {
+            const msg = e.message || String(e);
+            if (/duplicate|23505|already exists/i.test(msg)) {
+                try {
+                    const fresh = await matrixRequest('GET', `/matrix/sheets/${PROFILE_SHEET_ID}`);
+                    if (fresh?.columns) {
+                        const idx = MATRIX_STATE.workbook.sheets.findIndex(s => s.id === PROFILE_SHEET_ID);
+                        if (idx >= 0) MATRIX_STATE.workbook.sheets[idx] = fresh;
+                        reorderHsePassportNumberColumn(fresh);
+                    }
+                } catch (reloadErr) {
+                    console.warn('ensureHsePassportNumberColumn reload:', reloadErr.message);
+                }
+                return;
+            }
+            console.warn('ensureHsePassportNumberColumn:', msg);
+        }
+    }
+
+    async function ensureSimlColumns() {
+        const sheet = sheetById(PROFILE_SHEET_ID);
+        if (!sheet) return;
+
+        const specs = SIML_SLOTS.flatMap(s => ([
+            { col_id: s.numberColId, col_key: s.numberKey, label: s.labels.number, type: 'text', filterable: true },
+            { col_id: s.locationColId, col_key: s.locationKey, label: s.labels.location, type: 'text', filterable: true },
+            { col_id: s.dateColId, col_key: s.dateKey, label: s.labels.date, type: 'date', filterable: true },
+            { col_id: s.expiryColId, col_key: s.expiryKey, label: s.labels.expiry, type: 'date', filterable: true },
+            { col_id: s.uploadColId, col_key: s.uploadKey, label: s.labels.upload, type: 'file', filterable: false },
+        ]));
+
+        for (const spec of specs) {
+            const exists = (sheet.columns || []).some(c =>
+                c.id === spec.col_id || normColLabel(c.label) === normColLabel(spec.label)
+            );
+            if (exists) continue;
+            try {
+                const col = await matrixRequest('POST', `/matrix/sheets/${PROFILE_SHEET_ID}/columns`, {
+                    label: spec.label,
+                    type: spec.type,
+                    filterable: spec.filterable,
+                    col_id: spec.col_id,
+                    col_key: spec.col_key,
+                });
+                if (col?.id) {
+                    if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
+                    sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                }
+            } catch (e) {
+                const msg = e.message || String(e);
+                if (/duplicate|23505|already exists/i.test(msg)) {
+                    try {
+                        const fresh = await matrixRequest('GET', `/matrix/sheets/${PROFILE_SHEET_ID}`);
+                        if (fresh?.columns) {
+                            const idx = MATRIX_STATE.workbook.sheets.findIndex(s => s.id === PROFILE_SHEET_ID);
+                            if (idx >= 0) MATRIX_STATE.workbook.sheets[idx] = fresh;
+                        }
+                    } catch (reloadErr) {
+                        console.warn('ensureSimlColumns reload:', reloadErr.message);
+                    }
+                    continue;
+                }
+                console.warn(`ensureSimlColumns ${spec.label}:`, msg);
+            }
+        }
+
+        const active = sheetById(PROFILE_SHEET_ID) || sheet;
+        reorderSimlColumns(active);
+    }
+
     async function ensureBpjsUploadDocColumn() {
         const sheet = sheetById(EMERGENCY_CONTACT_SHEET_ID);
         if (!sheet) return;
@@ -2490,7 +2901,9 @@
         try {
             for (const sheet of MATRIX_STATE.workbook.sheets) {
                 const usedDocIds = new Set();
-                for (const expCol of (sheet.columns || []).filter(c => isExpiryDateColumn(c) && !isSimExpiryColumn(c))) {
+                for (const expCol of (sheet.columns || []).filter(c =>
+                    isExpiryDateColumn(c) && !isSimExpiryColumn(c) && !isSimlExpiryColumn(c)
+                )) {
                     const existing = findDocColumnForExpiry(sheet, expCol, usedDocIds);
                     if (existing) {
                         usedDocIds.add(existing.id);
@@ -3223,18 +3636,27 @@
                     colId = await ensureDocColumnBeforeUpload(
                         sheetId, INSURANCE_UPLOAD_DOC_COL_ID, 'Upload Insurance', 'doc_insurance_upload'
                     );
-                } else if (colId === CV_DOC_COL_ID || isCvDocColumn(sheet, { id: colId, label: 'CV' })) {
-                    colId = await ensureDocColumnBeforeUpload(sheetId, CV_DOC_COL_ID, 'CV', 'doc_cv');
-                } else if (colId === MCU_RESULT_DOC_COL_ID || isMcuResultDocColumn(sheet, { id: colId, label: 'MCU Result Doc' })) {
-                    colId = await ensureDocColumnBeforeUpload(
-                        sheetId, MCU_RESULT_DOC_COL_ID, 'MCU Result Doc', 'doc_mcu_result_doc_7'
-                    );
                 } else {
-                    const expId = colId.replace(/_doc$/, '');
-                    const expCol = (sheet?.columns || []).find(c => c.id === expId);
-                    const docKey = `doc_${expCol?.key || expId}`;
-                    const docLabel = expCol ? docColumnLabelFor(expCol) : `Doc: ${columnName}`;
-                    colId = await ensureDocColumnBeforeUpload(sheetId, colId, docLabel, docKey);
+                    const simlSlot = SIML_SLOTS.find(s =>
+                        colId === s.uploadColId || isSimlUploadDocColumn(sheet, { id: colId, label: s.labels.upload })
+                    );
+                    if (simlSlot) {
+                        colId = await ensureDocColumnBeforeUpload(
+                            sheetId, simlSlot.uploadColId, simlSlot.labels.upload, simlSlot.uploadKey
+                        );
+                    } else if (colId === CV_DOC_COL_ID || isCvDocColumn(sheet, { id: colId, label: 'CV' })) {
+                        colId = await ensureDocColumnBeforeUpload(sheetId, CV_DOC_COL_ID, 'CV', 'doc_cv');
+                    } else if (colId === MCU_RESULT_DOC_COL_ID || isMcuResultDocColumn(sheet, { id: colId, label: 'MCU Result Doc' })) {
+                        colId = await ensureDocColumnBeforeUpload(
+                            sheetId, MCU_RESULT_DOC_COL_ID, 'MCU Result Doc', 'doc_mcu_result_doc_7'
+                        );
+                    } else {
+                        const expId = colId.replace(/_doc$/, '');
+                        const expCol = (sheet?.columns || []).find(c => c.id === expId);
+                        const docKey = `doc_${expCol?.key || expId}`;
+                        const docLabel = expCol ? docColumnLabelFor(expCol) : `Doc: ${columnName}`;
+                        colId = await ensureDocColumnBeforeUpload(sheetId, colId, docLabel, docKey);
+                    }
                 }
                 input.dataset.col = colId;
                 input.dataset.virtual = '0';
@@ -3453,6 +3875,11 @@
 
         if (isSimDateColumn(sheet, col)) {
             await applySimDateWithAutoExpiry(input, sheet, col);
+            return;
+        }
+
+        if (isSimlDateColumn(sheet, col)) {
+            await applySimlDateWithAutoExpiry(input, sheet, col);
             return;
         }
 

@@ -51,7 +51,7 @@
     function isExpiryColumn(col) {
         const label = col.label.replace(/\*/g, '').trim().toLowerCase();
         if (/^client$|^project$|^no$/.test(label)) return false;
-        if (/training date|^mcu date$|booster.*date|skck date$|hse passport date|sim date$|contract start|review \(client\) date|follow up date|birth date/i.test(label)
+        if (/training date|^mcu date$|booster.*date|skck date$|hse passport date|sim date$|siml(?:\s+\d+)?\s+date$|contract start|review \(client\) date|follow up date|birth date/i.test(label)
             && !/expir|expired|end date|berakhir|kadaluarsa/i.test(label)) {
             return false;
         }
@@ -63,7 +63,8 @@
         const l = (label || '').toLowerCase();
         if (/mcu/i.test(l)) return 90;
         if (/hse passport.*expir/i.test(l)) return 90;
-        if (/sim\s*expir/i.test(l)) return 90;
+        if (/siml\s*expir/i.test(l)) return 90;
+        if (/^sim\s*expir/i.test(l)) return 90;
         if (/skck.*expir/i.test(l)) return 30;
         if (/contract end|kontrak/i.test(l)) return 30;
         return 30;
