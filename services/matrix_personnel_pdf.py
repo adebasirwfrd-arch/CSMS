@@ -128,6 +128,16 @@ def _kpi_label(k: Dict[str, Any]) -> str:
     return (k.get("short_label") or k.get("label") or "").strip()
 
 
+def _para_escape(text: str) -> str:
+    """Escape text for ReportLab Paragraph mini-html."""
+    return (
+        (text or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
 def _kpi_table(kpis: List[Dict[str, Any]], styles) -> Table:
     if not kpis:
         return Spacer(1, 4)
@@ -158,12 +168,10 @@ def _kpi_table(kpis: List[Dict[str, Any]], styles) -> Table:
         accent_hex = (k.get("color") or "#C41E3A").strip()
         if not accent_hex.startswith("#"):
             accent_hex = "#C41E3A"
-        short = _kpi_label(k)
-        full = (k.get("label") or short).strip()
-        tip = f' title="{full}"' if full and full != short else ""
+        short = _para_escape(_kpi_label(k))
         row_labels.append(
             Paragraph(
-                f'<font color="{accent_hex}"{tip}>{short}</font>',
+                f'<font color="{accent_hex}">{short}</font>',
                 label_style,
             )
         )
