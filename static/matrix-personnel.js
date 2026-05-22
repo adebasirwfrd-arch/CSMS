@@ -1253,9 +1253,9 @@
         const fromRow = posCol ? (row?.cells?.[posCol.id] || '').trim() : '';
         if (fromRow) return fromRow;
         const trainingSheet = sheetById('employee_mandatory_training');
-        const profileRow = sheet?.id === PROFILE_SHEET_ID ? row : findPersonnelProfileRow(sheet, row);
+        const profileRow = sheet?.id === PROFILE_SHEET_ID ? row : profileContextRow(sheet, row);
         if (trainingSheet && profileRow) {
-            const tr = findRowInSheet(trainingSheet, profileRow);
+            const tr = findRowInSheet(trainingSheet, profileRow, sheet);
             const tPos = getPositionCol(trainingSheet);
             if (tr && tPos) return (tr.cells?.[tPos.id] || '').trim();
         }
@@ -1325,7 +1325,7 @@
         const fromRow = plCol ? (row?.cells?.[plCol.id] || '').trim() : '';
         if (fromRow) return fromRow;
         const profileSheet = sheetById(PROFILE_SHEET_ID);
-        const profileRow = findPersonnelProfileRow(sheet, row);
+        const profileRow = profileContextRow(sheet, row);
         const fromProfile = personnelFieldFromRows(/product line/i, profileSheet, profileRow, sheet, row);
         if (fromProfile) return fromProfile;
         return getSelectedProductLineName();
@@ -1459,8 +1459,12 @@
     }
 
     function rowPersonnelName(sheet, row) {
+        if (!sheet || !row) return 'Unknown Personnel';
+        const nameCol = getPersonnelNameCol(sheet) || getColByLabel(sheet, /personnel name/i);
+        const direct = nameCol ? (row.cells?.[nameCol.id] || '').trim() : '';
+        if (direct) return direct;
         const profileRow = findPersonnelProfileRow(sheet, row);
-        return profileName(profileRow) || profileName(row) || 'Unknown Personnel';
+        return profileName(profileRow) || 'Unknown Personnel';
     }
 
     function findPairedExpiryColumn(sheet, sourceCol) {
@@ -2159,21 +2163,49 @@
         return (sheet?.columns || []).find(c => c.label.replace(/\*/g, '').trim().toLowerCase() === target);
     }
 
-    function getPersonnelKeys(profileRow) {
+    function rowNameForCrossSheetLookup(row, preferSheet) {
+        if (!row) return '';
+        const ordered = [];
+        const seen = new Set();
+        if (preferSheet) {
+            ordered.push(preferSheet);
+            seen.add(preferSheet.id);
+        }
+        for (const s of MATRIX_STATE.workbook?.sheets || []) {
+            if (!s || seen.has(s.id)) continue;
+            ordered.push(s);
+        }
+        for (const s of ordered) {
+            const col = getPersonnelNameCol(s) || getColByLabel(s, /personnel name/i);
+            if (!col) continue;
+            const n = (row.cells?.[col.id] || '').trim();
+            if (n) return n;
+        }
+        return '';
+    }
+
+    function getPersonnelKeys(profileRow, sourceSheet) {
         const profileSheet = sheetById(PROFILE_SHEET_ID);
-        const ktpCol = getColByLabel(profileSheet, /ktp/i);
-        const nameCol = getColByLabel(profileSheet, /personnel name/i);
+        if (isProfileSheetRow(profileRow)) {
+            const ktpCol = getColByLabel(profileSheet, /ktp/i);
+            const nameCol = getColByLabel(profileSheet, /personnel name/i);
+            return {
+                ktp: ktpCol ? (profileRow?.cells?.[ktpCol.id] || '').trim() : '',
+                name: nameCol ? (profileRow?.cells?.[nameCol.id] || '').trim() : '',
+            };
+        }
+        const ktpCol = sourceSheet ? getColByLabel(sourceSheet, /ktp/i) : null;
         return {
             ktp: ktpCol ? (profileRow?.cells?.[ktpCol.id] || '').trim() : '',
-            name: nameCol ? (profileRow?.cells?.[nameCol.id] || '').trim() : '',
+            name: rowNameForCrossSheetLookup(profileRow, sourceSheet),
         };
     }
 
-    function findRowInSheet(targetSheet, profileRow) {
+    function findRowInSheet(targetSheet, profileRow, sourceSheet) {
         if (!targetSheet || !profileRow) return null;
-        if (targetSheet.id === PROFILE_SHEET_ID) return profileRow;
+        if (targetSheet.id === PROFILE_SHEET_ID && isProfileSheetRow(profileRow)) return profileRow;
 
-        const { ktp, name } = getPersonnelKeys(profileRow);
+        const { ktp, name } = getPersonnelKeys(profileRow, sourceSheet);
         const ktpCol = getColByLabel(targetSheet, /ktp/i);
         const nameCol = getColByLabel(targetSheet, /personnel name/i);
 
@@ -2192,7 +2224,7 @@
         if (targetSheet.id === 'contract_information') {
             const trainingSheet = sheetById('employee_mandatory_training');
             if (trainingSheet) {
-                const trainingRow = findRowInSheet(trainingSheet, profileRow);
+                const trainingRow = findRowInSheet(trainingSheet, profileRow, sourceSheet);
                 if (trainingRow) {
                     const noCol = getColByExactLabel(trainingSheet, 'No');
                     const noVal = noCol ? (trainingRow.cells?.[noCol.id] || '').trim() : '';
@@ -2226,25 +2258,24 @@
         return null;
     }
 
-    function findRowInSheetAtCurrentLevel(targetSheet, profileRow) {
+    function findRowInSheetAtCurrentLevel(targetSheet, profileRow, sourceSheet) {
         if (!targetSheet || !profileRow) return null;
-        if (targetSheet.id === PROFILE_SHEET_ID) return profileRow;
+        if (targetSheet.id === PROFILE_SHEET_ID && isProfileSheetRow(profileRow)) return profileRow;
 
-        const profileSheet = sheetById(PROFILE_SHEET_ID);
-        const profileNameCol = getPersonnelNameCol(profileSheet);
-        const name = profileNameCol ? (profileRow.cells?.[profileNameCol.id] || '').trim() : '';
+        const name = rowNameForCrossSheetLookup(profileRow, sourceSheet);
         if (name) {
             const atLevel = findPersonnelRowAtLevel(
                 targetSheet, name, getSelectedProductLineName(), getCurrentFilterLevel()
             );
             if (atLevel) return atLevel;
         }
-        return findRowInSheet(targetSheet, profileRow);
+        return findRowInSheet(targetSheet, profileRow, sourceSheet);
     }
 
     function findPersonnelProfileRow(sheet, row) {
         const profileSheet = sheetById(PROFILE_SHEET_ID);
-        if (!profileSheet || !row) return row;
+        if (!row) return null;
+        if (!profileSheet) return null;
         if (sheet?.id === PROFILE_SHEET_ID) return row;
 
         const ktpCol = getColByLabel(sheet, /ktp/i);
@@ -2266,7 +2297,23 @@
             );
             if (match) return match;
         }
-        return row;
+        return null;
+    }
+
+    function isProfileSheetRow(row) {
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        return !!(profileSheet && row && (profileSheet.rows || []).some(r => r.id === row.id));
+    }
+
+    function profileContextRow(sheet, row) {
+        const matched = findPersonnelProfileRow(sheet, row);
+        if (matched && isProfileSheetRow(matched)) return matched;
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        if (profileSheet && row) {
+            const linked = findRowInSheet(profileSheet, row, sheet);
+            if (linked) return linked;
+        }
+        return null;
     }
 
     function getPhotoCol(sheet) {
@@ -2278,19 +2325,21 @@
     }
 
     function profilePhotoFileId(profileRow) {
-        if (!profileRow) return '';
+        if (!isProfileSheetRow(profileRow)) return '';
         const profileSheet = sheetById(PROFILE_SHEET_ID);
         const cid = photoColId(profileSheet);
         return (profileRow.cells?.[cid] || '').trim();
     }
 
     function profileGender(profileRow) {
+        if (!isProfileSheetRow(profileRow)) return '';
         const profileSheet = sheetById(PROFILE_SHEET_ID);
         const genderCol = getColByLabel(profileSheet, /gender/i);
         return genderCol ? (profileRow?.cells?.[genderCol.id] || '') : '';
     }
 
     function profileName(profileRow) {
+        if (!isProfileSheetRow(profileRow)) return '';
         const profileSheet = sheetById(PROFILE_SHEET_ID);
         const nameCol = getColByLabel(profileSheet, /personnel name/i);
         return nameCol ? (profileRow?.cells?.[nameCol.id] || '').trim() : '';
@@ -2310,10 +2359,13 @@
         return '';
     }
 
-    function avatarSrcForProfile(profileRow) {
+    function avatarSrcForProfile(profileRow, activeSheet, activeRow) {
         const fileId = profilePhotoFileId(profileRow);
         if (fileId) return photoViewUrl(fileId);
-        return defaultAvatar(profileGender(profileRow));
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
+        const gender = personnelFieldFromRows(/gender/i, profileSheet, profileRow, activeSheet, activeRow)
+            || profileGender(profileRow);
+        return defaultAvatar(gender);
     }
 
     function normalizePersonnelName(name) {
@@ -3706,7 +3758,7 @@
         const summary = computeSheetSummary(sheet);
         const row = rows.find(r => r.id === MATRIX_STATE.selectedRowId);
         const profileRow = row ? findPersonnelProfileRow(sheet, row) : null;
-        const name = profileName(profileRow) || rowPersonnelName(sheet, row) || '';
+        const name = rowPersonnelName(sheet, row) || profileName(profileRow) || '';
         requestAnimationFrame(() => {
             window.renderMatrixSheetCharts(sheet, rows, summary, row, name);
         });
@@ -3795,11 +3847,13 @@
 
     function renderPhotoCell(sheet, row, col) {
         const profileRow = findPersonnelProfileRow(sheet, row);
+        const profileSheet = sheetById(PROFILE_SHEET_ID);
         const fileId = profilePhotoFileId(profileRow);
-        const gender = profileGender(profileRow);
+        const gender = personnelFieldFromRows(/gender/i, profileSheet, profileRow, sheet, row)
+            || profileGender(profileRow);
         const src = fileId ? photoViewUrl(fileId) : defaultAvatar(gender);
         const canUpload = sheet.id === PROFILE_SHEET_ID;
-        const name = profileName(profileRow) || profileName(row) || 'Personnel';
+        const name = rowPersonnelName(sheet, row);
         const uploadBtn = canUpload
             ? `<button type="button" class="mx-doc-btn mx-photo-btn"
                 onclick="matrixTriggerPhotoUpload('${esc(row.id)}', event)">📷 Upload</button>`
@@ -3962,7 +4016,9 @@
         if (activeSheet?.id === sheetId && activeRow) {
             row = activeRow;
         } else {
-            row = findRowInSheetAtCurrentLevel(sheet, profileRow);
+            const lookup = profileRow || activeRow;
+            row = lookup ? findRowInSheetAtCurrentLevel(sheet, lookup, activeSheet) : null;
+            if (!row && activeRow) row = findRowInSheet(sheet, activeRow, activeSheet);
         }
         if (!row) return { items: [], hasRow: false };
 
@@ -3989,14 +4045,16 @@
 
         const profileSheet = sheetById(PROFILE_SHEET_ID) || sheet;
         const profileRow = findPersonnelProfileRow(sheet, activeRow);
-        const name = profileName(profileRow) || rowPersonnelName(sheet, activeRow) || 'Personnel';
-        const gender = profileGender(profileRow);
-        const productLine = personnelFieldFromRows(/product line/i, profileSheet, profileRow, sheet, activeRow)
+        const contextRow = profileContextRow(sheet, activeRow);
+        const name = rowPersonnelName(sheet, activeRow) || profileName(profileRow) || 'Personnel';
+        const gender = personnelFieldFromRows(/gender/i, profileSheet, contextRow, sheet, activeRow)
+            || profileGender(profileRow);
+        const productLine = personnelFieldFromRows(/product line/i, profileSheet, contextRow, sheet, activeRow)
             || getSelectedProductLineName();
-        const position = personnelFieldFromRows(/^position/i, profileSheet, profileRow, sheet, activeRow);
-        const avatar = avatarSrcForProfile(profileRow);
+        const position = personnelFieldFromRows(/^position/i, profileSheet, contextRow, sheet, activeRow);
+        const avatar = avatarSrcForProfile(profileRow, sheet, activeRow);
         const tabId = MATRIX_STATE.sidebarTab;
-        const { items: fields, hasRow } = sidebarFieldRowsForSheet(tabId, profileRow, sheet, activeRow);
+        const { items: fields, hasRow } = sidebarFieldRowsForSheet(tabId, contextRow, sheet, activeRow);
         const tabLabel = TAB_LABELS[tabId] || tabId;
 
         const tabs = SIDEBAR_TABS.map(t =>
@@ -4531,7 +4589,7 @@
     window.matrixOnTabChange = function (sheetId) {
         const prevSheet = activeSheet();
         const prevRow = prevSheet?.rows?.find(r => r.id === MATRIX_STATE.selectedRowId);
-        const profileRow = prevRow ? findPersonnelProfileRow(prevSheet, prevRow) : null;
+        const profileRow = prevRow ? profileContextRow(prevSheet, prevRow) : null;
 
         MATRIX_STATE.activeSheetId = sheetId;
         MATRIX_STATE.search = '';
@@ -4541,7 +4599,7 @@
 
         const newSheet = sheetById(sheetId);
         if (profileRow && newSheet) {
-            const match = findRowInSheetAtCurrentLevel(newSheet, profileRow);
+            const match = findRowInSheetAtCurrentLevel(newSheet, profileRow, prevSheet);
             MATRIX_STATE.selectedRowId = match?.id || null;
         } else {
             MATRIX_STATE.selectedRowId = null;
@@ -4924,9 +4982,12 @@
 
         const summary = computeSheetSummary(sheet);
         const profileRow = findPersonnelProfileRow(sheet, row);
+        const contextRow = profileContextRow(sheet, row);
         const profileSheet = sheetById(PROFILE_SHEET_ID) || sheet;
         const tabLabel = TAB_LABELS[sheet.id] || sheet.title || sheet.name;
-        const { items: sidebarFields } = sidebarFieldRowsForSheet(MATRIX_STATE.sidebarTab, profileRow);
+        const { items: sidebarFields } = sidebarFieldRowsForSheet(
+            MATRIX_STATE.sidebarTab, contextRow, sheet, row
+        );
         const fields = sidebarFields
             .filter(f => f.value && f.value !== '—')
             .map(f => ({ label: f.label, value: f.value }));
@@ -4982,10 +5043,10 @@
                 color: k.color || '#C41E3A',
             })),
             personnel: {
-                name: profileName(profileRow) || rowPersonnelName(sheet, row) || 'Personnel',
-                product_line: personnelFieldFromRows(/product line/i, profileSheet, profileRow, sheet, row)
+                name: rowPersonnelName(sheet, row) || profileName(profileRow) || 'Personnel',
+                product_line: personnelFieldFromRows(/product line/i, profileSheet, contextRow, sheet, row)
                     || getSelectedProductLineName() || '',
-                position: personnelFieldFromRows(/^position/i, profileSheet, profileRow, sheet, row)
+                position: personnelFieldFromRows(/^position/i, profileSheet, contextRow, sheet, row)
                     || resolvePositionForRow(sheet, row) || '',
                 photo_file_id: profilePhotoFileId(profileRow) || '',
                 fields,
@@ -5000,7 +5061,7 @@
             charts: { compliance, expiry_days: expiryDays },
             chart_data: (() => {
                 const profileRow = findPersonnelProfileRow(sheet, row);
-                const name = profileName(profileRow) || rowPersonnelName(sheet, row) || '';
+                const name = rowPersonnelName(sheet, row) || profileName(profileRow) || '';
                 return typeof window.buildMatrixChartDataForPdf === 'function'
                     ? window.buildMatrixChartDataForPdf(sheet, rows, summary, row, name)
                     : {};
