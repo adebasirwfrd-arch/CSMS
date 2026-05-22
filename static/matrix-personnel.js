@@ -3850,7 +3850,7 @@
                 return `<option value="${esc(pl.name)}"${sel}>${esc(pl.name)}</option>`;
             })
         );
-        return `<td class="mx-td mx-td-edit" onclick="event.stopPropagation()">
+        return `<td class="mx-td mx-td-edit">
             <select class="mx-cell-input mx-cell-select"
                 data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
                 onclick="event.stopPropagation()"
@@ -3870,7 +3870,7 @@
         if (val && !pool.includes(val)) {
             options.push(`<option value="${esc(val)}" selected>${esc(val)}</option>`);
         }
-        return `<td class="mx-td mx-td-edit${stickyTdClass(col)}" onclick="event.stopPropagation()">
+        return `<td class="mx-td mx-td-edit${stickyTdClass(col)}">
             <select class="mx-cell-input mx-cell-select"
                 data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(col.id)}"
                 onclick="event.stopPropagation()"
@@ -3901,7 +3901,7 @@
             ? 'onchange="matrixOnDateCellChange(this)"'
             : 'onchange="matrixOnCellChange(this)"';
         const blurHandler = inputType === 'date' ? '' : 'onblur="matrixOnCellBlur(this)"';
-        return `<td class="mx-td mx-td-edit${stickyTdClass(c)}" onclick="event.stopPropagation()">
+        return `<td class="mx-td mx-td-edit${stickyTdClass(c)}">
             <input class="mx-cell-input" type="${inputType}" value="${esc(val)}"
                 data-sheet="${esc(sheet.id)}" data-row="${esc(row.id)}" data-col="${esc(c.id)}"
                 onclick="event.stopPropagation()"
@@ -3955,10 +3955,15 @@
         </div>`;
     }
 
-    function sidebarFieldRowsForSheet(sheetId, profileRow) {
+    function sidebarFieldRowsForSheet(sheetId, profileRow, activeSheet, activeRow) {
         const sheet = sheetById(sheetId);
         if (!sheet) return { items: [], hasRow: false };
-        const row = findRowInSheetAtCurrentLevel(sheet, profileRow);
+        let row = null;
+        if (activeSheet?.id === sheetId && activeRow) {
+            row = activeRow;
+        } else {
+            row = findRowInSheetAtCurrentLevel(sheet, profileRow);
+        }
         if (!row) return { items: [], hasRow: false };
 
         const items = [];
@@ -3984,14 +3989,14 @@
 
         const profileSheet = sheetById(PROFILE_SHEET_ID) || sheet;
         const profileRow = findPersonnelProfileRow(sheet, activeRow);
-        const name = profileName(profileRow) || 'Personnel';
+        const name = profileName(profileRow) || rowPersonnelName(sheet, activeRow) || 'Personnel';
         const gender = profileGender(profileRow);
         const productLine = personnelFieldFromRows(/product line/i, profileSheet, profileRow, sheet, activeRow)
             || getSelectedProductLineName();
         const position = personnelFieldFromRows(/^position/i, profileSheet, profileRow, sheet, activeRow);
         const avatar = avatarSrcForProfile(profileRow);
         const tabId = MATRIX_STATE.sidebarTab;
-        const { items: fields, hasRow } = sidebarFieldRowsForSheet(tabId, profileRow);
+        const { items: fields, hasRow } = sidebarFieldRowsForSheet(tabId, profileRow, sheet, activeRow);
         const tabLabel = TAB_LABELS[tabId] || tabId;
 
         const tabs = SIDEBAR_TABS.map(t =>
@@ -4120,7 +4125,7 @@
     window.matrixOnRowClick = function (event, rowId) {
         const t = event?.target;
         if (t && t.closest(
-            '.mx-td-edit, .mx-doc-cell, .mx-doc-btn, .mx-doc-name, .mx-td-actions, .mx-td-photo, ' +
+            '.mx-doc-cell, .mx-doc-btn, .mx-doc-name, .mx-td-actions, .mx-td-photo, ' +
             'button, a, input, select, textarea, label'
         )) {
             return;
@@ -4133,7 +4138,10 @@
         if (!root || root.dataset.touchBound === '1') return;
         root.dataset.touchBound = '1';
         const stopRowSelect = (e) => {
-            if (e.target.closest('.mx-doc-cell, .mx-doc-btn, .mx-td-doc, .mx-td-edit, .mx-td-photo, .mx-td-actions')) {
+            if (e.target.closest(
+                '.mx-doc-cell, .mx-doc-btn, .mx-td-doc, .mx-td-photo, .mx-td-actions, ' +
+                'input, select, textarea, button, a'
+            )) {
                 e.stopPropagation();
             }
         };
