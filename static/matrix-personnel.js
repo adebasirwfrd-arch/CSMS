@@ -183,6 +183,23 @@
         return /mcu\s*review\s*results/i.test((col?.label || '').replace(/\*/g, '').trim());
     }
 
+    function isFinalMcuReviewStatusColumn(col) {
+        return /final\s*mcu\s*review\s*status\s*by\s*client/i.test((col?.label || '').replace(/\*/g, '').trim());
+    }
+
+    function reorderMcuResultDocColumn(sheet) {
+        if (!sheet || sheet.id !== PERSONNEL_HEALTH_SHEET_ID) return;
+        const docCol = findMcuResultDocColumn(sheet);
+        const anchorIdx = (sheet.columns || []).findIndex(c => isFinalMcuReviewStatusColumn(c));
+        if (!docCol || anchorIdx < 0) return;
+        const cols = sheet.columns;
+        const docIdx = cols.findIndex(c => c.id === docCol.id);
+        if (docIdx < 0 || docIdx === anchorIdx + 1) return;
+        cols.splice(docIdx, 1);
+        const newAnchor = cols.findIndex(c => isFinalMcuReviewStatusColumn(c));
+        cols.splice(newAnchor + 1, 0, docCol);
+    }
+
     function isMcuResultDocColumn(sheet, col) {
         if (!sheet || sheet.id !== PERSONNEL_HEALTH_SHEET_ID || !col) return false;
         const label = (col.label || '').replace(/\*/g, '').trim();
@@ -677,7 +694,7 @@
                     if (!docCol._virtual) usedDocIds.add(docCol.id);
                 }
             }
-            if (sheet.id === PERSONNEL_HEALTH_SHEET_ID && isMcuReviewResultsColumn(c)) {
+            if (sheet.id === PERSONNEL_HEALTH_SHEET_ID && isFinalMcuReviewStatusColumn(c)) {
                 let mcuDoc = findMcuResultDocColumn(sheet);
                 if (!mcuDoc) mcuDoc = virtualMcuResultDocColumn();
                 if (!placed.has(mcuDoc.id)) {
@@ -1488,7 +1505,10 @@
     async function ensureMcuResultDocColumn() {
         const sheet = sheetById(PERSONNEL_HEALTH_SHEET_ID);
         if (!sheet) return;
-        if (findMcuResultDocColumn(sheet)) return;
+        if (findMcuResultDocColumn(sheet)) {
+            reorderMcuResultDocColumn(sheet);
+            return;
+        }
         try {
             const col = await matrixRequest('POST', `/matrix/sheets/${PERSONNEL_HEALTH_SHEET_ID}/columns`, {
                 label: 'MCU Result Doc',
@@ -1498,10 +1518,11 @@
                 col_key: 'doc_mcu_result_doc_7',
             });
             if (col?.id) {
-                const reviewIdx = (sheet.columns || []).findIndex(c => isMcuReviewResultsColumn(c));
-                if (reviewIdx >= 0) sheet.columns.splice(reviewIdx + 1, 0, col);
+                const anchorIdx = (sheet.columns || []).findIndex(c => isFinalMcuReviewStatusColumn(c));
+                if (anchorIdx >= 0) sheet.columns.splice(anchorIdx + 1, 0, col);
                 else if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
                 sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                reorderMcuResultDocColumn(sheet);
             }
         } catch (e) {
             const msg = e.message || String(e);
@@ -1511,6 +1532,7 @@
                     if (fresh?.columns) {
                         const idx = MATRIX_STATE.workbook.sheets.findIndex(s => s.id === PERSONNEL_HEALTH_SHEET_ID);
                         if (idx >= 0) MATRIX_STATE.workbook.sheets[idx] = fresh;
+                        reorderMcuResultDocColumn(fresh);
                     }
                 } catch (reloadErr) {
                     console.warn('ensureMcuResultDocColumn reload:', reloadErr.message);
