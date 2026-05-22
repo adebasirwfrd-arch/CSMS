@@ -2433,55 +2433,66 @@
         return dedupeRowsForAllView(sheet, rows);
     }
 
-    function csvEscape(val) {
-        const s = String(val ?? '').replace(/\r\n/g, ' ').replace(/\n/g, ' ').replace(/\r/g, ' ');
-        if (/[",]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-        return s;
-    }
-
-    function csvSafeNamePart(name) {
+    function exportSafeNamePart(name) {
         return (name || 'Unknown').replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '_').slice(0, 48);
     }
 
-    function buildMatrixCsvFilename() {
-        const pl = csvSafeNamePart(getSelectedProductLineName());
-        const client = isAllClients() ? 'ALL' : csvSafeNamePart(getSelectedClientName());
-        const project = isAllProjects() ? 'ALL' : csvSafeNamePart(getSelectedProjectName());
+    function buildMatrixExportFilename() {
+        const pl = exportSafeNamePart(getSelectedProductLineName());
+        const client = isAllClients() ? 'ALL' : exportSafeNamePart(getSelectedClientName());
+        const project = isAllProjects() ? 'ALL' : exportSafeNamePart(getSelectedProjectName());
         const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        return `CSMS_${pl}_${client}_${project}_Matrix_${date}.csv`;
+        return `CSMS_${pl}_${client}_${project}_Matrix_${date}.xlsx`;
     }
 
-    function buildMatrixCsvExport() {
+    function excelSheetName(title) {
+        return String(title || 'Sheet').replace(/[\\/*?:\[\]]/g, ' ').trim().slice(0, 31) || 'Sheet';
+    }
+
+    function ensureXlsxLib() {
+        if (typeof XLSX !== 'undefined') return Promise.resolve(true);
+        return new Promise((resolve) => {
+            const existing = document.querySelector('script[data-xlsx-loader]');
+            if (existing) {
+                existing.addEventListener('load', () => resolve(typeof XLSX !== 'undefined'));
+                existing.addEventListener('error', () => resolve(false));
+                return;
+            }
+            const s = document.createElement('script');
+            s.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+            s.dataset.xlsxLoader = '1';
+            s.onload = () => resolve(typeof XLSX !== 'undefined');
+            s.onerror = () => resolve(false);
+            document.head.appendChild(s);
+        });
+    }
+
+    function buildMatrixXlsxWorkbook() {
         if (!MATRIX_STATE.workbook) throw new Error('Workbook belum dimuat');
         if (!MATRIX_STATE.filterProductLineId) throw new Error('Pilih Product Line terlebih dahulu');
+        if (typeof XLSX === 'undefined') throw new Error('Library Excel gagal dimuat');
 
-        const lines = [];
-        lines.push([csvEscape('Filter Product Line'), csvEscape(getSelectedProductLineName() || '')].join(','));
-        lines.push([csvEscape('Filter Client'), csvEscape(isAllClients() ? 'ALL' : (getSelectedClientName() || ''))].join(','));
-        lines.push([csvEscape('Filter Project'), csvEscape(isAllProjects() ? 'ALL' : (getSelectedProjectName() || ''))].join(','));
-        lines.push([csvEscape('Exported At'), csvEscape(new Date().toLocaleString('id-ID'))].join(','));
-        lines.push('');
+        const wb = XLSX.utils.book_new();
 
         for (const sheetId of CSV_EXPORT_SHEET_IDS) {
             const sheet = sheetById(sheetId);
             if (!sheet) continue;
-            const title = TAB_LABELS[sheetId] || sheet.title || sheet.name;
+            const tabTitle = TAB_LABELS[sheetId] || sheet.title || sheet.name;
             const rows = filterRowsForExport(sheet);
             const cols = getDisplayColumns(sheet).filter(c =>
                 c.type !== 'image' && c.id !== PHOTO_COL_ID
             );
-
-            lines.push(csvEscape(`[ ${title} ]`));
-            lines.push(cols.map(c => csvEscape((c.label || '').replace(/\*/g, '').trim())).join(','));
-            for (const row of rows) {
-                lines.push(cols.map(c =>
-                    csvEscape(formatCellForPdf(sheet, c, row.cells?.[c.id]))
-                ).join(','));
-            }
-            lines.push('');
+            const headers = cols.map(c => (c.label || '').replace(/\*/g, '').trim());
+            const dataRows = rows.map(row =>
+                cols.map(c => formatCellForPdf(sheet, c, row.cells?.[c.id]))
+            );
+            const aoa = [headers, ...dataRows];
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            ws['!cols'] = headers.map(h => ({ wch: Math.min(Math.max(String(h).length + 2, 12), 28) }));
+            XLSX.utils.book_append_sheet(wb, ws, excelSheetName(tabTitle));
         }
 
-        return '\uFEFF' + lines.join('\n');
+        return wb;
     }
 
     async function loadMasterFilters() {
@@ -3392,8 +3403,8 @@
                     <button type="button" class="mx-btn mx-btn-secondary mx-btn-pdf" onclick="matrixDownloadPdf()" title="Download laporan PDF personel terpilih">
                         <span class="mx-btn-dl-icon" aria-hidden="true">↓</span> PDF
                     </button>
-                    <button type="button" class="mx-btn mx-btn-secondary mx-btn-csv" onclick="matrixDownloadCsv()" title="Download CSV semua sheet matrix sesuai filter">
-                        <span class="mx-btn-dl-icon" aria-hidden="true">↓</span> CSV
+                    <button type="button" class="mx-btn mx-btn-secondary mx-btn-csv" onclick="matrixDownloadCsv()" title="Download Excel: tab Data Personel, Pelatihan Wajib, Kesehatan, Kontak Darurat (sesuai filter)">
+                        <span class="mx-btn-dl-icon" aria-hidden="true">↓</span> Excel
                     </button>
                 </div>
             </div>
@@ -4605,13 +4616,24 @@
         };
     }
 
-    window.matrixDownloadCsv = function () {
+    window.matrixDownloadCsv = async function () {
         const btn = document.querySelector('.mx-btn-csv');
         try {
-            const content = buildMatrixCsvExport();
-            const filename = buildMatrixCsvFilename();
+            if (!MATRIX_STATE.filterProductLineId) {
+                throw new Error('Pilih Product Line terlebih dahulu');
+            }
             if (btn) btn.disabled = true;
-            const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+            showToast?.('Menyiapkan Excel…', 'info');
+            const libOk = await ensureXlsxLib();
+            if (!libOk) throw new Error('Library Excel gagal dimuat. Periksa koneksi internet.');
+
+            const wb = buildMatrixXlsxWorkbook();
+            const filename = buildMatrixExportFilename();
+            const bytes = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob(
+                [bytes],
+                { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+            );
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -4620,9 +4642,9 @@
             a.click();
             a.remove();
             URL.revokeObjectURL(url);
-            showToast?.('CSV berhasil diunduh', 'success');
+            showToast?.('Excel berhasil diunduh (1 tab per sheet)', 'success');
         } catch (e) {
-            showToast?.(e.message || 'Gagal mengunduh CSV', 'error');
+            showToast?.(e.message || 'Gagal mengunduh Excel', 'error');
         } finally {
             if (btn) btn.disabled = false;
         }
