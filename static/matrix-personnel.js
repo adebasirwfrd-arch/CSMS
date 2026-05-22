@@ -4457,10 +4457,16 @@
             .filter(f => f.value && f.value !== '—')
             .map(f => ({ label: f.label, value: f.value }));
 
+        const seenLabels = new Set();
         const tableCols = getDisplayColumns(sheet).filter(c => {
-            if (c.type === 'image' || c.id === PHOTO_COL_ID) return false;
+            if (c.type === 'image' || c.type === 'file' || c.id === PHOTO_COL_ID) return false;
+            if (isDocUploadColumn(c)) return false;
             const raw = (row.cells?.[c.id] ?? '').toString().trim();
-            return !!raw;
+            if (!raw) return false;
+            const norm = (c.label || '').replace(/\*/g, '').replace(/^Doc:\s*/i, '').trim().toLowerCase();
+            if (seenLabels.has(norm)) return false;
+            seenLabels.add(norm);
+            return true;
         });
 
         const compliance = { ok: 0, soon: 0, expired: 0, noData: 0 };
@@ -4518,6 +4524,13 @@
                 values: tableCols.map(c => formatCellForPdf(sheet, c, row.cells?.[c.id])),
             },
             charts: { compliance, expiry_days: expiryDays },
+            chart_data: (() => {
+                const profileRow = findPersonnelProfileRow(sheet, row);
+                const name = profileName(profileRow) || rowPersonnelName(sheet, row) || '';
+                return typeof window.buildMatrixChartDataForPdf === 'function'
+                    ? window.buildMatrixChartDataForPdf(sheet, rows, summary, row, name)
+                    : {};
+            })(),
             chart_images: typeof window.captureMatrixChartImagesForPdf === 'function'
                 ? window.captureMatrixChartImagesForPdf()
                 : {},
@@ -4527,17 +4540,6 @@
     window.matrixDownloadPdf = async function () {
         const btn = document.querySelector('.mx-btn-pdf');
         try {
-            if (typeof window.renderMatrixSheetCharts === 'function') {
-                const sheet = activeSheet();
-                if (sheet) {
-                    const rows = filterRows(sheet);
-                    const summary = computeSheetSummary(sheet);
-                    const row = rows.find(r => r.id === MATRIX_STATE.selectedRowId);
-                    const profileRow = row ? findPersonnelProfileRow(sheet, row) : null;
-                    const name = profileName(profileRow) || rowPersonnelName(sheet, row) || '';
-                    await window.renderMatrixSheetCharts(sheet, rows, summary, row, name);
-                }
-            }
             const payload = buildMatrixPdfPayload();
             if (btn) btn.disabled = true;
             showToast?.('Membuat PDF…', 'info');

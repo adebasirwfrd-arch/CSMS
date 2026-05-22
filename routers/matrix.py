@@ -1401,6 +1401,7 @@ class MatrixPersonnelReportBody(BaseModel):
     table: Dict[str, Any] = {}
     charts: Dict[str, Any] = {}
     chart_images: Dict[str, str] = {}
+    chart_data: Dict[str, Any] = {}
 
 
 @router.post("/matrix/personnel-report/pdf")

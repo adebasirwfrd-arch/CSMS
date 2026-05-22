@@ -357,6 +357,28 @@
 
     window.destroyMatrixSheetCharts = destroyAll;
 
+    window.buildMatrixChartDataForPdf = function (sheet, rows, summary, selectedRow, personName) {
+        const stack = buildExpiryStack(rows, sheet);
+        const cov = buildCoverage(rows, sheet);
+        const personItems = selectedRow ? buildPersonExpiry(selectedRow, sheet) : [];
+        return {
+            compliance: buildCompliance(rows, sheet),
+            kpis: (summary?.kpis || []).map(k => ({
+                label: k.label,
+                short_label: k.shortLabel || k.label,
+                value: k.value,
+                color: k.color,
+            })),
+            expiry_stack: stack,
+            coverage: cov,
+            person_expiry: {
+                name: personName || 'Personel',
+                labels: personItems.map(i => i.label),
+                days: personItems.map(i => i.days),
+            },
+        };
+    };
+
     window.captureMatrixChartImagesForPdf = function () {
         const out = {};
         CHART_IDS.forEach(id => {

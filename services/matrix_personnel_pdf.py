@@ -15,6 +15,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm, mm
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     Image,
     Paragraph,
@@ -25,6 +26,7 @@ from reportlab.platypus import (
 )
 
 from services.google_drive import drive_service
+from services.matrix_pdf_charts import build_chart_pngs
 
 PAGE_SIZE = landscape(A4)
 MARGIN_L = 1.2 * cm
@@ -122,26 +124,51 @@ def _styles():
     }
 
 
+def _kpi_label(k: Dict[str, Any]) -> str:
+    return (k.get("short_label") or k.get("label") or "").strip()
+
+
 def _kpi_table(kpis: List[Dict[str, Any]], styles) -> Table:
     if not kpis:
         return Spacer(1, 4)
     usable = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
     n = len(kpis)
-    col_w = usable / max(n, 1)
+    min_w = 2.4 * cm
+    col_w = max(usable / max(n, 1), min_w)
+    if col_w * n > usable:
+        col_w = usable / n
+    label_style = ParagraphStyle(
+        "KpiLbl",
+        parent=styles["label"],
+        fontSize=7,
+        leading=9,
+        alignment=TA_CENTER,
+    )
+    value_style = ParagraphStyle(
+        "KpiVal",
+        parent=styles["value"],
+        fontSize=14,
+        leading=16,
+        alignment=TA_CENTER,
+        fontName="Helvetica-Bold",
+    )
     row_labels = []
     row_vals = []
     for k in kpis:
         accent_hex = (k.get("color") or "#C41E3A").strip()
         if not accent_hex.startswith("#"):
             accent_hex = "#C41E3A"
+        short = _kpi_label(k)
+        full = (k.get("label") or short).strip()
+        tip = f' title="{full}"' if full and full != short else ""
         row_labels.append(
             Paragraph(
-                f'<font color="{accent_hex}">{k.get("label", "")}</font>',
-                styles["label"],
+                f'<font color="{accent_hex}"{tip}>{short}</font>',
+                label_style,
             )
         )
-        row_vals.append(Paragraph(f'<b>{k.get("value", "—")}</b>', styles["value"]))
-    tbl = Table([row_labels, row_vals], colWidths=[col_w] * n, rowHeights=[14, 22])
+        row_vals.append(Paragraph(f'<b>{k.get("value", "—")}</b>', value_style))
+    tbl = Table([row_labels, row_vals], colWidths=[col_w] * n, rowHeights=[28, 26])
     tbl.setStyle(
         TableStyle(
             [
@@ -149,10 +176,11 @@ def _kpi_table(kpis: List[Dict[str, Any]], styles) -> Table:
                 ("BOX", (0, 0), (-1, -1), 0.5, LINE),
                 ("INNERGRID", (0, 0), (-1, -1), 0.25, LINE),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]
         )
     )
@@ -215,11 +243,20 @@ def _decode_chart_image(data_url: str) -> Optional[bytes]:
         return None
 
 
-def _chart_image_element(data_url: str, width: float, height: float) -> Optional[Image]:
-    raw = _decode_chart_image(data_url)
-    if not raw:
+def _chart_image_element(raw: bytes, max_width: float, max_height: float) -> Optional[Image]:
+    if not raw or len(raw) < 80:
         return None
     try:
+        reader = ImageReader(io.BytesIO(raw))
+        iw, ih = reader.getSize()
+        if not iw or not ih:
+            return None
+        aspect = ih / float(iw)
+        width = max_width
+        height = width * aspect
+        if height > max_height:
+            height = max_height
+            width = height / aspect
         img = Image(io.BytesIO(raw), width=width, height=height)
         img.hAlign = "CENTER"
         return img
@@ -227,8 +264,23 @@ def _chart_image_element(data_url: str, width: float, height: float) -> Optional
         return None
 
 
-def _embedded_charts_section(chart_images: Dict[str, str], styles) -> List[Any]:
-    """2-column grid of Chart.js PNG captures from the matrix dashboard."""
+def _resolve_chart_pngs(payload: Dict[str, Any]) -> Dict[str, bytes]:
+    """Prefer server-rendered charts; fall back to client canvas captures."""
+    chart_data = payload.get("chart_data") or {}
+    pngs = build_chart_pngs(chart_data) if chart_data else {}
+
+    chart_images = payload.get("chart_images") or {}
+    order = ("compliance", "kpi", "expiryStack", "coverage", "personExpiry")
+    for key in order:
+        if key in pngs and len(pngs[key]) > 200:
+            continue
+        raw = _decode_chart_image(chart_images.get(key) or "")
+        if raw and len(raw) > 200:
+            pngs[key] = raw
+    return pngs
+
+
+def _embedded_charts_section(pngs: Dict[str, bytes]) -> List[Any]:
     order = [
         ("compliance", "Status Compliance"),
         ("kpi", "Indikator KPI"),
@@ -237,42 +289,35 @@ def _embedded_charts_section(chart_images: Dict[str, str], styles) -> List[Any]:
         ("personExpiry", "Hari ke Expiry"),
     ]
     usable = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
-    cell_w = (usable - 8) / 2
-    img_h = 5.0 * cm
+    cell_w = (usable - 10) / 2
+    max_h = 6.2 * cm
     flows: List[Any] = []
     row_cells: List[Any] = []
-    for key, title in order:
-        url = (chart_images or {}).get(key)
-        if not url:
-            continue
-        img = _chart_image_element(url, cell_w - 0.4 * cm, img_h)
+    for key, _title in order:
+        raw = pngs.get(key)
+        img = _chart_image_element(raw, cell_w - 0.3 * cm, max_h) if raw else None
         if not img:
             continue
-        cell = [
-            Paragraph(title, styles["label"]),
-            Spacer(1, 4),
-            img,
-        ]
-        row_cells.append(cell)
+        row_cells.append(img)
         if len(row_cells) == 2:
             tbl = Table([row_cells], colWidths=[cell_w, cell_w])
             tbl.setStyle(TableStyle([
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ]))
             flows.append(tbl)
-            flows.append(Spacer(1, 8))
+            flows.append(Spacer(1, 6))
             row_cells = []
     if row_cells:
-        if len(row_cells) == 1:
-            tbl = Table([row_cells], colWidths=[cell_w])
-        else:
-            tbl = Table([row_cells], colWidths=[cell_w, cell_w])
+        cols = [cell_w] * len(row_cells)
+        tbl = Table([row_cells], colWidths=cols)
         tbl.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ]))
         flows.append(tbl)
     return flows
@@ -326,30 +371,50 @@ def _expiry_bar_chart(items: List[Dict[str, Any]]) -> Drawing:
     return d
 
 
-def _data_table(table: Dict[str, Any], styles) -> Table:
+def _data_fields_table(table: Dict[str, Any], styles) -> Table:
+    """Vertical label | value rows — readable on landscape PDF."""
     columns = table.get("columns") or []
     values = table.get("values") or []
     if not columns:
-        return Paragraph("<i>Tidak ada kolom terisi untuk ditampilkan.</i>", styles["sub"])
+        return Paragraph("<i>Tidak ada data terisi untuk ditampilkan.</i>", styles["sub"])
 
-    headers = [Paragraph(c.get("label", ""), styles["cellHead"]) for c in columns]
-    row = [Paragraph(str(v or "—"), styles["cell"]) for v in values]
-    col_count = len(columns)
     usable = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
-    col_w = usable / col_count
-    widths = [col_w] * col_count
-    tbl = Table([headers, row], colWidths=widths, repeatRows=1)
+    label_w = 5.5 * cm
+    value_w = usable - label_w
+    cell_val = ParagraphStyle(
+        "FieldVal",
+        parent=styles["cell"],
+        fontSize=8,
+        leading=11,
+        wordWrap="CJK",
+    )
+    rows = [
+        [
+            Paragraph("<b>Field</b>", styles["cellHead"]),
+            Paragraph("<b>Nilai</b>", styles["cellHead"]),
+        ]
+    ]
+    for col, val in zip(columns, values):
+        label = (col.get("label") if isinstance(col, dict) else str(col)) or ""
+        text = str(val or "—")
+        if len(text) > 120:
+            text = text[:117] + "…"
+        rows.append([
+            Paragraph(label, styles["label"]),
+            Paragraph(text, cell_val),
+        ])
+    tbl = Table(rows, colWidths=[label_w, value_w], repeatRows=1)
     tbl.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), INK),
                 ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
-                ("BACKGROUND", (0, 1), (-1, 1), WHITE),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, PANEL]),
                 ("BOX", (0, 0), (-1, -1), 0.5, LINE),
                 ("INNERGRID", (0, 0), (-1, -1), 0.25, LINE),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
                 ("TOPPADDING", (0, 0), (-1, -1), 5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]
@@ -408,10 +473,8 @@ def build_matrix_personnel_pdf(payload: Dict[str, Any]) -> bytes:
             photo_bytes = None
 
     profile_flow = _profile_block(personnel, styles, photo_bytes)
-    chart_images = payload.get("chart_images") or {}
-
     mid_w = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
-    left_w = 8.5 * cm
+    left_w = 7.2 * cm
     profile_tbl = Table([[profile_flow]], colWidths=[left_w])
     profile_tbl.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -422,30 +485,25 @@ def build_matrix_personnel_pdf(payload: Dict[str, Any]) -> bytes:
         ("TOPPADDING", (0, 0), (-1, -1), 10),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
     ]))
+
+    chart_pngs = _resolve_chart_pngs(payload)
     story.append(profile_tbl)
     story.append(Spacer(1, 8))
-
-    embedded = _embedded_charts_section(chart_images, styles)
+    embedded = _embedded_charts_section(chart_pngs)
     if embedded:
         story.append(Paragraph("Ringkasan Visual", styles["section"]))
         story.extend(embedded)
-    else:
+    elif charts:
         pie = _compliance_pie(charts.get("compliance") or {})
         bar = _expiry_bar_chart(charts.get("expiry_days") or [])
-        right_w = mid_w - left_w - 0.4 * cm
-        fallback_tbl = Table([[pie, Spacer(1, 8), bar]], colWidths=[right_w])
-        fallback_tbl.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("BACKGROUND", (0, 0), (-1, -1), WHITE),
-            ("BOX", (0, 0), (-1, -1), 0.5, LINE),
-        ]))
+        fallback_tbl = Table([[pie, Spacer(1, 8), bar]], colWidths=[mid_w])
         story.append(fallback_tbl)
 
     story.append(Spacer(1, 10))
 
     table_title = table.get("title") or payload.get("tab_label") or "Data"
-    story.append(Paragraph(table_title, styles["section"]))
-    story.append(_data_table(table, styles))
+    story.append(Paragraph(f"Detail — {table_title}", styles["section"]))
+    story.append(_data_fields_table(table, styles))
 
     generated = datetime.now().strftime("%d/%m/%Y %H:%M")
     story.append(Spacer(1, 8))
