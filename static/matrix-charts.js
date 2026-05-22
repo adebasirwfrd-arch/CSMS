@@ -51,7 +51,10 @@
 
     function isExpiryCol(col) {
         const label = (col?.label || '').replace(/\*/g, '').trim().toLowerCase();
-        return /expir|expired|end date|berakhir|kadaluarsa/i.test(label);
+        if (/^doc\s*:/i.test(label)) return false;
+        if (col?.type === 'file') return false;
+        return /expir|expired|end date|berakhir|kadaluarsa/i.test(label)
+            && !/training date|training location|^\w+\s+date$/i.test(label);
     }
 
     function warnDays(col) {

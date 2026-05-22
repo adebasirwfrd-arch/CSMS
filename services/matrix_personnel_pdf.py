@@ -18,6 +18,7 @@ from reportlab.lib.units import cm, mm
 from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     Image,
+    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -288,47 +289,79 @@ def _resolve_chart_pngs(payload: Dict[str, Any]) -> Dict[str, bytes]:
     return pngs
 
 
-def _embedded_charts_section(pngs: Dict[str, bytes]) -> List[Any]:
-    order = [
-        ("compliance", "Status Compliance"),
-        ("kpi", "Indikator KPI"),
-        ("expiryStack", "Expiry per Kolom"),
-        ("coverage", "Kelengkapan Data"),
-        ("personExpiry", "Hari ke Expiry"),
+def _chart_card(raw: Optional[bytes], title: str, cell_w: float, cell_h: float) -> Table:
+    inner_w = cell_w - 0.35 * cm
+    inner_h = cell_h - 0.45 * cm
+    img = _chart_image_element(raw, inner_w, inner_h) if raw else None
+    body = img if img else Paragraph(
+        f'<font color="#9ca3af"><i>{_para_escape(title)}</i></font>',
+        ParagraphStyle("ChartEmpty", fontSize=8, alignment=TA_CENTER, textColor=MUTED),
+    )
+    card = Table([[body]], colWidths=[cell_w])
+    card.setStyle(
+        TableStyle([
+            ("BOX", (0, 0), (-1, -1), 0.75, LINE),
+            ("BACKGROUND", (0, 0), (-1, -1), WHITE),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ])
+    )
+    return card
+
+
+def _right_charts_panel(pngs: Dict[str, bytes], panel_w: float) -> Table:
+    cell_w = panel_w / 2
+    cell_h = 4.35 * cm
+    row1 = [
+        _chart_card(pngs.get("compliance"), "Status Compliance", cell_w, cell_h),
+        _chart_card(pngs.get("kpi"), "Indikator KPI", cell_w, cell_h),
     ]
-    usable = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
-    cell_w = (usable - 10) / 2
-    max_h = 6.2 * cm
-    flows: List[Any] = []
-    row_cells: List[Any] = []
-    for key, _title in order:
-        raw = pngs.get(key)
-        img = _chart_image_element(raw, cell_w - 0.3 * cm, max_h) if raw else None
-        if not img:
-            continue
-        row_cells.append(img)
-        if len(row_cells) == 2:
-            tbl = Table([row_cells], colWidths=[cell_w, cell_w])
-            tbl.setStyle(TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 2),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ]))
-            flows.append(tbl)
-            flows.append(Spacer(1, 6))
-            row_cells = []
-    if row_cells:
-        cols = [cell_w] * len(row_cells)
-        tbl = Table([row_cells], colWidths=cols)
-        tbl.setStyle(TableStyle([
+    row2 = [
+        _chart_card(pngs.get("expiryStack"), "Expiry per Kolom", cell_w, cell_h),
+        _chart_card(pngs.get("coverage"), "Kelengkapan Data", cell_w, cell_h),
+    ]
+    row3 = [_chart_card(pngs.get("personExpiry"), "Hari ke Expiry", panel_w, cell_h)]
+    grid = Table([row1, row2, row3], colWidths=[cell_w, cell_w])
+    grid.setStyle(
+        TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ]))
-        flows.append(tbl)
-    return flows
+            ("LEFTPADDING", (0, 0), (-1, -1), 2),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("SPAN", (0, 2), (1, 2)),
+        ])
+    )
+    return grid
+
+
+def _profile_and_charts_block(profile_flow: List[Any], pngs: Dict[str, bytes]) -> KeepTogether:
+    mid_w = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
+    left_w = 7.6 * cm
+    right_w = mid_w - left_w - 0.25 * cm
+
+    profile_tbl = Table([[profile_flow]], colWidths=[left_w])
+    profile_tbl.setStyle(
+        TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BACKGROUND", (0, 0), (-1, -1), PANEL),
+            ("BOX", (0, 0), (-1, -1), 0.75, LINE),
+            ("LEFTPADDING", (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ])
+    )
+
+    charts_panel = _right_charts_panel(pngs, right_w)
+    layout = Table([[profile_tbl, charts_panel]], colWidths=[left_w, right_w])
+    layout.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    return KeepTogether([layout])
 
 
 def _compliance_pie(compliance: Dict[str, int]) -> Drawing:
@@ -379,50 +412,73 @@ def _expiry_bar_chart(items: List[Dict[str, Any]]) -> Drawing:
     return d
 
 
-def _data_fields_table(table: Dict[str, Any], styles) -> Table:
-    """Vertical label | value rows — readable on landscape PDF."""
+def _short_col_label(col: Dict[str, Any]) -> str:
+    label = (col.get("label") if isinstance(col, dict) else str(col)) or ""
+    label = label.replace("*", "").strip()
+    if len(label) > 22:
+        return label[:20] + "…"
+    return label
+
+
+def _data_table_horizontal(table: Dict[str, Any], styles) -> Table:
+    """Horizontal header + single data row (landscape)."""
     columns = table.get("columns") or []
     values = table.get("values") or []
     if not columns:
         return Paragraph("<i>Tidak ada data terisi untuk ditampilkan.</i>", styles["sub"])
 
+    max_cols = 16
+    if len(columns) > max_cols:
+        columns = columns[:max_cols]
+        values = values[:max_cols]
+
     usable = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
-    label_w = 5.5 * cm
-    value_w = usable - label_w
-    cell_val = ParagraphStyle(
-        "FieldVal",
+    n = len(columns)
+    min_w = 1.85 * cm
+    col_w = max(usable / n, min_w)
+    if col_w * n > usable:
+        col_w = usable / n
+
+    head_style = ParagraphStyle(
+        "TblHead",
+        parent=styles["cellHead"],
+        fontSize=7,
+        leading=9,
+        alignment=TA_CENTER,
+    )
+    cell_style = ParagraphStyle(
+        "TblCell",
         parent=styles["cell"],
-        fontSize=8,
-        leading=11,
+        fontSize=7,
+        leading=9,
+        alignment=TA_CENTER,
         wordWrap="CJK",
     )
-    rows = [
-        [
-            Paragraph("<b>Field</b>", styles["cellHead"]),
-            Paragraph("<b>Nilai</b>", styles["cellHead"]),
-        ]
+
+    headers = [
+        Paragraph(_para_escape(_short_col_label(c)), head_style)
+        for c in columns
     ]
-    for col, val in zip(columns, values):
-        label = (col.get("label") if isinstance(col, dict) else str(col)) or ""
-        text = str(val or "—")
-        if len(text) > 120:
-            text = text[:117] + "…"
-        rows.append([
-            Paragraph(label, styles["label"]),
-            Paragraph(text, cell_val),
-        ])
-    tbl = Table(rows, colWidths=[label_w, value_w], repeatRows=1)
+    row = []
+    for v in values:
+        text = str(v or "—")
+        if len(text) > 48:
+            text = text[:45] + "…"
+        row.append(Paragraph(_para_escape(text), cell_style))
+
+    tbl = Table([headers, row], colWidths=[col_w] * n, repeatRows=1)
     tbl.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), INK),
                 ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, PANEL]),
+                ("BACKGROUND", (0, 1), (-1, 1), WHITE),
                 ("BOX", (0, 0), (-1, -1), 0.5, LINE),
                 ("INNERGRID", (0, 0), (-1, -1), 0.25, LINE),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
                 ("TOPPADDING", (0, 0), (-1, -1), 5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
             ]
@@ -481,37 +537,13 @@ def build_matrix_personnel_pdf(payload: Dict[str, Any]) -> bytes:
             photo_bytes = None
 
     profile_flow = _profile_block(personnel, styles, photo_bytes)
-    mid_w = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
-    left_w = 7.2 * cm
-    profile_tbl = Table([[profile_flow]], colWidths=[left_w])
-    profile_tbl.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BACKGROUND", (0, 0), (-1, -1), PANEL),
-        ("BOX", (0, 0), (-1, -1), 0.5, LINE),
-        ("LEFTPADDING", (0, 0), (-1, -1), 10),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-    ]))
-
     chart_pngs = _resolve_chart_pngs(payload)
-    story.append(profile_tbl)
-    story.append(Spacer(1, 8))
-    embedded = _embedded_charts_section(chart_pngs)
-    if embedded:
-        story.append(Paragraph("Ringkasan Visual", styles["section"]))
-        story.extend(embedded)
-    elif charts:
-        pie = _compliance_pie(charts.get("compliance") or {})
-        bar = _expiry_bar_chart(charts.get("expiry_days") or [])
-        fallback_tbl = Table([[pie, Spacer(1, 8), bar]], colWidths=[mid_w])
-        story.append(fallback_tbl)
-
-    story.append(Spacer(1, 10))
+    story.append(_profile_and_charts_block(profile_flow, chart_pngs))
+    story.append(Spacer(1, 12))
 
     table_title = table.get("title") or payload.get("tab_label") or "Data"
-    story.append(Paragraph(f"Detail — {table_title}", styles["section"]))
-    story.append(_data_fields_table(table, styles))
+    story.append(Paragraph(table_title, styles["section"]))
+    story.append(_data_table_horizontal(table, styles))
 
     generated = datetime.now().strftime("%d/%m/%Y %H:%M")
     story.append(Spacer(1, 8))

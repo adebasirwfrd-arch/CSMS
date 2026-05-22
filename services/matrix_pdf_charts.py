@@ -7,11 +7,14 @@ from typing import Any, Dict, List, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 520, 320
+W, H = 460, 260
 BG = (255, 255, 255)
 INK = (26, 26, 26)
-MUTED = (120, 120, 120)
-GRID = (230, 230, 230)
+MUTED = (110, 110, 110)
+GRID = (220, 224, 230)
+BORDER = (200, 204, 212)
+ACCENT = (196, 30, 58)
+WHITE = (255, 255, 255)
 
 PALETTE = [
     (70, 211, 105),
@@ -22,6 +25,10 @@ PALETTE = [
     (196, 30, 58),
     (26, 188, 156),
 ]
+
+HEADER_H = 34
+INNER_TOP = 40
+INNER = (14, INNER_TOP, W - 14, H - 12)
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
@@ -56,18 +63,22 @@ def _hex_rgb(hex_str: str, default=(196, 30, 58)) -> Tuple[int, int, int]:
 
 def _png_bytes(img: Image.Image) -> bytes:
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    img.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
 
 
-def _title(draw: ImageDraw.ImageDraw, text: str, y: int = 12) -> None:
-    draw.text((16, y), text, fill=INK, font=_font(13, True))
+def _new_chart(title: str) -> Tuple[Image.Image, ImageDraw.ImageDraw]:
+    img = Image.new("RGB", (W, H), BG)
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([1, 1, W - 2, H - 2], radius=10, outline=BORDER, width=2)
+    draw.rectangle([INNER[0], 34, INNER[2], HEADER_H + 6], fill=(248, 249, 251))
+    draw.line([INNER[0], HEADER_H + 6, INNER[2], HEADER_H + 6], fill=GRID, width=1)
+    draw.text((INNER[0] + 8, 10), title, fill=INK, font=_font(12, True))
+    return img, draw
 
 
 def compliance_chart(data: Dict[str, int]) -> bytes:
-    img = Image.new("RGB", (W, H), BG)
-    draw = ImageDraw.Draw(img)
-    _title(draw, "Status Compliance")
+    img, draw = _new_chart("Status Compliance")
     vals = [
         ("Compliant", int(data.get("ok") or 0), PALETTE[0]),
         ("Akan Expired", int(data.get("soon") or 0), PALETTE[1]),
@@ -75,73 +86,64 @@ def compliance_chart(data: Dict[str, int]) -> bytes:
         ("Belum Ada Data", int(data.get("noData") or 0), (107, 114, 128)),
     ]
     total = sum(v[1] for v in vals) or 1
-    cx, cy, r = 160, H // 2 + 10, 95
+    cx, cy, r = 130, H // 2 + 18, 72
     start = -90
-    for label, val, color in vals:
+    for _label, val, color in vals:
         if val <= 0:
             continue
-        sweep = 360 * val / total
-        draw.pieslice(
-            [cx - r, cy - r, cx + r, cy + r],
-            start,
-            start + sweep,
-            fill=color,
-            outline=(255, 255, 255),
-        )
+        sweep = max(360 * val / total, 4)
+        draw.pieslice([cx - r, cy - r, cx + r, cy + r], start, start + sweep, fill=color, outline=WHITE)
         start += sweep
-    lx = 300
-    ly = 70
+    lx, ly = 250, 52
     for label, val, color in vals:
-        draw.rectangle([lx, ly, lx + 14, ly + 14], fill=color)
-        draw.text((lx + 20, ly - 1), f"{label}: {val}", fill=INK, font=_font(10))
-        ly += 22
+        draw.rounded_rectangle([lx, ly, lx + 12, ly + 12], radius=2, fill=color)
+        draw.text((lx + 18, ly - 1), f"{label}: {val}", fill=INK, font=_font(9))
+        ly += 20
     return _png_bytes(img)
 
 
 def kpi_bar_chart(kpis: List[Dict[str, Any]]) -> bytes:
-    img = Image.new("RGB", (W, H), BG)
-    draw = ImageDraw.Draw(img)
-    _title(draw, "Indikator KPI")
+    img, draw = _new_chart("Indikator KPI")
     items = [
         (
-            (k.get("short_label") or k.get("label") or "")[:28],
+            (k.get("short_label") or k.get("label") or "")[:24],
             _parse_int(k.get("value")),
             _hex_rgb(k.get("color")),
         )
-        for k in (kpis or [])[:8]
+        for k in (kpis or [])[:7]
     ]
     if not items:
-        draw.text((16, 80), "Tidak ada KPI", fill=MUTED, font=_font(10))
+        draw.text((INNER[0], 90), "Tidak ada KPI", fill=MUTED, font=_font(10))
         return _png_bytes(img)
     max_v = max(v for _, v, _ in items) or 1
-    left, top, bar_h = 140, 48, 24
-    gap = 8
-    usable = W - left - 30
+    left, top, bar_h = INNER[0] + 86, 48, 20
+    gap = 6
+    usable = INNER[2] - left - 8
     for i, (label, val, color) in enumerate(items):
         y = top + i * (bar_h + gap)
-        bw = int((val / max_v) * usable) if max_v else 0
-        draw.text((16, y + 4), label, fill=MUTED, font=_font(8))
-        draw.rounded_rectangle([left, y, left + max(bw, 2), y + bar_h], radius=4, fill=color)
-        draw.text((left + bw + 6, y + 4), str(val), fill=INK, font=_font(9, True))
+        if y + bar_h > H - 8:
+            break
+        bw = max(int((val / max_v) * usable), 3) if max_v else 3
+        draw.text((INNER[0] + 4, y + 3), label[:14], fill=MUTED, font=_font(8))
+        draw.rounded_rectangle([left, y, left + bw, y + bar_h], radius=4, fill=color)
+        draw.text((left + bw + 5, y + 3), str(val), fill=INK, font=_font(9, True))
     return _png_bytes(img)
 
 
 def expiry_stack_chart(stack: Dict[str, Any]) -> bytes:
-    img = Image.new("RGB", (W, H), BG)
-    draw = ImageDraw.Draw(img)
-    _title(draw, "Expiry per Kolom")
+    img, draw = _new_chart("Expiry per Kolom")
     labels = stack.get("labels") or []
     soon = stack.get("soon") or []
     expired = stack.get("expired") or []
-    n = min(len(labels), 8) or 0
+    n = min(len(labels), 6) or 0
     if not n:
-        draw.text((16, 80), "Tidak ada kolom expiry", fill=MUTED, font=_font(10))
+        draw.text((INNER[0], 90), "Tidak ada kolom expiry", fill=MUTED, font=_font(10))
         return _png_bytes(img)
     max_v = max([*(soon[:n]), *(expired[:n])], default=1) or 1
-    chart_left, chart_bottom = 50, H - 36
-    chart_h = H - 90
-    group_w = (W - chart_left - 20) / n
-    bar_w = min(group_w * 0.35, 22)
+    chart_left, chart_bottom = INNER[0] + 8, H - 28
+    chart_h = H - 98
+    group_w = (INNER[2] - chart_left - 8) / n
+    bar_w = min(group_w * 0.32, 18)
     for i in range(n):
         gx = chart_left + i * group_w + group_w / 2
         s_val = int(soon[i] if i < len(soon) else 0)
@@ -149,84 +151,70 @@ def expiry_stack_chart(stack: Dict[str, Any]) -> bytes:
         sh = int((s_val / max_v) * chart_h)
         eh = int((e_val / max_v) * chart_h)
         if sh:
-            draw.rectangle(
-                [gx - bar_w, chart_bottom - sh, gx, chart_bottom],
+            draw.rounded_rectangle(
+                [gx - bar_w, chart_bottom - sh, gx - 2, chart_bottom],
+                radius=2,
                 fill=PALETTE[1],
             )
         if eh:
-            draw.rectangle(
-                [gx, chart_bottom - eh, gx + bar_w, chart_bottom],
+            draw.rounded_rectangle(
+                [gx + 2, chart_bottom - eh, gx + bar_w, chart_bottom],
+                radius=2,
                 fill=PALETTE[2],
             )
-        lbl = str(labels[i])[:10]
-        draw.text((max(4, gx - bar_w), chart_bottom + 4), lbl, fill=MUTED, font=_font(8))
-    draw.line([chart_left, chart_bottom, W - 16, chart_bottom], fill=GRID, width=1)
-    draw.rectangle([W - 120, 18, W - 106, 32], fill=PALETTE[1])
-    draw.text((W - 100, 18), "Segera", fill=INK, font=_font(8))
-    draw.rectangle([W - 120, 34, W - 106, 48], fill=PALETTE[2])
-    draw.text((W - 100, 34), "Expired", fill=INK, font=_font(8))
+        draw.text((gx - bar_w, chart_bottom + 2), str(labels[i])[:9], fill=MUTED, font=_font(8))
+    draw.line([chart_left, chart_bottom, INNER[2] - 4, chart_bottom], fill=GRID, width=1)
     return _png_bytes(img)
 
 
-def coverage_polar_chart(coverage: Dict[str, Any]) -> bytes:
-    img = Image.new("RGB", (W, H), BG)
-    draw = ImageDraw.Draw(img)
-    _title(draw, "Kelengkapan Data")
+def coverage_chart(coverage: Dict[str, Any]) -> bytes:
+    img, draw = _new_chart("Kelengkapan Data")
     labels = coverage.get("labels") or []
     data = coverage.get("data") or []
     n = min(len(labels), len(data), 6)
     if not n:
-        draw.text((16, 80), "Tidak ada data", fill=MUTED, font=_font(10))
+        draw.text((INNER[0], 90), "Tidak ada data", fill=MUTED, font=_font(10))
         return _png_bytes(img)
-    cx, cy, r = W // 2, H // 2 + 12, 100
+    left, top, bar_h = INNER[0] + 4, 48, 18
+    gap = 5
     for i in range(n):
+        y = top + i * (bar_h + gap)
+        if y + bar_h > H - 10:
+            break
         pct = max(0, min(100, int(data[i])))
-        sweep = 360 * pct / 100 / n
         color = PALETTE[i % len(PALETTE)]
-        inner = r * (i + 1) / n
-        outer = r * (i + 2) / n
-        draw.pieslice(
-            [cx - outer, cy - outer, cx + outer, cy + outer],
-            -90 + i * (360 / n),
-            -90 + (i + 1) * (360 / n),
-            fill=(*color, 40) if False else color,
-            outline=BG,
-        )
-    ly = 24
-    for i in range(n):
-        draw.rectangle([16, ly, 28, ly + 10], fill=PALETTE[i % len(PALETTE)])
-        draw.text((34, ly - 1), f"{str(labels[i])[:16]}: {data[i]}%", fill=INK, font=_font(8))
-        ly += 16
+        bw = int((INNER[2] - left - 50) * pct / 100)
+        draw.text((left, y + 2), str(labels[i])[:14], fill=MUTED, font=_font(8))
+        draw.rounded_rectangle([left + 108, y, left + 108 + max(bw, 2), y + bar_h], radius=3, fill=color)
+        draw.text((INNER[2] - 38, y + 2), f"{pct}%", fill=INK, font=_font(8, True))
     return _png_bytes(img)
 
 
 def person_expiry_chart(person: Dict[str, Any]) -> bytes:
-    img = Image.new("RGB", (W, H), BG)
-    draw = ImageDraw.Draw(img)
-    name = (person.get("name") or "Personel")[:32]
-    _title(draw, f"Hari ke Expiry — {name}")
+    img, draw = _new_chart("Hari ke Expiry")
     labels = person.get("labels") or []
     days = person.get("days") or []
-    n = min(len(labels), len(days), 10)
+    n = min(len(labels), len(days), 8)
     if not n:
-        draw.text((16, 80), "Tidak ada expiry terisi", fill=MUTED, font=_font(10))
+        draw.text((INNER[0], 90), "Tidak ada expiry terisi", fill=MUTED, font=_font(10))
         return _png_bytes(img)
     max_d = max(int(days[i]) for i in range(n)) or 1
-    left, bottom = 44, H - 40
-    chart_w = W - left - 20
-    chart_h = H - 100
+    left, bottom = INNER[0] + 12, H - 30
+    chart_w = INNER[2] - left - 12
+    chart_h = H - 95
     points = []
     for i in range(n):
         x = left + int((i / max(n - 1, 1)) * chart_w)
         y = bottom - int((int(days[i]) / max_d) * chart_h)
         points.append((x, y))
-        draw.ellipse([x - 4, y - 4, x + 4, y + 4], fill=PALETTE[5])
-        if i % 2 == 0:
-            draw.text((x - 20, bottom + 4), str(labels[i])[:12], fill=MUTED, font=_font(8))
+        draw.ellipse([x - 5, y - 5, x + 5, y + 5], fill=ACCENT, outline=WHITE)
     if len(points) > 1:
-        draw.line(points, fill=PALETTE[5], width=2)
-    draw.line([left, bottom, W - 16, bottom], fill=GRID)
-    draw.line([left, bottom, left, bottom - chart_h], fill=GRID)
+        draw.line(points, fill=ACCENT, width=2)
+    for i in range(n):
+        x = left + int((i / max(n - 1, 1)) * chart_w)
+        draw.text((x - 24, bottom + 3), str(labels[i])[:11], fill=MUTED, font=_font(8))
+    draw.line([left, bottom, INNER[2] - 8, bottom], fill=GRID, width=1)
+    draw.line([left, bottom, left, bottom - chart_h], fill=GRID, width=1)
     return _png_bytes(img)
 
 
@@ -239,7 +227,7 @@ def build_chart_pngs(chart_data: Dict[str, Any]) -> Dict[str, bytes]:
     if chart_data.get("expiry_stack"):
         out["expiryStack"] = expiry_stack_chart(chart_data["expiry_stack"])
     if chart_data.get("coverage"):
-        out["coverage"] = coverage_polar_chart(chart_data["coverage"])
+        out["coverage"] = coverage_chart(chart_data["coverage"])
     if chart_data.get("person_expiry"):
         out["personExpiry"] = person_expiry_chart(chart_data["person_expiry"])
     return out
