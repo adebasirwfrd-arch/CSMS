@@ -59,7 +59,7 @@
 
     function warnDays(col) {
         const l = (col?.label || '').replace(/\*/g, '').trim().toLowerCase();
-        if (/mcu|hse passport|siml|^sim\s*expir|bst|sbtc|one\s*sika|t-bosiet|h2s|sea survival|hse demo|well control|first aid|fire|ohc|forklift|radiation|handak|k3 umum|tkpk|tkdn|hse 101|hse 201|hse 301/.test(l)) {
+        if (/mcu|hse passport|siml|^sim\s*expir|bst|sbtc|one\s*sika|t-bosiet|h2s|sea survival|hse demo|well control|first aid|fire|ohc|forklift|radiation|handak|k3 umum|tkpk|tkdn|hse 101|hse 201|hse 301|other training expiry/.test(l)) {
             if (/skck|contract|kontrak/.test(l)) return 30;
             return 90;
         }

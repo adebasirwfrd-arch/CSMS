@@ -85,6 +85,12 @@ _SIML_EXPIRY_RE = re.compile(r"siml(?:\s+\d+)?\s*expir", re.I)
 _SIML_LOCATION_RE = re.compile(r"siml(?:\s+\d+)?\s*location", re.I)
 _SIML_SLOT_COUNT = 5
 _MCU_MONTH_ABBR = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
+_WCAP_TRAINING_SUMMARY_RE = re.compile(r"upload\s*wcap\s*training\s*summary", re.I)
+WCAP_UPLOAD_COL_ID = "col_wcap_training_summary"
+_OTHER_TRAINING_CERT_RE = re.compile(r"upload\s*other\s*training\s*certificate", re.I)
+OTHER_TRAINING_NAME_COL_ID = "col_other_training_name"
+OTHER_TRAINING_EXPIRY_COL_ID = "col_other_training_expiry"
+OTHER_TRAINING_UPLOAD_COL_ID = "col_other_training_cert_doc"
 
 
 def _sanitize_folder_name(name: str) -> str:
@@ -198,8 +204,10 @@ def _resolve_upload_folder_name(
         or _is_insurance_upload_doc_upload(sheet_id, col_id, column_name, sheet)
     ):
         return DATA_PERSONEL_DRIVE_FOLDER
-    if sheet_id == TRAINING_SHEET_ID and _is_pelatihan_training_doc_upload(
-        sheet_id, col_id, column_name, sheet
+    if sheet_id == TRAINING_SHEET_ID and (
+        _is_pelatihan_training_doc_upload(sheet_id, col_id, column_name, sheet)
+        or _is_wcap_training_summary_upload(sheet_id, col_id, column_name, sheet)
+        or _is_other_training_cert_upload(sheet_id, col_id, column_name, sheet)
     ):
         return PELATIHAN_DRIVE_FOLDER
     return column_name
@@ -286,6 +294,96 @@ def _pelatihan_doc_prefix(
     return None
 
 
+def _is_other_training_cert_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != TRAINING_SHEET_ID:
+        return False
+    if col_id == OTHER_TRAINING_UPLOAD_COL_ID:
+        return True
+    if _OTHER_TRAINING_CERT_RE.search(column_name or ""):
+        return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col and _OTHER_TRAINING_CERT_RE.search((col.get("label") or "")):
+            return True
+    return False
+
+
+def _find_other_training_name_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        if col.get("id") == OTHER_TRAINING_NAME_COL_ID:
+            return col.get("id")
+        label = (col.get("label") or "").replace("*", "").strip()
+        if re.match(r"^other training name$", label, re.I):
+            return col.get("id")
+    return None
+
+
+def _find_other_training_expiry_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        if col.get("id") == OTHER_TRAINING_EXPIRY_COL_ID:
+            return col.get("id")
+        label = (col.get("label") or "").replace("*", "").strip()
+        if re.search(r"other training expiry date", label, re.I):
+            return col.get("id")
+    return None
+
+
+def _sanitize_training_name_for_file(name: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|]+', "-", (name or "").strip())
+    return (cleaned or "OTHER TRAINING").upper()
+
+
+def _build_other_training_cert_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    name_col = _find_other_training_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    training_name = _sanitize_training_name_for_file(
+        cells.get(name_col, "") if name_col else ""
+    )
+    pname_col = _find_personnel_name_col_id(sheet)
+    pname = (cells.get(pname_col) if pname_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+    expiry_col = _find_other_training_expiry_col_id(sheet)
+    expiry_raw = cells.get(expiry_col, "") if expiry_col else ""
+    suffix = _format_mcu_expiry_suffix(str(expiry_raw))
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"{training_name}_{pl_code}_{pname}_{suffix}"
+    return f"{base}.{ext}" if ext else base
+
+
+def _is_wcap_training_summary_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != TRAINING_SHEET_ID:
+        return False
+    if col_id == WCAP_UPLOAD_COL_ID:
+        return True
+    if _WCAP_TRAINING_SUMMARY_RE.search(column_name or ""):
+        return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col and _WCAP_TRAINING_SUMMARY_RE.search((col.get("label") or "")):
+            return True
+    return False
+
+
 def _is_pelatihan_training_doc_upload(
     sheet_id: str,
     col_id: str,
@@ -295,6 +393,26 @@ def _is_pelatihan_training_doc_upload(
     if sheet_id != TRAINING_SHEET_ID:
         return False
     return _pelatihan_doc_prefix(sheet_id, col_id, column_name, sheet) is not None
+
+
+def _build_wcap_training_summary_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"WCAP_{pl_code}_{pname}"
+    return f"{base}.{ext}" if ext else base
 
 
 def _find_training_expiry_col_id(sheet: Dict[str, Any], prefix: str) -> Optional[str]:
@@ -1086,6 +1204,24 @@ def _resolve_matrix_document_filename(
     row = next((r for r in sheet.get("rows", []) if r.get("id") == row_id), None)
     if not row:
         return _sanitize_doc_filename(original_filename)
+
+    if _is_wcap_training_summary_upload(sheet_id, col_id, column_name, sheet):
+        return _build_wcap_training_summary_filename(
+            sheet,
+            row,
+            original_filename,
+            personnel_name,
+            product_line_hint=product_line,
+        )
+
+    if _is_other_training_cert_upload(sheet_id, col_id, column_name, sheet):
+        return _build_other_training_cert_filename(
+            sheet,
+            row,
+            original_filename,
+            personnel_name,
+            product_line_hint=product_line,
+        )
 
     if _is_pelatihan_training_doc_upload(sheet_id, col_id, column_name, sheet):
         return _build_pelatihan_upload_filename(

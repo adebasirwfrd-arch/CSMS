@@ -143,6 +143,15 @@
           "index": 14
         },
         {
+          "id": "col_wcap_training_summary",
+          "key": "wcap_training_summary",
+          "label": "Upload WCAP Training Summary",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 15
+        },
+        {
           "id": "col_16",
           "key": "bst_training_date_16",
           "label": "BST Training date",
@@ -656,13 +665,49 @@
           "index": 71
         },
         {
+          "id": "col_other_training_name",
+          "key": "other_training_name",
+          "label": "OTHER TRAINING NAME",
+          "type": "text",
+          "filterable": false,
+          "required": false,
+          "index": 72
+        },
+        {
+          "id": "col_other_training_date",
+          "key": "other_training_date",
+          "label": "OTHERS TRAINING DATE",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 73
+        },
+        {
+          "id": "col_other_training_expiry",
+          "key": "other_training_expiry",
+          "label": "OTHER TRAINING EXPIRY DATE",
+          "type": "date",
+          "filterable": true,
+          "required": false,
+          "index": 74
+        },
+        {
+          "id": "col_other_training_cert_doc",
+          "key": "doc_other_training_cert",
+          "label": "Upload OTHER TRAINING CERTIFICATE",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 75
+        },
+        {
           "id": "col_22",
           "key": "one_sika_number_22",
           "label": "One SIKA Number",
           "type": "text",
           "filterable": false,
           "required": false,
-          "index": 72
+          "index": 76
         },
         {
           "id": "col_23",
@@ -671,16 +716,7 @@
           "type": "date",
           "filterable": true,
           "required": false,
-          "index": 73
-        },
-        {
-          "id": "col_24",
-          "key": "one_sika_training_location_24",
-          "label": "One Sika Training Location",
-          "type": "text",
-          "filterable": false,
-          "required": false,
-          "index": 74
+          "index": 77
         }
       ],
       "rows": [
@@ -710,7 +746,6 @@
             "col_21": "",
             "col_22": "",
             "col_23": "",
-            "col_24": "",
             "col_25": "",
             "col_26": "",
             "col_27": "",
@@ -790,7 +825,6 @@
             "col_21": "",
             "col_22": "",
             "col_23": "",
-            "col_24": "",
             "col_25": "",
             "col_26": "",
             "col_27": "",
@@ -870,7 +904,6 @@
             "col_21": "",
             "col_22": "",
             "col_23": "",
-            "col_24": "",
             "col_25": "",
             "col_26": "",
             "col_27": "",
@@ -950,7 +983,6 @@
             "col_21": "",
             "col_22": "",
             "col_23": "",
-            "col_24": "",
             "col_25": "",
             "col_26": "",
             "col_27": "",
@@ -1011,6 +1043,15 @@
       "name": "PERSONNEL HEALTH",
       "title": "PERSONNEL HEALTH",
       "columns": [
+        {
+          "id": "col_health_no",
+          "key": "health_no",
+          "label": "No",
+          "type": "number",
+          "filterable": true,
+          "required": false,
+          "index": 0
+        },
         {
           "id": "col_1",
           "key": "ktp_id_1",
@@ -1169,6 +1210,7 @@
         {
           "id": "row_f0c93e86b2e7",
           "cells": {
+            "col_health_no": "1",
             "col_1": "123456789123456",
             "col_2": "Fulan",
             "col_3": "Male",
@@ -1190,6 +1232,7 @@
         {
           "id": "row_0004af23fc25",
           "cells": {
+            "col_health_no": "2",
             "col_1": "3272040211700001",
             "col_2": "CECEP SULAEMAN",
             "col_3": "Male",
@@ -1211,6 +1254,7 @@
         {
           "id": "row_6e68dd4a4695",
           "cells": {
+            "col_health_no": "3",
             "col_1": "3175100704810015",
             "col_2": "ACHMAD PRIYANTO",
             "col_3": "Male",
@@ -1232,6 +1276,7 @@
         {
           "id": "row_031a2e814f42",
           "cells": {
+            "col_health_no": "4",
             "col_1": "1403090604800005",
             "col_2": "ANNAS RAHIM",
             "col_3": "Male",
@@ -1253,6 +1298,7 @@
         {
           "id": "row_f3e2c55fa8ba",
           "cells": {
+            "col_health_no": "5",
             "col_1": "",
             "col_2": "Putri Sarah Alvernia",
             "col_3": "",

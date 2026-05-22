@@ -20,7 +20,8 @@ def reminder_days_for_column(col: Dict[str, Any]) -> int:
         r"bst.*expir|sbtc.*expir|one\s*sika.*expir|t-bosiet.*expir|h2s.*expir|"
         r"sea survival.*expir|hse demo room.*expir|well control.*expir|first aid.*expir|"
         r"fire.*expir|ohc.*expir|forklift.*expir|radiation.*expir|handak.*expir|"
-        r"k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir",
+        r"k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir|"
+        r"other training expiry",
         label,
     ):
         return 90  # 3 bulan sebelum expiry (Pelatihan Wajib, MCU, HSE, SIML, dll.)
@@ -85,7 +86,8 @@ def is_expiry_column(col: Dict[str, Any]) -> bool:
         r"hse demo room training date$|well control training date$|first aid training date$|"
         r"fire training date$|ohc training date$|forklift training date$|radiation training date$|"
         r"handak training date$|k3 umum training date$|tkpk training date$|tkdn training date$|"
-        r"hse 101 training date$|hse 201 training date$|hse 301 training date$|.*training agency$|"
+        r"hse 101 training date$|hse 201 training date$|hse 301 training date$|"
+        r"others training date$|other training name$|.*training agency$|"
         r"contract start|review \(client\) date|follow up date|birth date",
         label,
         re.I,

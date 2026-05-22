@@ -6,6 +6,8 @@
     const PERSONNEL_HEALTH_SHEET_ID = 'personnel_health';
     const EMERGENCY_CONTACT_SHEET_ID = 'emergency_contact_information';
     const TRAINING_SHEET_ID = 'employee_mandatory_training';
+    const WCAP_UPLOAD_COL_ID = 'col_wcap_training_summary';
+    const WCAP_UPLOAD_LABEL = 'Upload WCAP Training Summary';
     const PELATIHAN_SHARED_DRIVE_FOLDER = 'PELATIHAN';
     const PELATIHAN_FILE_PREFIXES = [
         ['hse 301', 'HSE 301'], ['hse 201', 'HSE 201'], ['hse 101', 'HSE 101'],
@@ -34,6 +36,17 @@
         { filePrefix: 'HSE 201', dateLabel: 'HSE 201 TRAINING DATE', expiryLabel: 'HSE 201 TRAINING Expiry Date', agencyLabel: 'HSE 201 TRAINING AGENCY', dateColId: 'col_70', expiryColId: 'col_71', agencyColId: 'col_72', slug: 'hse_201' },
         { filePrefix: 'HSE 301', dateLabel: 'HSE 301 TRAINING DATE', expiryLabel: 'HSE 301 TRAINING Expiry Date', agencyLabel: 'HSE 301 TRAINING AGENCY', dateColId: 'col_73', expiryColId: 'col_74', agencyColId: 'col_75', slug: 'hse_301' },
     ];
+    const OTHER_TRAINING_SPEC = {
+        nameLabel: 'OTHER TRAINING NAME',
+        dateLabel: 'OTHERS TRAINING DATE',
+        expiryLabel: 'OTHER TRAINING EXPIRY DATE',
+        uploadLabel: 'Upload OTHER TRAINING CERTIFICATE',
+        nameColId: 'col_other_training_name',
+        dateColId: 'col_other_training_date',
+        expiryColId: 'col_other_training_expiry',
+        uploadColId: 'col_other_training_cert_doc',
+        slug: 'other_training',
+    };
     const MCU_AUTO_VALIDITY_MONTHS = 12;
     const SKCK_AUTO_VALIDITY_MONTHS = 6;
     const SKCK_EMAIL_REMINDER_DAYS = 30;
@@ -114,7 +127,7 @@
             {
                 label: 'Pelatihan Tambahan ≤3 bulan (90 hari)',
                 shortLabel: 'Pelatihan+ ≤90 hari',
-                match: /t-bosiet.*expir|h2s.*expir|sea survival.*expir|hse demo room.*expir|well control.*expir|first aid.*expir|fire.*expir|ohc.*expir|forklift.*expir|radiation.*expir|handak.*expir|k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir/i,
+                match: /t-bosiet.*expir|h2s.*expir|sea survival.*expir|hse demo room.*expir|well control.*expir|first aid.*expir|fire.*expir|ohc.*expir|forklift.*expir|radiation.*expir|handak.*expir|k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir|other training expiry/i,
                 warnDays: 90,
                 status: 'soon',
             },
@@ -272,6 +285,8 @@
         if (/^upload\s*sim$/i.test(label)) return true;
         if (/upload\s*bpjs/i.test(label)) return true;
         if (/upload\s*insurance/i.test(label)) return true;
+        if (/upload\s*wcap\s*training\s*summary/i.test(label)) return true;
+        if (/upload\s*other\s*training\s*certificate/i.test(label)) return true;
         if ((col.id || '').endsWith('_doc')) return true;
         if ((col.key || '').toLowerCase().startsWith('doc_')) return true;
         return false;
@@ -945,9 +960,118 @@
         return null;
     }
 
+    function isWcapTrainingSummaryColumn(col) {
+        if (!col) return false;
+        if (col.id === WCAP_UPLOAD_COL_ID) return true;
+        return /upload\s*wcap\s*training\s*summary/i.test((col.label || '').replace(/\*/g, '').trim());
+    }
+
+    function isWcapTrainingSummaryUpload(sheet, col, columnName) {
+        if (!sheet || sheet.id !== TRAINING_SHEET_ID) return false;
+        if (isWcapTrainingSummaryColumn(col)) return true;
+        return /upload\s*wcap\s*training\s*summary/i.test(String(columnName || '').trim());
+    }
+
     function isPelatihanTrainingDocUpload(sheet, col, columnName) {
         if (!sheet || sheet.id !== TRAINING_SHEET_ID) return false;
+        if (isOtherTrainingCertUpload(sheet, col, columnName)) return false;
         return getPelatihanDocPrefix(sheet, col, columnName) !== null;
+    }
+
+    function isOtherTrainingColumn(col) {
+        if (!col) return false;
+        const spec = OTHER_TRAINING_SPEC;
+        const l = normColLabel(col.label);
+        return col.id === spec.nameColId || col.id === spec.dateColId || col.id === spec.expiryColId
+            || col.id === spec.uploadColId
+            || l === normColLabel(spec.nameLabel) || l === normColLabel(spec.dateLabel)
+            || l === normColLabel(spec.expiryLabel) || l === normColLabel(spec.uploadLabel);
+    }
+
+    function isOtherTrainingCertUpload(sheet, col, columnName) {
+        if (!sheet || sheet.id !== TRAINING_SHEET_ID) return false;
+        const spec = OTHER_TRAINING_SPEC;
+        if (col?.id === spec.uploadColId) return true;
+        return /upload\s*other\s*training\s*certificate/i.test(String(columnName || col?.label || '').trim());
+    }
+
+    function findOtherTrainingNameColumn(sheet) {
+        const spec = OTHER_TRAINING_SPEC;
+        return (sheet?.columns || []).find(c =>
+            c.id === spec.nameColId || normColLabel(c.label) === normColLabel(spec.nameLabel)
+        ) || null;
+    }
+
+    function findOtherTrainingExpiryColumn(sheet) {
+        const spec = OTHER_TRAINING_SPEC;
+        return (sheet?.columns || []).find(c =>
+            c.id === spec.expiryColId || normColLabel(c.label) === normColLabel(spec.expiryLabel)
+        ) || null;
+    }
+
+    function sanitizeTrainingNameForFile(name) {
+        const s = String(name || 'OTHER TRAINING').replace(/[\\/:*?"<>|]+/g, '-').trim();
+        return (s || 'OTHER TRAINING').toUpperCase();
+    }
+
+    function buildOtherTrainingCertFilename(sheet, row, file, personnelName) {
+        const nameCol = findOtherTrainingNameColumn(sheet);
+        const trainingName = sanitizeTrainingNameForFile(nameCol ? (row?.cells?.[nameCol.id] || '') : '');
+        const nameColPersonnel = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameColPersonnel && row?.cells?.[nameColPersonnel.id]) || personnelName || 'Unknown Personnel';
+        const safeName = String(pname).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Unknown Personnel';
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const expiryCol = findOtherTrainingExpiryColumn(sheet);
+        const expiryRaw = expiryCol ? (row?.cells?.[expiryCol.id] || '') : '';
+        const suffix = formatMcuExpirySuffix(expiryRaw);
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `${trainingName}_${plCode}_${safeName}_${suffix}`;
+        return ext ? `${base}.${ext}` : base;
+    }
+
+    function virtualOtherTrainingCertColumn() {
+        return {
+            id: OTHER_TRAINING_SPEC.uploadColId,
+            key: 'doc_other_training_cert',
+            label: OTHER_TRAINING_SPEC.uploadLabel,
+            type: 'file',
+            filterable: false,
+            _virtual: true,
+        };
+    }
+
+    function collectOtherTrainingColumns(cols, sheet) {
+        const spec = OTHER_TRAINING_SPEC;
+        const pick = (label, id) => cols.find(c => c.id === id)
+            || cols.find(c => normColLabel(c.label) === normColLabel(label));
+        const name = pick(spec.nameLabel, spec.nameColId);
+        const date = pick(spec.dateLabel, spec.dateColId);
+        const exp = pick(spec.expiryLabel, spec.expiryColId);
+        let upload = cols.find(c =>
+            c.id === spec.uploadColId || c.id === `${spec.expiryColId}_doc`
+        );
+        if (!upload && sheet) {
+            const expCol = exp || pick(spec.expiryLabel, spec.expiryColId);
+            if (expCol) {
+                upload = cols.find(c =>
+                    (c.id === docColumnIdFor(expCol) || docColumnMatchesExpiry(c, expCol)) && isDocUploadColumn(c)
+                );
+            }
+        }
+        if (!upload) upload = virtualOtherTrainingCertColumn();
+        return [name, date, exp, upload].filter(Boolean);
+    }
+
+    function buildWcapTrainingSummaryFilename(sheet, row, file, personnelName) {
+        const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
+        const safeName = String(pname).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Unknown Personnel';
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `WCAP_${plCode}_${safeName}`;
+        return ext ? `${base}.${ext}` : base;
     }
 
     function findTrainingExpiryColumn(sheet, prefix) {
@@ -956,21 +1080,69 @@
         ) || null;
     }
 
+    const ONE_SIKA_LOCATION_KEEP_COL_ID = 'col_21';
+    const ONE_SIKA_LOCATION_DUPLICATE_COL_ID = 'col_24';
+
+    function isOneSikaTrainingLocationCol(col) {
+        return normColLabel(col?.label) === 'one sika training location';
+    }
+
+    function isOneSikaCoreTrainingCol(col) {
+        const l = normColLabel(col?.label);
+        if (l === 'one sika number') return true;
+        if (l === 'one sika expiry date') return true;
+        if (/one sika.*(traiin|train).*date/.test(l)) return true;
+        return false;
+    }
+
+    function dedupeOneSikaTrainingLocationColumns(cols) {
+        const locs = cols.filter(isOneSikaTrainingLocationCol);
+        if (locs.length <= 1) return cols;
+        const keepId = cols.some(c => c.id === ONE_SIKA_LOCATION_KEEP_COL_ID)
+            ? ONE_SIKA_LOCATION_KEEP_COL_ID
+            : locs.sort((a, b) => (a.index ?? 999) - (b.index ?? 999))[0].id;
+        return cols.filter(c => !isOneSikaTrainingLocationCol(c) || c.id === keepId);
+    }
+
     function sortPelatihanDisplayColumns(cols, sheet) {
         if (!sheet || sheet.id !== TRAINING_SHEET_ID || !cols.length) return cols;
+        cols = dedupeOneSikaTrainingLocationColumns(cols);
         const packageLabelSet = new Set();
         PELATIHAN_EXTRA_TRAININGS.forEach(t => {
             packageLabelSet.add(normColLabel(t.dateLabel));
             packageLabelSet.add(normColLabel(t.expiryLabel));
             packageLabelSet.add(normColLabel(t.agencyLabel));
         });
-        const isPackageDataCol = c => packageLabelSet.has(normColLabel(c.label));
+        const isPackageDataCol = c => packageLabelSet.has(normColLabel(c.label)) || isOtherTrainingColumn(c);
         const isPackageDocCol = c =>
-            isDocUploadColumn(c) && getPelatihanDocPrefix(sheet, c, docColumnFolderName(c));
+            (isDocUploadColumn(c) && getPelatihanDocPrefix(sheet, c, docColumnFolderName(c)))
+            || isOtherTrainingCertUpload(sheet, c, docColumnFolderName(c));
         const anchorIdx = cols.findIndex(c => normColLabel(c.label) === 'one sika training location');
         if (anchorIdx < 0) return cols;
-        const before = cols.slice(0, anchorIdx + 1);
-        const after = cols.slice(anchorIdx + 1).filter(c => !isPackageDataCol(c) && !isPackageDocCol(c));
+        const oneSikaTrailing = [];
+        const after = cols.slice(anchorIdx + 1).filter(c => {
+            if (isPackageDataCol(c) || isPackageDocCol(c)) return false;
+            if (isOneSikaCoreTrainingCol(c)) {
+                oneSikaTrailing.push(c);
+                return false;
+            }
+            if (isOneSikaTrainingLocationCol(c)) return false;
+            if (isDocUploadColumn(c) && getPelatihanDocPrefix(sheet, c, docColumnFolderName(c)) === 'ONE SIKA') {
+                oneSikaTrailing.push(c);
+                return false;
+            }
+            return true;
+        });
+        let before = cols.slice(0, anchorIdx + 1);
+        const dateIdx = before.findIndex(c => /one sika.*(traiin|train).*date/i.test(normColLabel(c.label)));
+        const extras = oneSikaTrailing.filter(c => !before.some(b => b.id === c.id));
+        if (extras.length) {
+            if (dateIdx >= 0) {
+                before = before.slice(0, dateIdx + 1).concat(extras, before.slice(dateIdx + 1));
+            } else {
+                before = before.slice(0, -1).concat(extras, before.slice(-1));
+            }
+        }
         const packages = [];
         PELATIHAN_EXTRA_TRAININGS.forEach(spec => {
             const dateCol = cols.find(c => normColLabel(c.label) === normColLabel(spec.dateLabel));
@@ -986,7 +1158,50 @@
                 if (docCol) packages.push(docCol);
             }
         });
+        collectOtherTrainingColumns(cols, sheet).forEach(c => {
+            if (!packages.some(p => p.id === c.id)) packages.push(c);
+        });
         return before.concat(packages, after);
+    }
+
+    async function removeDuplicateOneSikaTrainingLocationColumn() {
+        const sheet = sheetById(TRAINING_SHEET_ID);
+        if (!sheet) return;
+        const locCols = (sheet.columns || []).filter(isOneSikaTrainingLocationCol);
+        if (locCols.length <= 1) return;
+
+        const keep = locCols.find(c => c.id === ONE_SIKA_LOCATION_KEEP_COL_ID)
+            || locCols.sort((a, b) => (a.index ?? 999) - (b.index ?? 999))[0];
+        const duplicates = locCols.filter(c => c.id !== keep.id);
+        if (!duplicates.length) return;
+
+        let changed = false;
+        for (const dup of duplicates) {
+            for (const row of sheet.rows || []) {
+                const cells = row.cells || {};
+                if (!(cells[keep.id] || '').trim() && (cells[dup.id] || '').trim()) {
+                    cells[keep.id] = cells[dup.id];
+                    changed = true;
+                }
+            }
+            try {
+                await matrixRequest('DELETE', `/matrix/sheets/${TRAINING_SHEET_ID}/columns/${dup.id}`);
+                sheet.columns = sheet.columns.filter(c => c.id !== dup.id);
+                sheet.rows.forEach(r => {
+                    if (r.cells) delete r.cells[dup.id];
+                });
+                changed = true;
+            } catch (e) {
+                console.warn('removeDuplicateOneSikaTrainingLocationColumn:', e.message || e);
+            }
+        }
+        if (changed) {
+            try {
+                MATRIX_STATE.workbook = await fetchWorkbook();
+            } catch (e) {
+                console.warn('removeDuplicateOneSikaTrainingLocationColumn reload:', e.message);
+            }
+        }
     }
 
     function buildPelatihanDocFilename(sheet, row, file, personnelName, col, columnName) {
@@ -1005,6 +1220,8 @@
     }
 
     function docUploadFolderName(sheet, col) {
+        if (isWcapTrainingSummaryUpload(sheet, col, docColumnFolderName(col))) return PELATIHAN_SHARED_DRIVE_FOLDER;
+        if (isOtherTrainingCertUpload(sheet, col, docColumnFolderName(col))) return PELATIHAN_SHARED_DRIVE_FOLDER;
         if (isPelatihanTrainingDocUpload(sheet, col, docColumnFolderName(col))) return PELATIHAN_SHARED_DRIVE_FOLDER;
         if (sheet?.id === PROFILE_SHEET_ID && (
             isSimlUploadDocColumn(sheet, col) ||
@@ -1176,6 +1393,12 @@
     }
 
     function buildMatrixDocFilename(sheet, row, col, file, personnelName, columnName) {
+        if (isWcapTrainingSummaryUpload(sheet, col, columnName)) {
+            return buildWcapTrainingSummaryFilename(sheet, row, file, personnelName);
+        }
+        if (isOtherTrainingCertUpload(sheet, col, columnName)) {
+            return buildOtherTrainingCertFilename(sheet, row, file, personnelName);
+        }
         if (isPelatihanTrainingDocUpload(sheet, col, columnName)) {
             return buildPelatihanDocFilename(sheet, row, file, personnelName, col, columnName);
         }
@@ -1265,6 +1488,7 @@
                 new RegExp(`^${t.dateLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'),
                 new RegExp(t.expiryLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
             ]),
+            [/others training date/i, /other training expiry date/i],
         ];
 
         for (const [srcRe, expRe] of labelPairs) {
@@ -1898,8 +2122,36 @@
             }
         });
 
-        const merged = ordered.concat(orderedRest);
-        return sheet.id === TRAINING_SHEET_ID ? sortPelatihanDisplayColumns(merged, sheet) : merged;
+        let merged = ordered.concat(orderedRest);
+        if (sheet.id === TRAINING_SHEET_ID) {
+            merged = placeWcapColumnAfterGender(merged, sheet);
+            merged = sortPelatihanDisplayColumns(merged, sheet);
+        }
+        return merged;
+    }
+
+    function virtualWcapTrainingSummaryColumn() {
+        return {
+            id: WCAP_UPLOAD_COL_ID,
+            key: 'wcap_training_summary',
+            label: WCAP_UPLOAD_LABEL,
+            type: 'file',
+            filterable: false,
+            _virtual: true,
+        };
+    }
+
+    function placeWcapColumnAfterGender(cols, sheet) {
+        const list = [...cols];
+        let wcap = list.find(c => isWcapTrainingSummaryColumn(c));
+        if (!wcap) wcap = (sheet?.columns || []).find(c => isWcapTrainingSummaryColumn(c));
+        if (!wcap) wcap = virtualWcapTrainingSummaryColumn();
+        const wIdx = list.findIndex(c => c.id === wcap.id);
+        if (wIdx >= 0) list.splice(wIdx, 1);
+        const gIdx = list.findIndex(c => /gender/i.test((c.label || '').replace(/\*/g, '')));
+        if (gIdx < 0) return [...list, wcap];
+        list.splice(gIdx + 1, 0, wcap);
+        return list;
     }
 
     function getColByExactLabel(sheet, label) {
@@ -2527,6 +2779,64 @@
         }
     }
 
+    const PERSONNEL_HEALTH_NO_COL_ID = 'col_health_no';
+
+    function nextSheetRowNo(sheet) {
+        const noCol = getColByExactLabel(sheet, 'No');
+        if (!noCol) return null;
+        let max = 0;
+        for (const r of sheet.rows || []) {
+            const n = parseInt(String(r.cells?.[noCol.id] || '').trim(), 10);
+            if (!isNaN(n) && n > max) max = n;
+        }
+        return String(max + 1);
+    }
+
+    async function ensurePersonnelHealthNoColumn() {
+        const sheet = sheetById(PERSONNEL_HEALTH_SHEET_ID);
+        if (!sheet) return;
+        let noCol = getColByExactLabel(sheet, 'No');
+        if (!noCol) {
+            try {
+                noCol = await matrixRequest('POST', `/matrix/sheets/${PERSONNEL_HEALTH_SHEET_ID}/columns`, {
+                    label: 'No',
+                    type: 'number',
+                    filterable: true,
+                    col_id: PERSONNEL_HEALTH_NO_COL_ID,
+                    col_key: 'health_no',
+                });
+                if (noCol?.id) {
+                    if (!sheet.columns.some(c => c.id === noCol.id)) {
+                        sheet.columns.unshift(noCol);
+                    }
+                    sheet.rows.forEach(r => { r.cells[noCol.id] = r.cells[noCol.id] || ''; });
+                }
+            } catch (e) {
+                console.warn('ensurePersonnelHealthNoColumn:', e.message || e);
+                return;
+            }
+        }
+        if (!noCol?.id) return;
+        let seq = 0;
+        const pending = [];
+        for (const r of sheet.rows || []) {
+            const raw = String(r.cells?.[noCol.id] || '').trim();
+            const n = parseInt(raw, 10);
+            if (!isNaN(n) && n > seq) seq = n;
+            if (!raw) {
+                seq += 1;
+                pending.push({ rowId: r.id, val: String(seq) });
+            }
+        }
+        for (const { rowId, val } of pending) {
+            try {
+                await applyCellsUpdate(PERSONNEL_HEALTH_SHEET_ID, rowId, { [noCol.id]: val });
+            } catch (e) {
+                console.warn('ensurePersonnelHealthNoColumn backfill:', e.message || e);
+            }
+        }
+    }
+
     async function ensureStandardColumns() {
         if (!MATRIX_STATE.workbook) return;
         for (const sheet of MATRIX_STATE.workbook.sheets) {
@@ -2691,6 +3001,74 @@
         }
     }
 
+    async function ensureWcapTrainingSummaryColumn() {
+        const sheet = sheetById(TRAINING_SHEET_ID);
+        if (!sheet) return;
+        const exists = (sheet.columns || []).some(c => isWcapTrainingSummaryColumn(c));
+        if (exists) return;
+        try {
+            const col = await matrixRequest('POST', `/matrix/sheets/${TRAINING_SHEET_ID}/columns`, {
+                label: WCAP_UPLOAD_LABEL,
+                type: 'file',
+                filterable: false,
+                col_id: WCAP_UPLOAD_COL_ID,
+                col_key: 'wcap_training_summary',
+            });
+            if (col?.id) {
+                if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
+                sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                const fresh = await fetchWorkbook();
+                MATRIX_STATE.workbook = fresh;
+            }
+        } catch (e) {
+            const msg = e.message || String(e);
+            if (!/duplicate|23505|already exists/i.test(msg)) {
+                console.warn('ensureWcapTrainingSummaryColumn:', msg);
+            }
+        }
+    }
+
+    async function ensureOtherTrainingColumns() {
+        const sheet = sheetById(TRAINING_SHEET_ID);
+        if (!sheet) return;
+        const spec = OTHER_TRAINING_SPEC;
+        let needsReload = false;
+        for (const entry of [
+            { label: spec.nameLabel, type: 'text', colId: spec.nameColId, key: `${spec.slug}_name` },
+            { label: spec.dateLabel, type: 'date', colId: spec.dateColId, key: `${spec.slug}_date` },
+            { label: spec.expiryLabel, type: 'date', colId: spec.expiryColId, key: `${spec.slug}_expiry` },
+            { label: spec.uploadLabel, type: 'file', colId: spec.uploadColId, key: 'doc_other_training_cert' },
+        ]) {
+            const exists = (sheet.columns || []).some(c =>
+                c.id === entry.colId || normColLabel(c.label) === normColLabel(entry.label)
+            );
+            if (exists) continue;
+            try {
+                const col = await matrixRequest('POST', `/matrix/sheets/${TRAINING_SHEET_ID}/columns`, {
+                    label: entry.label,
+                    type: entry.type,
+                    filterable: entry.type === 'date',
+                    col_id: entry.colId,
+                    col_key: entry.key,
+                });
+                if (col?.id) {
+                    if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
+                    sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                    needsReload = true;
+                }
+            } catch (e) {
+                console.warn(`ensureOtherTrainingColumns ${entry.label}:`, e.message || e);
+            }
+        }
+        if (needsReload) {
+            try {
+                MATRIX_STATE.workbook = await fetchWorkbook();
+            } catch (e) {
+                console.warn('ensureOtherTrainingColumns reload:', e.message);
+            }
+        }
+    }
+
     async function ensurePelatihanExtraColumns() {
         const sheet = sheetById(TRAINING_SHEET_ID);
         if (!sheet) return;
@@ -2736,8 +3114,12 @@
     function runMatrixBackgroundSetup() {
         const tasks = [
             ensureStandardColumns(),
+            ensurePersonnelHealthNoColumn(),
             ensureProfilePhotoColumn(),
+            ensureWcapTrainingSummaryColumn(),
+            removeDuplicateOneSikaTrainingLocationColumn(),
             ensurePelatihanExtraColumns(),
+            ensureOtherTrainingColumns(),
             ensureExpiryDocColumns(),
             ensureMcuResultDocColumn(),
             ensureCvDocColumn(),
@@ -4332,6 +4714,11 @@
         else if (clientCol && isAllClients()) initCells[clientCol.id] = '';
         if (plCol && plName) initCells[plCol.id] = plName;
         if (projectCol) initCells[projectCol.id] = isAllProjects() ? '' : getSelectedProjectName();
+        const nextNo = nextSheetRowNo(sheet);
+        if (nextNo) {
+            const noCol = getColByExactLabel(sheet, 'No');
+            if (noCol) initCells[noCol.id] = nextNo;
+        }
         try {
             const row = await matrixRequest('POST', `/matrix/sheets/${sheet.id}/rows`, { cells: initCells });
             sheet.rows.push(row);
@@ -4496,7 +4883,7 @@
         if (/hse passport.*expir/i.test(l)) return 90;
         if (/siml\s*expir/i.test(l)) return 90;
         if (/^sim\s*expir/i.test(l)) return 90;
-        if (/bst.*expir|sbtc.*expir|one\s*sika.*expir|t-bosiet.*expir|h2s.*expir|sea survival.*expir|hse demo room.*expir|well control.*expir|first aid.*expir|fire.*expir|ohc.*expir|forklift.*expir|radiation.*expir|handak.*expir|k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir/i.test(l)) return 90;
+        if (/bst.*expir|sbtc.*expir|one\s*sika.*expir|t-bosiet.*expir|h2s.*expir|sea survival.*expir|hse demo room.*expir|well control.*expir|first aid.*expir|fire.*expir|ohc.*expir|forklift.*expir|radiation.*expir|handak.*expir|k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir|other training expiry/i.test(l)) return 90;
         if (/skck.*expir/i.test(l)) return 30;
         if (/contract end|kontrak/i.test(l)) return 30;
         return 30;
