@@ -3,6 +3,8 @@
  */
 (function () {
     const PROFILE_SHEET_ID = 'personnel_data_information';
+    const PERSONNEL_HEALTH_SHEET_ID = 'personnel_health';
+    const MCU_AUTO_VALIDITY_MONTHS = 12;
     const PHOTO_COL_ID = 'col_photo';
     const AVATAR_MALE = '/static/images/matrix-avatar-male.png';
     const AVATAR_FEMALE = '/static/images/matrix-avatar-female.png';
@@ -37,7 +39,7 @@
         ],
         personnel_health: [
             { type: 'personnel' },
-            { label: 'MCU Expired ≤90 hari', match: /mcu expired/i, warnDays: 90, status: 'soon' },
+            { label: 'MCU Expired ≤3 bulan (90 hari)', match: /mcu expired/i, warnDays: 90, status: 'soon' },
             { label: 'MCU Sudah Expired', match: /mcu expired/i, status: 'expired' },
             { type: 'missing' },
         ],
@@ -262,12 +264,78 @@
         return null;
     }
 
+    function isMcuDateColumn(sheet, col) {
+        if (!sheet || !col || sheet.id !== PERSONNEL_HEALTH_SHEET_ID) return false;
+        const label = (col.label || '').replace(/\*/g, '').trim().toLowerCase();
+        return label === 'mcu date';
+    }
+
     function shouldPromptReminder(sheet, col) {
         if (!col || col.type !== 'date' || !sheet) return false;
         if (isExpiryDateColumn(col)) return false;
+        if (isMcuDateColumn(sheet, col)) return false;
         const label = col.label.replace(/\*/g, '').trim().toLowerCase();
         if (/birth date|booster.*date|review \(client\) date|follow up date/i.test(label)) return false;
         return !!findPairedExpiryColumn(sheet, col);
+    }
+
+    async function applyMcuDateWithAutoExpiry(input, sheet, col) {
+        const sheetId = input.dataset.sheet;
+        const rowId = input.dataset.row;
+        const colId = input.dataset.col;
+        const newVal = input.value;
+        const oldVal = input.dataset.prev ?? '';
+        if (oldVal === newVal) return;
+
+        if (!newVal) {
+            await matrixOnCellChange(input);
+            return;
+        }
+
+        const expiryCol = findPairedExpiryColumn(sheet, col);
+        if (!expiryCol) {
+            await matrixOnCellChange(input);
+            return;
+        }
+
+        const expiryVal = addMonthsToIsoDate(newVal, MCU_AUTO_VALIDITY_MONTHS);
+        const row = sheetById(sheetId)?.rows?.find(r => r.id === rowId);
+        const oldExpiry = row?.cells?.[expiryCol.id] ?? '';
+
+        input.dataset.saving = '1';
+        try {
+            await applyCellsUpdate(sheetId, rowId, {
+                [colId]: newVal,
+                [expiryCol.id]: expiryVal,
+            });
+            input.dataset.prev = newVal;
+            pushHistory({
+                desc: 'MCU Date + auto MCU Expired (+12 bulan)',
+                undo: async () => {
+                    await applyCellsUpdate(sheetId, rowId, { [colId]: oldVal, [expiryCol.id]: oldExpiry });
+                    paintMatrixScreen();
+                },
+                redo: async () => {
+                    await applyCellsUpdate(sheetId, rowId, { [colId]: newVal, [expiryCol.id]: expiryVal });
+                    paintMatrixScreen();
+                },
+            });
+            const fmt = (v) => {
+                const d = parseDate(v);
+                if (!d) return v;
+                return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+            };
+            showToast?.(
+                `MCU Expired otomatis ${fmt(expiryVal)} (+12 bulan). Email reminder ~3 bulan sebelum expired.`,
+                'success'
+            );
+            paintMatrixScreen();
+        } catch (e) {
+            input.value = oldVal;
+            showToast?.(e.message || 'Gagal menyimpan MCU Date', 'error');
+        } finally {
+            delete input.dataset.saving;
+        }
     }
 
     function addMonthsToIsoDate(isoDate, months) {
@@ -2184,6 +2252,11 @@
         const sheetId = input.dataset.sheet;
         const sheet = sheetById(sheetId);
         const col = sheet?.columns?.find(c => c.id === input.dataset.col);
+
+        if (isMcuDateColumn(sheet, col)) {
+            await applyMcuDateWithAutoExpiry(input, sheet, col);
+            return;
+        }
 
         if (!newVal || !shouldPromptReminder(sheet, col)) {
             await matrixOnCellChange(input);

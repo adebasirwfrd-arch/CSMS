@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+# Email ~3 bulan sebelum tanggal EXPIRED (MCU Expired, BST Expiry, dll.)
 MATRIX_REMINDER_DAYS = 90
 REMINDER_WINDOW = (88, 91)
 
