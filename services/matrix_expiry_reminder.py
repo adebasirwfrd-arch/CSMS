@@ -15,10 +15,12 @@ def reminder_days_for_column(col: Dict[str, Any]) -> int:
     label = (col.get("label") or "").replace("*", "").strip().lower()
     if re.search(r"skck.*expir", label):
         return 30  # 1 bulan sebelum SKCK Expiry
-    if re.search(r"mcu.*expir", label) or re.search(r"hse passport.*expir", label):
-        return 90
-    if re.search(r"siml\s*expir", label) or re.search(r"^sim\s*expir", label):
-        return 90  # 3 bulan sebelum MCU / HSE Passport / SIM(L) Expiry
+    if re.search(
+        r"mcu.*expir|hse passport.*expir|siml\s*expir|^sim\s*expir|"
+        r"bst.*expir|sbtc.*expir|one\s*sika.*expir",
+        label,
+    ):
+        return 90  # 3 bulan sebelum expiry (Pelatihan Wajib, MCU, HSE, SIML, dll.)
     return MATRIX_REMINDER_DAYS
 
 
@@ -75,6 +77,7 @@ def is_expiry_column(col: Dict[str, Any]) -> bool:
         return False
     if re.search(
         r"training date|^mcu date$|booster.*date|skck date$|hse passport date|sim date$|siml(?:\s+\d+)?\s+date$|"
+        r"bst training|sbtc date$|one\s*sika.*(train|traiin)|"
         r"contract start|review \(client\) date|follow up date|birth date",
         label,
         re.I,

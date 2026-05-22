@@ -36,6 +36,14 @@ MATRIX_PROFILE_ROOT = os.getenv(
 PERSONNEL_HEALTH_SHEET_ID = "personnel_health"
 PROFILE_SHEET_ID = "personnel_data_information"
 EMERGENCY_CONTACT_SHEET_ID = "emergency_contact_information"
+TRAINING_SHEET_ID = "employee_mandatory_training"
+PELATIHAN_DRIVE_FOLDER = "PELATIHAN"
+_BST_EXPIRY_RE = re.compile(r"bst.*expir", re.I)
+_SBTC_EXPIRY_RE = re.compile(r"sbtc.*expir", re.I)
+_ONE_SIKA_EXPIRY_RE = re.compile(r"one\s*sika.*expir", re.I)
+_BST_DOC_KEY_RE = re.compile(r"doc_.*bst.*expir|bst.*expir.*doc", re.I)
+_SBTC_DOC_KEY_RE = re.compile(r"doc_.*sbtc.*expir|sbtc.*expir.*doc", re.I)
+_ONE_SIKA_DOC_KEY_RE = re.compile(r"doc_.*one\s*sika.*expir|one\s*sika.*expir.*doc", re.I)
 _MCU_EXPIRY_LABEL_RE = re.compile(r"mcu\s*expired", re.I)
 _MCU_DOC_KEY_RE = re.compile(r"doc_.*mcu.*expired|mcu.*expired.*doc", re.I)
 _MCU_RESULT_DOC_RE = re.compile(r"mcu\s*result\s*doc", re.I)
@@ -74,6 +82,18 @@ def _personnel_photo_folder(personnel_name: str) -> str:
     return parent_id
 
 
+def _pelatihan_personnel_folder(personnel_name: str) -> str:
+    """MATRIX ATTACHMENT / PELATIHAN / {personnel_name}."""
+    pelatihan_parent = drive_service.find_or_create_folder(PELATIHAN_DRIVE_FOLDER, parent_id=MATRIX_PROFILE_ROOT)
+    if not pelatihan_parent:
+        raise HTTPException(status_code=500, detail="Gagal membuat folder PELATIHAN di Google Drive")
+    person_folder = _sanitize_folder_name(personnel_name)
+    personnel_parent = drive_service.find_or_create_folder(person_folder, parent_id=pelatihan_parent)
+    if not personnel_parent:
+        raise HTTPException(status_code=500, detail="Gagal membuat folder personel PELATIHAN di Google Drive")
+    return personnel_parent
+
+
 def _resolve_upload_folder_name(
     column_name: str,
     sheet_id: str = "",
@@ -100,6 +120,10 @@ def _resolve_upload_folder_name(
         or _is_insurance_upload_doc_upload(sheet_id, col_id, column_name, sheet)
     ):
         return _MCU_DRIVE_FOLDER
+    if sheet_id == TRAINING_SHEET_ID and _is_pelatihan_training_doc_upload(
+        sheet_id, col_id, column_name, sheet
+    ):
+        return PELATIHAN_DRIVE_FOLDER
     return column_name
 
 
@@ -129,7 +153,106 @@ def _document_upload_parent_for_matrix(
         except KeyError:
             pass
     folder = _resolve_upload_folder_name(column_name, sheet_id, col_id, sheet)
+    if folder == PELATIHAN_DRIVE_FOLDER:
+        return _pelatihan_personnel_folder(personnel_name)
     return _document_upload_folder(folder, personnel_name)
+
+
+def _pelatihan_doc_prefix(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> Optional[str]:
+    text = (column_name or "").strip()
+    if _BST_EXPIRY_RE.search(text):
+        return "BST"
+    if _SBTC_EXPIRY_RE.search(text):
+        return "SBTC"
+    if _ONE_SIKA_EXPIRY_RE.search(text):
+        return "ONE SIKA"
+    if not sheet or not col_id:
+        return None
+    col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+    if not col:
+        return None
+    label = (col.get("label") or "").replace("Doc:", "", 1).replace("*", "").strip()
+    key = (col.get("key") or "").lower()
+    if _BST_EXPIRY_RE.search(label) or _BST_DOC_KEY_RE.search(key) or (col_id.endswith("_doc") and "bst" in col_id.lower()):
+        return "BST"
+    if _SBTC_EXPIRY_RE.search(label) or _SBTC_DOC_KEY_RE.search(key):
+        return "SBTC"
+    if _ONE_SIKA_EXPIRY_RE.search(label) or _ONE_SIKA_DOC_KEY_RE.search(key):
+        return "ONE SIKA"
+    if col_id.endswith("_doc"):
+        exp_id = col_id[:-4]
+        exp_col = next((c for c in sheet.get("columns", []) if c.get("id") == exp_id), None)
+        if exp_col:
+            exp_label = (exp_col.get("label") or "").replace("*", "").strip()
+            if _BST_EXPIRY_RE.search(exp_label):
+                return "BST"
+            if _SBTC_EXPIRY_RE.search(exp_label):
+                return "SBTC"
+            if _ONE_SIKA_EXPIRY_RE.search(exp_label):
+                return "ONE SIKA"
+    return None
+
+
+def _is_pelatihan_training_doc_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != TRAINING_SHEET_ID:
+        return False
+    return _pelatihan_doc_prefix(sheet_id, col_id, column_name, sheet) is not None
+
+
+def _find_training_expiry_col_id(sheet: Dict[str, Any], prefix: str) -> Optional[str]:
+    patterns = {
+        "BST": _BST_EXPIRY_RE,
+        "SBTC": _SBTC_EXPIRY_RE,
+        "ONE SIKA": _ONE_SIKA_EXPIRY_RE,
+    }
+    pattern = patterns.get(prefix)
+    if not pattern:
+        return None
+    for col in sheet.get("columns", []):
+        label = (col.get("label") or "").replace("*", "").strip()
+        if col.get("type") == "date" and pattern.search(label):
+            return col.get("id")
+    return None
+
+
+def _build_pelatihan_upload_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+    col_id: str = "",
+    column_name: str = "",
+    sheet_id: str = "",
+) -> str:
+    prefix = _pelatihan_doc_prefix(sheet_id, col_id, column_name, sheet) or "DOC"
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+
+    expiry_col = _find_training_expiry_col_id(sheet, prefix)
+    expiry_raw = cells.get(expiry_col, "") if expiry_col else ""
+    suffix = _format_mcu_expiry_suffix(str(expiry_raw))
+
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"{prefix}_{pl_code}_{pname}_{suffix}"
+    return f"{base}.{ext}" if ext else base
 
 
 def _format_doc_cell(file_id: str, filename: str) -> str:
@@ -881,6 +1004,18 @@ def _resolve_matrix_document_filename(
     row = next((r for r in sheet.get("rows", []) if r.get("id") == row_id), None)
     if not row:
         return _sanitize_doc_filename(original_filename)
+
+    if _is_pelatihan_training_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _build_pelatihan_upload_filename(
+            sheet,
+            row,
+            original_filename,
+            personnel_name,
+            product_line_hint=product_line,
+            col_id=col_id,
+            column_name=column_name,
+            sheet_id=sheet_id,
+        )
 
     if _is_cv_doc_upload(sheet_id, col_id, column_name, sheet):
         return _build_cv_upload_filename(

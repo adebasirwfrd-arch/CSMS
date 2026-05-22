@@ -5,6 +5,8 @@
     const PROFILE_SHEET_ID = 'personnel_data_information';
     const PERSONNEL_HEALTH_SHEET_ID = 'personnel_health';
     const EMERGENCY_CONTACT_SHEET_ID = 'emergency_contact_information';
+    const TRAINING_SHEET_ID = 'employee_mandatory_training';
+    const PELATIHAN_SHARED_DRIVE_FOLDER = 'PELATIHAN';
     const MCU_AUTO_VALIDITY_MONTHS = 12;
     const SKCK_AUTO_VALIDITY_MONTHS = 6;
     const SKCK_EMAIL_REMINDER_DAYS = 30;
@@ -79,9 +81,9 @@
     const SHEET_KPI_RULES = {
         employee_mandatory_training: [
             { type: 'personnel' },
-            { label: 'BST Expired ≤30 hari', match: /bst expiry/i, warnDays: 30, status: 'soon' },
-            { label: 'SBTC Expired ≤30 hari', match: /sbtc expiry/i, warnDays: 30, status: 'soon' },
-            { label: 'One Sika Expired ≤30 hari', match: /one sika expiry/i, warnDays: 30, status: 'soon' },
+            { label: 'BST Expired ≤3 bulan (90 hari)', match: /bst expiry/i, warnDays: 90, status: 'soon' },
+            { label: 'SBTC Expired ≤3 bulan (90 hari)', match: /sbtc expiry/i, warnDays: 90, status: 'soon' },
+            { label: 'One Sika Expired ≤3 bulan (90 hari)', match: /one sika expiry/i, warnDays: 90, status: 'soon' },
             { label: 'Training Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
             { type: 'missing' },
         ],
@@ -876,7 +878,63 @@
         return ext ? `${base}.${ext}` : base;
     }
 
+    function getPelatihanDocPrefix(sheet, col, columnName) {
+        const folder = (columnName || docColumnFolderName(col) || '').trim();
+        if (/bst.*expir/i.test(folder)) return 'BST';
+        if (/sbtc.*expir/i.test(folder)) return 'SBTC';
+        if (/one\s*sika.*expir/i.test(folder)) return 'ONE SIKA';
+        if (!sheet || !col) return null;
+        const label = (col.label || '').replace(/^Doc:\s/i, '').replace(/\*/g, '').trim();
+        const key = (col.key || '').toLowerCase();
+        if (/bst.*expir/i.test(label) || /doc_.*bst.*expir/i.test(key)) return 'BST';
+        if (/sbtc.*expir/i.test(label) || /doc_.*sbtc.*expir/i.test(key)) return 'SBTC';
+        if (/one\s*sika.*expir/i.test(label) || /doc_.*one\s*sika.*expir/i.test(key)) return 'ONE SIKA';
+        if (col.id && String(col.id).endsWith('_doc')) {
+            const expId = col.id.replace(/_doc$/, '');
+            const expCol = (sheet.columns || []).find(c => c.id === expId);
+            const expLabel = (expCol?.label || '').replace(/\*/g, '').trim();
+            if (/bst.*expir/i.test(expLabel)) return 'BST';
+            if (/sbtc.*expir/i.test(expLabel)) return 'SBTC';
+            if (/one\s*sika.*expir/i.test(expLabel)) return 'ONE SIKA';
+        }
+        return null;
+    }
+
+    function isPelatihanTrainingDocUpload(sheet, col, columnName) {
+        if (!sheet || sheet.id !== TRAINING_SHEET_ID) return false;
+        return getPelatihanDocPrefix(sheet, col, columnName) !== null;
+    }
+
+    function findTrainingExpiryColumn(sheet, prefix) {
+        const patterns = {
+            BST: /bst.*expir/i,
+            SBTC: /sbtc.*expir/i,
+            'ONE SIKA': /one\s*sika.*expir/i,
+        };
+        const re = patterns[prefix];
+        if (!re) return null;
+        return (sheet?.columns || []).find(c =>
+            c.type === 'date' && re.test((c.label || '').replace(/\*/g, '').trim())
+        ) || null;
+    }
+
+    function buildPelatihanDocFilename(sheet, row, file, personnelName, col, columnName) {
+        const prefix = getPelatihanDocPrefix(sheet, col, columnName) || 'DOC';
+        const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
+        const safeName = String(pname).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Unknown Personnel';
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const expiryCol = findTrainingExpiryColumn(sheet, prefix);
+        const expiryRaw = expiryCol ? (row?.cells?.[expiryCol.id] || '') : '';
+        const suffix = formatMcuExpirySuffix(expiryRaw);
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `${prefix}_${plCode}_${safeName}_${suffix}`;
+        return ext ? `${base}.${ext}` : base;
+    }
+
     function docUploadFolderName(sheet, col) {
+        if (isPelatihanTrainingDocUpload(sheet, col, docColumnFolderName(col))) return PELATIHAN_SHARED_DRIVE_FOLDER;
         if (isSimlUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
         if (isInsuranceUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
         if (isBpjsUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
@@ -1035,6 +1093,9 @@
     }
 
     function buildMatrixDocFilename(sheet, row, col, file, personnelName, columnName) {
+        if (isPelatihanTrainingDocUpload(sheet, col, columnName)) {
+            return buildPelatihanDocFilename(sheet, row, file, personnelName, col, columnName);
+        }
         if (isSimlUploadDocColumn(sheet, col) || isSimlDocUpload(sheet, col, columnName)) {
             return buildSimlDocFilename(sheet, row, file, personnelName, col);
         }
