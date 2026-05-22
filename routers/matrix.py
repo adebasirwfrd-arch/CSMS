@@ -1,4 +1,5 @@
 """HSE Personnel Matrix workbook API (admin UI)."""
+import io
 import os
 import re
 from datetime import date, datetime, timedelta
@@ -1387,6 +1388,36 @@ def matrix_send_expiry_reminders(force: bool = False):
         "count": 0,
         "skipped": skipped,
     }
+
+
+class MatrixPersonnelReportBody(BaseModel):
+    title: str = "CERTIFICATION AND TRAINING"
+    subtitle: str = ""
+    tab_label: str = ""
+    sheet_id: str = ""
+    filters: Dict[str, str] = {}
+    kpis: List[Dict[str, Any]] = []
+    personnel: Dict[str, Any] = {}
+    table: Dict[str, Any] = {}
+    charts: Dict[str, Any] = {}
+
+
+@router.post("/matrix/personnel-report/pdf")
+def matrix_personnel_report_pdf(body: MatrixPersonnelReportBody):
+    """Landscape PDF report for selected personnel row and active sheet/filters."""
+    from services.matrix_personnel_pdf import build_matrix_personnel_pdf, suggested_download_name
+
+    try:
+        data = body.model_dump()
+        pdf_bytes = build_matrix_personnel_pdf(data)
+        filename = suggested_download_name(data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal membuat PDF: {e}") from e
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/matrix/workbook")

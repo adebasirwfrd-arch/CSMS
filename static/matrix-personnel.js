@@ -3292,6 +3292,9 @@
                     <button type="button" class="mx-btn mx-btn-primary" onclick="matrixAddRow()">+ Baris</button>
                     <button type="button" class="mx-btn mx-btn-secondary" onclick="matrixAddColumn()">+ Kolom</button>
                     <button type="button" class="mx-btn mx-btn-secondary" onclick="matrixReload()">↻ Muat Ulang</button>
+                    <button type="button" class="mx-btn mx-btn-secondary mx-btn-pdf" onclick="matrixDownloadPdf()" title="Download laporan PDF personel terpilih">
+                        <span class="mx-btn-pdf-icon" aria-hidden="true">↓</span> PDF
+                    </button>
                 </div>
             </div>
         </div>`;
@@ -4366,6 +4369,150 @@
             paintMatrixScreen();
         } catch (e) {
             showToast?.(e.message, 'error');
+        }
+    };
+
+    function getExpiryWarnDaysForCol(col) {
+        const l = (col?.label || '').replace(/\*/g, '').trim().toLowerCase();
+        if (/mcu/i.test(l)) return 90;
+        if (/hse passport.*expir/i.test(l)) return 90;
+        if (/siml\s*expir/i.test(l)) return 90;
+        if (/^sim\s*expir/i.test(l)) return 90;
+        if (/bst.*expir|sbtc.*expir|one\s*sika.*expir|t-bosiet.*expir|h2s.*expir|sea survival.*expir|hse demo room.*expir|well control.*expir|first aid.*expir|fire.*expir|ohc.*expir|forklift.*expir|radiation.*expir|handak.*expir|k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir/i.test(l)) return 90;
+        if (/skck.*expir/i.test(l)) return 30;
+        if (/contract end|kontrak/i.test(l)) return 30;
+        return 30;
+    }
+
+    function formatCellForPdf(sheet, col, raw) {
+        const val = (raw ?? '').toString().trim();
+        if (!val) return '—';
+        if (isDocUploadColumn(col)) {
+            const { fileName } = parseDocCellValue(val);
+            return fileName || 'Document';
+        }
+        if (col.type === 'date') {
+            const d = parseMatrixDate(val);
+            if (d) {
+                const dd = String(d.getDate()).padStart(2, '0');
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                return `${dd}/${mm}/${d.getFullYear()}`;
+            }
+        }
+        return val;
+    }
+
+    function buildMatrixPdfPayload() {
+        const sheet = activeSheet();
+        if (!sheet) throw new Error('Sheet tidak ditemukan');
+        const rows = filterRows(sheet);
+        const row = rows.find(r => r.id === MATRIX_STATE.selectedRowId);
+        if (!row) throw new Error('Pilih baris personel di tabel terlebih dahulu');
+
+        const summary = computeSheetSummary(sheet);
+        const profileRow = findPersonnelProfileRow(sheet, row);
+        const profileSheet = sheetById(PROFILE_SHEET_ID) || sheet;
+        const tabLabel = TAB_LABELS[sheet.id] || sheet.title || sheet.name;
+        const { items: sidebarFields } = sidebarFieldRowsForSheet(MATRIX_STATE.sidebarTab, profileRow);
+        const fields = sidebarFields
+            .filter(f => f.value && f.value !== '—')
+            .map(f => ({ label: f.label, value: f.value }));
+
+        const tableCols = getDisplayColumns(sheet).filter(c => {
+            if (c.type === 'image' || c.id === PHOTO_COL_ID) return false;
+            const raw = (row.cells?.[c.id] ?? '').toString().trim();
+            return !!raw;
+        });
+
+        const compliance = { ok: 0, soon: 0, expired: 0, noData: 0 };
+        const expiryDays = [];
+        (sheet.columns || []).forEach(col => {
+            if (!isExpiryDateColumn(col)) return;
+            const raw = (row.cells?.[col.id] ?? '').toString().trim();
+            if (!raw) return;
+            const du = daysUntil(raw);
+            const warn = getExpiryWarnDaysForCol(col);
+            if (du != null && du < 0) compliance.expired += 1;
+            else if (du != null && du <= warn) compliance.soon += 1;
+            else if (du != null) compliance.ok += 1;
+            else compliance.noData += 1;
+            expiryDays.push({
+                label: (col.label || '').replace(/\*/g, '').trim(),
+                days_until: du != null ? Math.max(du, 0) : 0,
+            });
+        });
+        if (!expiryDays.length && !compliance.ok && !compliance.soon && !compliance.expired) {
+            compliance.noData = 1;
+        }
+
+        return {
+            title: (sheet.title || 'CERTIFICATION AND TRAINING').toUpperCase(),
+            subtitle: `${tabLabel} · ${rows.length} baris ditampilkan · laporan personel terpilih`,
+            tab_label: tabLabel,
+            sheet_id: sheet.id,
+            filters: {
+                client: isAllClients() ? 'ALL' : (getSelectedClientName() || '—'),
+                product_line: getSelectedProductLineName() || '—',
+                project: isAllProjects() ? 'ALL' : (getSelectedProjectName() || '—'),
+                sheet: tabLabel,
+            },
+            kpis: (summary.kpis || []).map(k => ({
+                label: k.label,
+                value: String(k.value),
+                color: k.color || '#C41E3A',
+            })),
+            personnel: {
+                name: profileName(profileRow) || rowPersonnelName(sheet, row) || 'Personnel',
+                product_line: personnelFieldFromRows(/product line/i, profileSheet, profileRow, sheet, row)
+                    || getSelectedProductLineName() || '',
+                position: personnelFieldFromRows(/^position/i, profileSheet, profileRow, sheet, row)
+                    || resolvePositionForRow(sheet, row) || '',
+                photo_file_id: profilePhotoFileId(profileRow) || '',
+                fields,
+            },
+            table: {
+                title: tabLabel,
+                columns: tableCols.map(c => ({
+                    label: (c.label || '').replace(/\*/g, '').replace(/^Doc:\s/i, '').trim() || c.id,
+                })),
+                values: tableCols.map(c => formatCellForPdf(sheet, c, row.cells?.[c.id])),
+            },
+            charts: { compliance, expiry_days: expiryDays },
+        };
+    }
+
+    window.matrixDownloadPdf = async function () {
+        const btn = document.querySelector('.mx-btn-pdf');
+        try {
+            const payload = buildMatrixPdfPayload();
+            if (btn) btn.disabled = true;
+            showToast?.('Membuat PDF…', 'info');
+            const res = await fetch(`${apiBase()}/matrix/personnel-report/pdf`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || `HTTP ${res.status}`);
+            }
+            const blob = await res.blob();
+            const disp = res.headers.get('Content-Disposition') || '';
+            const m = disp.match(/filename="?([^";]+)"?/i);
+            const filename = m ? m[1] : `CSMS_${payload.personnel.name.replace(/\s+/g, '_')}.pdf`;
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showToast?.('PDF berhasil diunduh', 'success');
+        } catch (e) {
+            showToast?.(e.message || 'Gagal mengunduh PDF', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
         }
     };
 
