@@ -4,6 +4,7 @@
 (function () {
     const PROFILE_SHEET_ID = 'personnel_data_information';
     const PERSONNEL_HEALTH_SHEET_ID = 'personnel_health';
+    const EMERGENCY_CONTACT_SHEET_ID = 'emergency_contact_information';
     const MCU_AUTO_VALIDITY_MONTHS = 12;
     const SKCK_AUTO_VALIDITY_MONTHS = 6;
     const SKCK_EMAIL_REMINDER_DAYS = 30;
@@ -15,6 +16,8 @@
     const SIM_DATE_COL_ID = 'col_sim_date';
     const SIM_EXPIRY_COL_ID = 'col_sim_expiry';
     const SIM_UPLOAD_DOC_COL_ID = 'col_sim_upload_doc';
+    const BPJS_UPLOAD_DOC_COL_ID = 'col_bpjs_upload_doc';
+    const INSURANCE_UPLOAD_DOC_COL_ID = 'col_insurance_upload_doc';
     const MCU_SHARED_DRIVE_FOLDER = 'MCU Expired';
     const PHOTO_COL_ID = 'col_photo';
     const AVATAR_MALE = '/static/images/matrix-avatar-male.png';
@@ -187,6 +190,8 @@
         if (/^cv$/i.test(label)) return true;
         if (/upload\s*ktp/i.test(label)) return true;
         if (/upload\s*sim/i.test(label)) return true;
+        if (/upload\s*bpjs/i.test(label)) return true;
+        if (/upload\s*insurance/i.test(label)) return true;
         if ((col.id || '').endsWith('_doc')) return true;
         if ((col.key || '').toLowerCase().startsWith('doc_')) return true;
         return false;
@@ -281,6 +286,106 @@
             filterable: false,
             _virtual: true,
         };
+    }
+
+    function getBpjsNumberCol(sheet) {
+        return getColByLabel(sheet, /bpjs\s*number/i);
+    }
+
+    function isBpjsNumberColumn(col) {
+        if (!col) return false;
+        return /bpjs\s*number/i.test((col.label || '').replace(/\*/g, '').trim());
+    }
+
+    function isBpjsUploadDocColumn(sheet, col) {
+        if (!sheet || sheet.id !== EMERGENCY_CONTACT_SHEET_ID || !col) return false;
+        const label = (col.label || '').replace(/\*/g, '').trim();
+        const key = (col.key || '').toLowerCase();
+        return /upload\s*bpjs/i.test(label) || col.id === BPJS_UPLOAD_DOC_COL_ID || key.includes('doc_bpjs');
+    }
+
+    function findBpjsUploadDocColumn(sheet) {
+        return (sheet?.columns || []).find(c => isBpjsUploadDocColumn(sheet, c)) || null;
+    }
+
+    function virtualBpjsUploadDocColumn() {
+        return {
+            id: BPJS_UPLOAD_DOC_COL_ID,
+            key: 'doc_bpjs_upload',
+            label: 'Upload BPJS',
+            type: 'file',
+            filterable: false,
+            _virtual: true,
+        };
+    }
+
+    function sanitizeBpjsNumber(val) {
+        const s = String(val || '').replace(/[\\/:*?"<>|]+/g, '-').trim();
+        return s || 'UNKNOWN';
+    }
+
+    function reorderBpjsUploadDocColumn(sheet) {
+        if (!sheet || sheet.id !== EMERGENCY_CONTACT_SHEET_ID) return;
+        const docCol = findBpjsUploadDocColumn(sheet);
+        const bpjsCol = getBpjsNumberCol(sheet);
+        if (!docCol || !bpjsCol) return;
+        const cols = sheet.columns;
+        const docIdx = cols.findIndex(c => c.id === docCol.id);
+        const bpjsIdx = cols.findIndex(c => c.id === bpjsCol.id);
+        if (docIdx < 0 || bpjsIdx < 0 || docIdx === bpjsIdx + 1) return;
+        cols.splice(docIdx, 1);
+        const newBpjsIdx = cols.findIndex(c => c.id === bpjsCol.id);
+        cols.splice(newBpjsIdx + 1, 0, docCol);
+    }
+
+    function getOtherInsuranceNumberCol(sheet) {
+        return getColByLabel(sheet, /other\s*insurance\s*number/i);
+    }
+
+    function isOtherInsuranceNumberColumn(col) {
+        if (!col) return false;
+        return /other\s*insurance\s*number/i.test((col.label || '').replace(/\*/g, '').trim());
+    }
+
+    function isInsuranceUploadDocColumn(sheet, col) {
+        if (!sheet || sheet.id !== EMERGENCY_CONTACT_SHEET_ID || !col) return false;
+        const label = (col.label || '').replace(/\*/g, '').trim();
+        const key = (col.key || '').toLowerCase();
+        return /upload\s*insurance/i.test(label) || col.id === INSURANCE_UPLOAD_DOC_COL_ID || key.includes('doc_insurance');
+    }
+
+    function findInsuranceUploadDocColumn(sheet) {
+        return (sheet?.columns || []).find(c => isInsuranceUploadDocColumn(sheet, c)) || null;
+    }
+
+    function virtualInsuranceUploadDocColumn() {
+        return {
+            id: INSURANCE_UPLOAD_DOC_COL_ID,
+            key: 'doc_insurance_upload',
+            label: 'Upload Insurance',
+            type: 'file',
+            filterable: false,
+            _virtual: true,
+        };
+    }
+
+    function sanitizeInsuranceNumber(val) {
+        const s = String(val || '').replace(/[\\/:*?"<>|]+/g, '-').trim();
+        return s || 'UNKNOWN';
+    }
+
+    function reorderInsuranceUploadDocColumn(sheet) {
+        if (!sheet || sheet.id !== EMERGENCY_CONTACT_SHEET_ID) return;
+        const docCol = findInsuranceUploadDocColumn(sheet);
+        const insCol = getOtherInsuranceNumberCol(sheet);
+        if (!docCol || !insCol) return;
+        const cols = sheet.columns;
+        const docIdx = cols.findIndex(c => c.id === docCol.id);
+        const insIdx = cols.findIndex(c => c.id === insCol.id);
+        if (docIdx < 0 || insIdx < 0 || docIdx === insIdx + 1) return;
+        cols.splice(docIdx, 1);
+        const newInsIdx = cols.findIndex(c => c.id === insCol.id);
+        cols.splice(newInsIdx + 1, 0, docCol);
     }
 
     function reorderKtpUploadDocColumn(sheet) {
@@ -514,7 +619,35 @@
         return ext ? `${base}.${ext}` : base;
     }
 
+    function buildInsuranceDocFilename(sheet, row, file, personnelName) {
+        const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
+        const safeName = String(pname).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Unknown Personnel';
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const insCol = getOtherInsuranceNumberCol(sheet);
+        const insNum = sanitizeInsuranceNumber(insCol ? (row?.cells?.[insCol.id] || '') : '');
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `INSURANCE_${plCode}_${safeName}_${insNum}`;
+        return ext ? `${base}.${ext}` : base;
+    }
+
+    function buildBpjsDocFilename(sheet, row, file, personnelName) {
+        const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
+        const safeName = String(pname).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Unknown Personnel';
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const bpjsCol = getBpjsNumberCol(sheet);
+        const bpjsNum = sanitizeBpjsNumber(bpjsCol ? (row?.cells?.[bpjsCol.id] || '') : '');
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `BPJS_${plCode}_${safeName}_${bpjsNum}`;
+        return ext ? `${base}.${ext}` : base;
+    }
+
     function docUploadFolderName(sheet, col) {
+        if (isInsuranceUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
+        if (isBpjsUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
         if (isSimDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
         if (isHsePassportDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
         if (isKtpUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
@@ -670,6 +803,12 @@
     }
 
     function buildMatrixDocFilename(sheet, row, col, file, personnelName, columnName) {
+        if (isInsuranceUploadDocColumn(sheet, col)) {
+            return buildInsuranceDocFilename(sheet, row, file, personnelName);
+        }
+        if (isBpjsUploadDocColumn(sheet, col)) {
+            return buildBpjsDocFilename(sheet, row, file, personnelName);
+        }
         if (isKtpUploadDocColumn(sheet, col)) {
             return buildKtpUploadDocFilename(sheet, row, file, personnelName);
         }
@@ -1249,6 +1388,22 @@
                     orderedRest.push(docCol);
                     placed.add(docCol.id);
                     if (!docCol._virtual) usedDocIds.add(docCol.id);
+                }
+            }
+            if (sheet.id === EMERGENCY_CONTACT_SHEET_ID && isBpjsNumberColumn(c)) {
+                let bpjsUpload = findBpjsUploadDocColumn(sheet);
+                if (!bpjsUpload) bpjsUpload = virtualBpjsUploadDocColumn();
+                if (!placed.has(bpjsUpload.id)) {
+                    orderedRest.push(bpjsUpload);
+                    placed.add(bpjsUpload.id);
+                }
+            }
+            if (sheet.id === EMERGENCY_CONTACT_SHEET_ID && isOtherInsuranceNumberColumn(c)) {
+                let insUpload = findInsuranceUploadDocColumn(sheet);
+                if (!insUpload) insUpload = virtualInsuranceUploadDocColumn();
+                if (!placed.has(insUpload.id)) {
+                    orderedRest.push(insUpload);
+                    placed.add(insUpload.id);
                 }
             }
             if (sheet.id === PERSONNEL_HEALTH_SHEET_ID && isFinalMcuReviewStatusColumn(c)) {
@@ -1981,6 +2136,8 @@
             ensureCvDocColumn(),
             ensureKtpUploadDocColumn(),
             ensureSimColumns(),
+            ensureBpjsUploadDocColumn(),
+            ensureInsuranceUploadDocColumn(),
         ];
         Promise.allSettled(tasks).then(() => {
             if (MATRIX_STATE.workbook) paintMatrixScreen();
@@ -2196,6 +2353,90 @@
         const active = sheetById(PROFILE_SHEET_ID) || sheet;
         if (findKtpUploadDocColumn(active)) {
             reorderSimColumns(active);
+        }
+    }
+
+    async function ensureBpjsUploadDocColumn() {
+        const sheet = sheetById(EMERGENCY_CONTACT_SHEET_ID);
+        if (!sheet) return;
+        if (findBpjsUploadDocColumn(sheet)) {
+            reorderBpjsUploadDocColumn(sheet);
+            return;
+        }
+        try {
+            const col = await matrixRequest('POST', `/matrix/sheets/${EMERGENCY_CONTACT_SHEET_ID}/columns`, {
+                label: 'Upload BPJS',
+                type: 'file',
+                filterable: false,
+                col_id: BPJS_UPLOAD_DOC_COL_ID,
+                col_key: 'doc_bpjs_upload',
+            });
+            if (col?.id) {
+                const bpjsCol = getBpjsNumberCol(sheet);
+                const bpjsIdx = bpjsCol ? (sheet.columns || []).findIndex(c => c.id === bpjsCol.id) : -1;
+                if (bpjsIdx >= 0) sheet.columns.splice(bpjsIdx + 1, 0, col);
+                else if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
+                sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                reorderBpjsUploadDocColumn(sheet);
+            }
+        } catch (e) {
+            const msg = e.message || String(e);
+            if (/duplicate|23505|already exists/i.test(msg)) {
+                try {
+                    const fresh = await matrixRequest('GET', `/matrix/sheets/${EMERGENCY_CONTACT_SHEET_ID}`);
+                    if (fresh?.columns) {
+                        const idx = MATRIX_STATE.workbook.sheets.findIndex(s => s.id === EMERGENCY_CONTACT_SHEET_ID);
+                        if (idx >= 0) MATRIX_STATE.workbook.sheets[idx] = fresh;
+                        reorderBpjsUploadDocColumn(fresh);
+                    }
+                } catch (reloadErr) {
+                    console.warn('ensureBpjsUploadDocColumn reload:', reloadErr.message);
+                }
+                return;
+            }
+            console.warn('ensureBpjsUploadDocColumn:', msg);
+        }
+    }
+
+    async function ensureInsuranceUploadDocColumn() {
+        const sheet = sheetById(EMERGENCY_CONTACT_SHEET_ID);
+        if (!sheet) return;
+        if (findInsuranceUploadDocColumn(sheet)) {
+            reorderInsuranceUploadDocColumn(sheet);
+            return;
+        }
+        try {
+            const col = await matrixRequest('POST', `/matrix/sheets/${EMERGENCY_CONTACT_SHEET_ID}/columns`, {
+                label: 'Upload Insurance',
+                type: 'file',
+                filterable: false,
+                col_id: INSURANCE_UPLOAD_DOC_COL_ID,
+                col_key: 'doc_insurance_upload',
+            });
+            if (col?.id) {
+                const insCol = getOtherInsuranceNumberCol(sheet);
+                const insIdx = insCol ? (sheet.columns || []).findIndex(c => c.id === insCol.id) : -1;
+                if (insIdx >= 0) sheet.columns.splice(insIdx + 1, 0, col);
+                else if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
+                sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+                reorderInsuranceUploadDocColumn(sheet);
+            }
+        } catch (e) {
+            const msg = e.message || String(e);
+            if (/duplicate|23505|already exists/i.test(msg)) {
+                try {
+                    const fresh = await matrixRequest('GET', `/matrix/sheets/${EMERGENCY_CONTACT_SHEET_ID}`);
+                    if (fresh?.columns) {
+                        const idx = MATRIX_STATE.workbook.sheets.findIndex(s => s.id === EMERGENCY_CONTACT_SHEET_ID);
+                        if (idx >= 0) MATRIX_STATE.workbook.sheets[idx] = fresh;
+                        reorderInsuranceUploadDocColumn(fresh);
+                    }
+                } catch (reloadErr) {
+                    console.warn('ensureInsuranceUploadDocColumn reload:', reloadErr.message);
+                }
+                return;
+            }
+            console.warn('ensureInsuranceUploadDocColumn:', msg);
         }
     }
 
@@ -2973,6 +3214,14 @@
                 } else if (colId === SIM_UPLOAD_DOC_COL_ID || isSimUploadDocColumn(sheet, { id: colId, label: 'Upload SIM' })) {
                     colId = await ensureDocColumnBeforeUpload(
                         sheetId, SIM_UPLOAD_DOC_COL_ID, 'Upload SIM', 'doc_sim_upload'
+                    );
+                } else if (colId === BPJS_UPLOAD_DOC_COL_ID || isBpjsUploadDocColumn(sheet, { id: colId, label: 'Upload BPJS' })) {
+                    colId = await ensureDocColumnBeforeUpload(
+                        sheetId, BPJS_UPLOAD_DOC_COL_ID, 'Upload BPJS', 'doc_bpjs_upload'
+                    );
+                } else if (colId === INSURANCE_UPLOAD_DOC_COL_ID || isInsuranceUploadDocColumn(sheet, { id: colId, label: 'Upload Insurance' })) {
+                    colId = await ensureDocColumnBeforeUpload(
+                        sheetId, INSURANCE_UPLOAD_DOC_COL_ID, 'Upload Insurance', 'doc_insurance_upload'
                     );
                 } else if (colId === CV_DOC_COL_ID || isCvDocColumn(sheet, { id: colId, label: 'CV' })) {
                     colId = await ensureDocColumnBeforeUpload(sheetId, CV_DOC_COL_ID, 'CV', 'doc_cv');

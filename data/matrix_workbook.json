@@ -1484,13 +1484,31 @@
           "index": 19
         },
         {
+          "id": "col_bpjs_upload_doc",
+          "key": "doc_bpjs_upload",
+          "label": "Upload BPJS",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 20
+        },
+        {
           "id": "col_20",
           "key": "other_insurance_number_20",
           "label": "Other Insurance Number",
           "type": "text",
           "filterable": false,
           "required": false,
-          "index": 20
+          "index": 21
+        },
+        {
+          "id": "col_insurance_upload_doc",
+          "key": "doc_insurance_upload",
+          "label": "Upload Insurance",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 22
         },
         {
           "id": "col_21",

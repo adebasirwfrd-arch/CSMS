@@ -35,6 +35,7 @@ MATRIX_PROFILE_ROOT = os.getenv(
 
 PERSONNEL_HEALTH_SHEET_ID = "personnel_health"
 PROFILE_SHEET_ID = "personnel_data_information"
+EMERGENCY_CONTACT_SHEET_ID = "emergency_contact_information"
 _MCU_EXPIRY_LABEL_RE = re.compile(r"mcu\s*expired", re.I)
 _MCU_DOC_KEY_RE = re.compile(r"doc_.*mcu.*expired|mcu.*expired.*doc", re.I)
 _MCU_RESULT_DOC_RE = re.compile(r"mcu\s*result\s*doc", re.I)
@@ -49,6 +50,10 @@ _HSE_PASSPORT_EXPIRY_RE = re.compile(r"hse passport.*expir", re.I)
 _HSE_PASSPORT_DOC_KEY_RE = re.compile(r"doc_.*hse passport.*expir|hse passport.*expir.*doc", re.I)
 _SIM_EXPIRY_RE = re.compile(r"sim\s*expir", re.I)
 _SIM_UPLOAD_RE = re.compile(r"upload\s*sim", re.I)
+_BPJS_UPLOAD_RE = re.compile(r"upload\s*bpjs", re.I)
+_BPJS_NUMBER_RE = re.compile(r"bpjs\s*number", re.I)
+_INSURANCE_UPLOAD_RE = re.compile(r"upload\s*insurance", re.I)
+_OTHER_INSURANCE_NUMBER_RE = re.compile(r"other\s*insurance\s*number", re.I)
 _MCU_MONTH_ABBR = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 
 
@@ -83,6 +88,11 @@ def _resolve_upload_folder_name(
         or _is_ktp_upload_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_hse_passport_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_sim_upload_doc_upload(sheet_id, col_id, column_name, sheet)
+    ):
+        return _MCU_DRIVE_FOLDER
+    if sheet_id == EMERGENCY_CONTACT_SHEET_ID and (
+        _is_bpjs_upload_doc_upload(sheet_id, col_id, column_name, sheet)
+        or _is_insurance_upload_doc_upload(sheet_id, col_id, column_name, sheet)
     ):
         return _MCU_DRIVE_FOLDER
     return column_name
@@ -399,6 +409,126 @@ def _build_sim_upload_filename(
     return f"{base}.{ext}" if ext else base
 
 
+def _sanitize_bpjs_number(value: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|]+', "-", (value or "").strip())
+    return cleaned or "UNKNOWN"
+
+
+def _find_bpjs_number_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        if _BPJS_NUMBER_RE.search((col.get("label") or "").replace("*", "")):
+            return col.get("id")
+    return None
+
+
+def _is_bpjs_upload_doc_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != EMERGENCY_CONTACT_SHEET_ID:
+        return False
+    if _BPJS_UPLOAD_RE.search((column_name or "").strip()):
+        return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col:
+            label = (col.get("label") or "").replace("*", "").strip()
+            key = (col.get("key") or "").lower()
+            if _BPJS_UPLOAD_RE.search(label):
+                return True
+            if col_id == "col_bpjs_upload_doc" or "doc_bpjs" in key:
+                return True
+    return False
+
+
+def _build_bpjs_upload_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+
+    bpjs_col = _find_bpjs_number_col_id(sheet)
+    bpjs_raw = cells.get(bpjs_col, "") if bpjs_col else ""
+    bpjs_num = _sanitize_bpjs_number(str(bpjs_raw))
+
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"BPJS_{pl_code}_{pname}_{bpjs_num}"
+    return f"{base}.{ext}" if ext else base
+
+
+def _sanitize_insurance_number(value: str) -> str:
+    cleaned = re.sub(r'[\\/:*?"<>|]+', "-", (value or "").strip())
+    return cleaned or "UNKNOWN"
+
+
+def _find_other_insurance_number_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        if _OTHER_INSURANCE_NUMBER_RE.search((col.get("label") or "").replace("*", "")):
+            return col.get("id")
+    return None
+
+
+def _is_insurance_upload_doc_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != EMERGENCY_CONTACT_SHEET_ID:
+        return False
+    if _INSURANCE_UPLOAD_RE.search((column_name or "").strip()):
+        return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col:
+            label = (col.get("label") or "").replace("*", "").strip()
+            key = (col.get("key") or "").lower()
+            if _INSURANCE_UPLOAD_RE.search(label):
+                return True
+            if col_id == "col_insurance_upload_doc" or "doc_insurance" in key:
+                return True
+    return False
+
+
+def _build_insurance_upload_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+
+    ins_col = _find_other_insurance_number_col_id(sheet)
+    ins_raw = cells.get(ins_col, "") if ins_col else ""
+    ins_num = _sanitize_insurance_number(str(ins_raw))
+
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"INSURANCE_{pl_code}_{pname}_{ins_num}"
+    return f"{base}.{ext}" if ext else base
+
+
 def _is_ktp_upload_doc_upload(
     sheet_id: str,
     col_id: str,
@@ -657,6 +787,16 @@ def _resolve_matrix_document_filename(
 
     if _is_sim_upload_doc_upload(sheet_id, col_id, column_name, sheet):
         return _build_sim_upload_filename(
+            sheet, row, original_filename, personnel_name, product_line_hint=product_line
+        )
+
+    if _is_bpjs_upload_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _build_bpjs_upload_filename(
+            sheet, row, original_filename, personnel_name, product_line_hint=product_line
+        )
+
+    if _is_insurance_upload_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _build_insurance_upload_filename(
             sheet, row, original_filename, personnel_name, product_line_hint=product_line
         )
 
