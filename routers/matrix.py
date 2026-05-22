@@ -37,6 +37,10 @@ PERSONNEL_HEALTH_SHEET_ID = "personnel_health"
 PROFILE_SHEET_ID = "personnel_data_information"
 _MCU_EXPIRY_LABEL_RE = re.compile(r"mcu\s*expired", re.I)
 _MCU_DOC_KEY_RE = re.compile(r"doc_.*mcu.*expired|mcu.*expired.*doc", re.I)
+_MCU_RESULT_DOC_RE = re.compile(r"mcu\s*result\s*doc", re.I)
+_MCU_REVIEW_RESULTS_RE = re.compile(r"mcu\s*review\s*results", re.I)
+_MCU_REVIEW_CLIENT_DATE_RE = re.compile(r"mcu\s*review\s*\(client\)\s*date", re.I)
+_MCU_DRIVE_FOLDER = "MCU Expired"
 _MCU_MONTH_ABBR = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 
 
@@ -53,6 +57,21 @@ def _personnel_photo_folder(personnel_name: str) -> str:
     return parent_id
 
 
+def _resolve_upload_folder_name(
+    column_name: str,
+    sheet_id: str = "",
+    col_id: str = "",
+    sheet: Optional[Dict[str, Any]] = None,
+) -> str:
+    """MCU Expired + MCU Result Doc share the same Drive folder."""
+    if sheet_id == PERSONNEL_HEALTH_SHEET_ID and (
+        _is_mcu_doc_upload(sheet_id, col_id, column_name, sheet)
+        or _is_mcu_result_doc_upload(sheet_id, col_id, column_name, sheet)
+    ):
+        return _MCU_DRIVE_FOLDER
+    return column_name
+
+
 def _document_upload_folder(column_name: str, personnel_name: str) -> str:
     """Root / {column_name} / {personnel_name} — nested under same root as profile photos."""
     col_folder = _sanitize_folder_name(column_name)
@@ -64,6 +83,22 @@ def _document_upload_folder(column_name: str, personnel_name: str) -> str:
     if not personnel_parent:
         raise HTTPException(status_code=500, detail="Gagal membuat folder personel di Google Drive")
     return personnel_parent
+
+
+def _document_upload_parent_for_matrix(
+    column_name: str,
+    personnel_name: str,
+    sheet_id: str = "",
+    col_id: str = "",
+) -> str:
+    sheet = None
+    if sheet_id:
+        try:
+            sheet = get_sheet(sheet_id)
+        except KeyError:
+            pass
+    folder = _resolve_upload_folder_name(column_name, sheet_id, col_id, sheet)
+    return _document_upload_folder(folder, personnel_name)
 
 
 def _format_doc_cell(file_id: str, filename: str) -> str:
@@ -168,6 +203,28 @@ def _resolve_product_line_code(
     return "UNKNOWN"
 
 
+def _is_mcu_result_doc_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != PERSONNEL_HEALTH_SHEET_ID:
+        return False
+    if _MCU_RESULT_DOC_RE.search((column_name or "").strip()):
+        return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col:
+            label = (col.get("label") or "").replace("*", "").strip()
+            key = (col.get("key") or "").lower()
+            if _MCU_RESULT_DOC_RE.search(label):
+                return True
+            if "mcu_result_doc" in key:
+                return True
+    return False
+
+
 def _is_mcu_doc_upload(
     sheet_id: str,
     col_id: str,
@@ -211,6 +268,44 @@ def _find_mcu_expired_col_id(sheet: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _find_col_id_by_label(sheet: Dict[str, Any], pattern: re.Pattern) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        label = (col.get("label") or "").replace("*", "").strip()
+        if pattern.search(label):
+            return col.get("id")
+    return None
+
+
+def _build_mcu_review_upload_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+
+    date_col = _find_col_id_by_label(sheet, _MCU_REVIEW_CLIENT_DATE_RE)
+    date_raw = cells.get(date_col, "") if date_col else ""
+    date_suffix = _format_mcu_expiry_suffix(str(date_raw))
+
+    result_col = _find_col_id_by_label(sheet, _MCU_REVIEW_RESULTS_RE)
+    result_raw = (cells.get(result_col, "") if result_col else "") or ""
+    result_code = re.sub(r'[\\/:*?"<>|]+', "-", str(result_raw).strip()).upper() or "UNKNOWN"
+
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"MCU REVIEW_{pl_code}_{pname}_{date_suffix}_{result_code}"
+    return f"{base}.{ext}" if ext else base
+
+
 def _build_mcu_upload_filename(
     sheet: Dict[str, Any],
     row: Dict[str, Any],
@@ -251,16 +346,21 @@ def _resolve_matrix_document_filename(
     except KeyError:
         return _sanitize_doc_filename(original_filename)
 
-    if not _is_mcu_doc_upload(sheet_id, col_id, column_name, sheet):
-        return _sanitize_doc_filename(original_filename)
-
     row = next((r for r in sheet.get("rows", []) if r.get("id") == row_id), None)
     if not row:
         return _sanitize_doc_filename(original_filename)
 
-    return _build_mcu_upload_filename(
-        sheet, row, original_filename, personnel_name, product_line_hint=product_line
-    )
+    if _is_mcu_result_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _build_mcu_review_upload_filename(
+            sheet, row, original_filename, personnel_name, product_line_hint=product_line
+        )
+
+    if _is_mcu_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _build_mcu_upload_filename(
+            sheet, row, original_filename, personnel_name, product_line_hint=product_line
+        )
+
+    return _sanitize_doc_filename(original_filename)
 
 
 class RowCellsBody(BaseModel):
@@ -766,7 +866,9 @@ def matrix_initiate_document_upload(
         )
     else:
         filename = _sanitize_doc_filename(filename)
-    parent_id = _document_upload_folder(column_name, personnel_name)
+    parent_id = _document_upload_parent_for_matrix(
+        column_name, personnel_name, sheet_id or "", col_id or ""
+    )
     upload_url, _ = drive_service.get_resumable_upload_session(filename, mime_type, parent_id=parent_id)
     if not upload_url:
         raise HTTPException(status_code=500, detail="Gagal memulai upload ke Google Drive")
@@ -836,7 +938,7 @@ async def matrix_document_upload_simple(
     if not drive_service.enabled:
         raise HTTPException(status_code=503, detail="Google Drive not configured")
     content = await file.read()
-    parent_id = _document_upload_folder(column_name, personnel_name)
+    parent_id = _document_upload_parent_for_matrix(column_name, personnel_name, sheet_id, col_id)
     safe_name = _resolve_matrix_document_filename(
         sheet_id,
         row_id,

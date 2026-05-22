@@ -412,6 +412,15 @@
           "index": 7
         },
         {
+          "id": "col_7_mcu_result_doc",
+          "key": "doc_mcu_result_doc_7",
+          "label": "MCU Result Doc",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 71
+        },
+        {
           "id": "col_8",
           "key": "mcu_review_client_date_8",
           "label": "MCU Review (Client) date",

@@ -5,6 +5,8 @@
     const PROFILE_SHEET_ID = 'personnel_data_information';
     const PERSONNEL_HEALTH_SHEET_ID = 'personnel_health';
     const MCU_AUTO_VALIDITY_MONTHS = 12;
+    const MCU_RESULT_DOC_COL_ID = 'col_7_mcu_result_doc';
+    const MCU_SHARED_DRIVE_FOLDER = 'MCU Expired';
     const PHOTO_COL_ID = 'col_photo';
     const AVATAR_MALE = '/static/images/matrix-avatar-male.png';
     const AVATAR_FEMALE = '/static/images/matrix-avatar-female.png';
@@ -171,9 +173,42 @@
         if (col._virtual) return true;
         const label = (col.label || '').replace(/\*/g, '').trim();
         if (/^doc:\s/i.test(label)) return true;
+        if (/mcu\s*result\s*doc/i.test(label)) return true;
         if ((col.id || '').endsWith('_doc')) return true;
         if ((col.key || '').toLowerCase().startsWith('doc_')) return true;
         return false;
+    }
+
+    function isMcuReviewResultsColumn(col) {
+        return /mcu\s*review\s*results/i.test((col?.label || '').replace(/\*/g, '').trim());
+    }
+
+    function isMcuResultDocColumn(sheet, col) {
+        if (!sheet || sheet.id !== PERSONNEL_HEALTH_SHEET_ID || !col) return false;
+        const label = (col.label || '').replace(/\*/g, '').trim();
+        const key = (col.key || '').toLowerCase();
+        return /mcu\s*result\s*doc/i.test(label) || col.id === MCU_RESULT_DOC_COL_ID || key.includes('mcu_result_doc');
+    }
+
+    function findMcuResultDocColumn(sheet) {
+        return (sheet?.columns || []).find(c => isMcuResultDocColumn(sheet, c)) || null;
+    }
+
+    function virtualMcuResultDocColumn() {
+        return {
+            id: MCU_RESULT_DOC_COL_ID,
+            key: 'doc_mcu_result_doc_7',
+            label: 'MCU Result Doc',
+            type: 'file',
+            filterable: false,
+            _virtual: true,
+        };
+    }
+
+    function docUploadFolderName(sheet, col) {
+        if (isMcuResultDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
+        if (isMcuDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
+        return docColumnFolderName(col);
     }
 
     function docColumnMatchesExpiry(docCol, expiryCol) {
@@ -266,7 +301,37 @@
         ) || null;
     }
 
+    function findMcuReviewResultsColumn(sheet) {
+        return (sheet?.columns || []).find(c => isMcuReviewResultsColumn(c)) || null;
+    }
+
+    function findMcuReviewClientDateColumn(sheet) {
+        return (sheet?.columns || []).find(c =>
+            /mcu\s*review\s*\(client\)\s*date/i.test((c.label || '').replace(/\*/g, '').trim())
+        ) || null;
+    }
+
+    function buildMcuReviewDocFilename(sheet, row, file, personnelName) {
+        const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
+        const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
+        const safeName = String(pname).replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Unknown Personnel';
+        const plCode = abbreviateProductLine(resolveProductLineForRow(sheet, row, safeName));
+        const dateCol = findMcuReviewClientDateColumn(sheet);
+        const dateRaw = dateCol ? (row?.cells?.[dateCol.id] || '') : '';
+        const dateSuffix = formatMcuExpirySuffix(dateRaw);
+        const resultCol = findMcuReviewResultsColumn(sheet);
+        const resultRaw = resultCol ? (row?.cells?.[resultCol.id] || '') : '';
+        const resultCode = String(resultRaw).replace(/[\\/:*?"<>|]+/g, '-').trim().toUpperCase() || 'UNKNOWN';
+        const parts = (file.name || 'document').split('.');
+        const ext = parts.length > 1 ? parts.pop().toLowerCase() : '';
+        const base = `MCU REVIEW_${plCode}_${safeName}_${dateSuffix}_${resultCode}`;
+        return ext ? `${base}.${ext}` : base;
+    }
+
     function buildMatrixDocFilename(sheet, row, col, file, personnelName, columnName) {
+        if (isMcuResultDocColumn(sheet, col)) {
+            return buildMcuReviewDocFilename(sheet, row, file, personnelName);
+        }
         if (!isMcuDocUpload(sheet, col, columnName)) return file.name;
         const nameCol = (sheet.columns || []).find(c => /personnel\s*name/i.test(c.label || ''));
         const pname = (nameCol && row?.cells?.[nameCol.id]) || personnelName || 'Unknown Personnel';
@@ -610,6 +675,14 @@
                     orderedRest.push(docCol);
                     placed.add(docCol.id);
                     if (!docCol._virtual) usedDocIds.add(docCol.id);
+                }
+            }
+            if (sheet.id === PERSONNEL_HEALTH_SHEET_ID && isMcuReviewResultsColumn(c)) {
+                let mcuDoc = findMcuResultDocColumn(sheet);
+                if (!mcuDoc) mcuDoc = virtualMcuResultDocColumn();
+                if (!placed.has(mcuDoc.id)) {
+                    orderedRest.push(mcuDoc);
+                    placed.add(mcuDoc.id);
                 }
             }
         });
@@ -1330,6 +1403,7 @@
             ensureStandardColumns(),
             ensureProfilePhotoColumn(),
             ensureExpiryDocColumns(),
+            ensureMcuResultDocColumn(),
         ];
         Promise.allSettled(tasks).then(() => {
             if (MATRIX_STATE.workbook) paintMatrixScreen();
@@ -1408,6 +1482,42 @@
                 return;
             }
             console.warn('ensureProfilePhotoColumn:', msg);
+        }
+    }
+
+    async function ensureMcuResultDocColumn() {
+        const sheet = sheetById(PERSONNEL_HEALTH_SHEET_ID);
+        if (!sheet) return;
+        if (findMcuResultDocColumn(sheet)) return;
+        try {
+            const col = await matrixRequest('POST', `/matrix/sheets/${PERSONNEL_HEALTH_SHEET_ID}/columns`, {
+                label: 'MCU Result Doc',
+                type: 'file',
+                filterable: false,
+                col_id: MCU_RESULT_DOC_COL_ID,
+                col_key: 'doc_mcu_result_doc_7',
+            });
+            if (col?.id) {
+                const reviewIdx = (sheet.columns || []).findIndex(c => isMcuReviewResultsColumn(c));
+                if (reviewIdx >= 0) sheet.columns.splice(reviewIdx + 1, 0, col);
+                else if (!sheet.columns.some(c => c.id === col.id)) sheet.columns.push(col);
+                sheet.rows.forEach(r => { r.cells[col.id] = r.cells[col.id] || ''; });
+            }
+        } catch (e) {
+            const msg = e.message || String(e);
+            if (/duplicate|23505|already exists/i.test(msg)) {
+                try {
+                    const fresh = await matrixRequest('GET', `/matrix/sheets/${PERSONNEL_HEALTH_SHEET_ID}`);
+                    if (fresh?.columns) {
+                        const idx = MATRIX_STATE.workbook.sheets.findIndex(s => s.id === PERSONNEL_HEALTH_SHEET_ID);
+                        if (idx >= 0) MATRIX_STATE.workbook.sheets[idx] = fresh;
+                    }
+                } catch (reloadErr) {
+                    console.warn('ensureMcuResultDocColumn reload:', reloadErr.message);
+                }
+                return;
+            }
+            console.warn('ensureMcuResultDocColumn:', msg);
         }
     }
 
@@ -1640,7 +1750,7 @@
         const { fileId, fileName } = parseDocCellValue(val);
         const displayName = fileName || '';
         const personnelName = rowPersonnelName(sheet, row);
-        const columnName = docColumnFolderName(col);
+        const columnName = docUploadFolderName(sheet, col);
         const inputId = `mx-doc-${row.id}-${col.id}`;
 
         const acceptAttr = ' accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,image/*,application/pdf"';
@@ -2137,11 +2247,17 @@
         try {
             if (input.dataset.virtual === '1') {
                 const sheet = sheetById(sheetId);
-                const expId = colId.replace(/_doc$/, '');
-                const expCol = (sheet?.columns || []).find(c => c.id === expId);
-                const docKey = `doc_${expCol?.key || expId}`;
-                const docLabel = expCol ? docColumnLabelFor(expCol) : `Doc: ${columnName}`;
-                colId = await ensureDocColumnBeforeUpload(sheetId, colId, docLabel, docKey);
+                if (colId === MCU_RESULT_DOC_COL_ID || isMcuResultDocColumn(sheet, { id: colId, label: 'MCU Result Doc' })) {
+                    colId = await ensureDocColumnBeforeUpload(
+                        sheetId, MCU_RESULT_DOC_COL_ID, 'MCU Result Doc', 'doc_mcu_result_doc_7'
+                    );
+                } else {
+                    const expId = colId.replace(/_doc$/, '');
+                    const expCol = (sheet?.columns || []).find(c => c.id === expId);
+                    const docKey = `doc_${expCol?.key || expId}`;
+                    const docLabel = expCol ? docColumnLabelFor(expCol) : `Doc: ${columnName}`;
+                    colId = await ensureDocColumnBeforeUpload(sheetId, colId, docLabel, docKey);
+                }
                 input.dataset.col = colId;
                 input.dataset.virtual = '0';
             }
