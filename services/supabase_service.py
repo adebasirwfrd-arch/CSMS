@@ -1519,7 +1519,7 @@ class SupabaseService:
                     item["row_id"],
                     item["col_id"],
                     str(item["expiry_date"])[:10],
-                    90,
+                    item.get("reminder_days", 90),
                 )
                 if key not in sent:
                     out.append(item)
@@ -1538,7 +1538,7 @@ class SupabaseService:
                     "row_id": it["row_id"],
                     "col_id": it["col_id"],
                     "expiry_date": str(it["expiry_date"])[:10],
-                    "reminder_days": 90,
+                    "reminder_days": it.get("reminder_days", 90),
                 }
                 for it in items
             ]

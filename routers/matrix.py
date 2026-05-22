@@ -41,6 +41,9 @@ _MCU_RESULT_DOC_RE = re.compile(r"mcu\s*result\s*doc", re.I)
 _MCU_REVIEW_RESULTS_RE = re.compile(r"mcu\s*review\s*results", re.I)
 _MCU_REVIEW_CLIENT_DATE_RE = re.compile(r"mcu\s*review\s*\(client\)\s*date", re.I)
 _MCU_DRIVE_FOLDER = "MCU Expired"
+_CV_DOC_RE = re.compile(r"^cv$", re.I)
+_SKCK_EXPIRY_RE = re.compile(r"skck.*expir", re.I)
+_SKCK_DOC_KEY_RE = re.compile(r"doc_.*skck.*expir|skck.*expir.*doc", re.I)
 _MCU_MONTH_ABBR = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
 
 
@@ -63,10 +66,15 @@ def _resolve_upload_folder_name(
     col_id: str = "",
     sheet: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """MCU Expired + MCU Result Doc share the same Drive folder."""
+    """MCU + CV personnel docs share the MCU Expired / {personnel} Drive folder."""
     if sheet_id == PERSONNEL_HEALTH_SHEET_ID and (
         _is_mcu_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_mcu_result_doc_upload(sheet_id, col_id, column_name, sheet)
+    ):
+        return _MCU_DRIVE_FOLDER
+    if sheet_id == PROFILE_SHEET_ID and (
+        _is_cv_doc_upload(sheet_id, col_id, column_name, sheet)
+        or _is_skck_doc_upload(sheet_id, col_id, column_name, sheet)
     ):
         return _MCU_DRIVE_FOLDER
     return column_name
@@ -201,6 +209,123 @@ def _resolve_product_line_code(
         pass
 
     return "UNKNOWN"
+
+
+def _is_skck_doc_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != PROFILE_SHEET_ID:
+        return False
+    if _SKCK_EXPIRY_RE.search((column_name or "").strip()):
+        return True
+    if col_id and col_id.endswith("_doc"):
+        exp_id = col_id[:-4]
+        if sheet:
+            exp_col = next((c for c in sheet.get("columns", []) if c.get("id") == exp_id), None)
+            if exp_col and _SKCK_EXPIRY_RE.search((exp_col.get("label") or "").replace("*", "")):
+                return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col:
+            label = (col.get("label") or "").replace("Doc:", "", 1).replace("*", "").strip()
+            key = (col.get("key") or "").lower()
+            if _SKCK_EXPIRY_RE.search(label):
+                return True
+            if _SKCK_DOC_KEY_RE.search(key):
+                return True
+    return False
+
+
+def _find_skck_expired_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        label = (col.get("label") or "").replace("*", "").strip()
+        if col.get("type") == "date" and _SKCK_EXPIRY_RE.search(label):
+            return col.get("id")
+    return None
+
+
+def _build_skck_upload_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+
+    expiry_col = _find_skck_expired_col_id(sheet)
+    expiry_raw = cells.get(expiry_col, "") if expiry_col else ""
+    suffix = _format_mcu_expiry_suffix(str(expiry_raw))
+
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"SKCK_{pl_code}_{pname}_{suffix}"
+    return f"{base}.{ext}" if ext else base
+
+
+def _is_cv_doc_upload(
+    sheet_id: str,
+    col_id: str,
+    column_name: str,
+    sheet: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if sheet_id != PROFILE_SHEET_ID:
+        return False
+    if _CV_DOC_RE.search((column_name or "").strip()):
+        return True
+    if sheet and col_id:
+        col = next((c for c in sheet.get("columns", []) if c.get("id") == col_id), None)
+        if col:
+            label = (col.get("label") or "").replace("*", "").strip()
+            key = (col.get("key") or "").lower()
+            if _CV_DOC_RE.search(label):
+                return True
+            if col_id == "col_cv_doc" or "doc_cv" in key:
+                return True
+    return False
+
+
+def _find_position_col_id(sheet: Dict[str, Any]) -> Optional[str]:
+    for col in sheet.get("columns", []):
+        if re.search(r"position", col.get("label", ""), re.I):
+            return col.get("id")
+    return None
+
+
+def _build_cv_upload_filename(
+    sheet: Dict[str, Any],
+    row: Dict[str, Any],
+    original_filename: str,
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    name_col = _find_personnel_name_col_id(sheet)
+    cells = row.get("cells") or {}
+    pname = (cells.get(name_col) if name_col else None) or personnel_name or ""
+    pname = re.sub(r'[\\/:*?"<>|]+', "-", pname.strip()) or "Unknown Personnel"
+
+    pl_code = _resolve_product_line_code(sheet, row, pname, product_line_hint)
+
+    pos_col = _find_position_col_id(sheet)
+    position_raw = (cells.get(pos_col) if pos_col else "") or ""
+    position = re.sub(r'[\\/:*?"<>|]+', "-", str(position_raw).strip()).upper() or "UNKNOWN"
+
+    ext = ""
+    orig = original_filename or ""
+    if "." in orig:
+        ext = orig.rsplit(".", 1)[-1].strip().lower()
+    base = f"CV_{pl_code}_{pname}_{position}"
+    return f"{base}.{ext}" if ext else base
 
 
 def _is_mcu_result_doc_upload(
@@ -349,6 +474,16 @@ def _resolve_matrix_document_filename(
     row = next((r for r in sheet.get("rows", []) if r.get("id") == row_id), None)
     if not row:
         return _sanitize_doc_filename(original_filename)
+
+    if _is_cv_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _build_cv_upload_filename(
+            sheet, row, original_filename, personnel_name, product_line_hint=product_line
+        )
+
+    if _is_skck_doc_upload(sheet_id, col_id, column_name, sheet):
+        return _build_skck_upload_filename(
+            sheet, row, original_filename, personnel_name, product_line_hint=product_line
+        )
 
     if _is_mcu_result_doc_upload(sheet_id, col_id, column_name, sheet):
         return _build_mcu_review_upload_filename(
@@ -556,16 +691,24 @@ def matrix_send_expiry_reminders(force: bool = False):
         if not recipients:
             skipped.append({"product_line": pl_name, "reason": "belum ada email penerima"})
             continue
-        ok = email_service.send_matrix_expiry_reminder(
-            recipients,
-            pl_items,
-            reminder_days=MATRIX_REMINDER_DAYS,
-            product_line_name=pl_name,
-        )
-        if ok:
-            sent_total += len(pl_items)
-            sent_pl.append({"product_line": pl_name, "count": len(pl_items), "recipients": recipients})
-            all_sent_items.extend(pl_items)
+        by_reminder_days: Dict[int, list] = {}
+        for it in pl_items:
+            rd = int(it.get("reminder_days") or MATRIX_REMINDER_DAYS)
+            by_reminder_days.setdefault(rd, []).append(it)
+        pl_sent = 0
+        for rd, day_items in by_reminder_days.items():
+            ok = email_service.send_matrix_expiry_reminder(
+                recipients,
+                day_items,
+                reminder_days=rd,
+                product_line_name=pl_name,
+            )
+            if ok:
+                pl_sent += len(day_items)
+                all_sent_items.extend(day_items)
+        if pl_sent:
+            sent_total += pl_sent
+            sent_pl.append({"product_line": pl_name, "count": pl_sent, "recipients": recipients})
 
     if all_sent_items:
         log_reminder_sent(all_sent_items)

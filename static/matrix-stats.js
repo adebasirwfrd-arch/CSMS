@@ -62,6 +62,7 @@
     function getExpiryWarnDays(label) {
         const l = (label || '').toLowerCase();
         if (/mcu/i.test(l)) return 90;
+        if (/skck.*expir/i.test(l)) return 30;
         if (/contract end|kontrak/i.test(l)) return 30;
         return 30;
     }

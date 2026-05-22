@@ -138,11 +138,13 @@
             left: -300px;
             width: 280px;
             height: 100%;
+            max-height: 100dvh;
             background: var(--bg-secondary);
             z-index: 201;
             transition: left 0.3s ease, visibility 0.3s;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
             visibility: hidden;
             transform: translateX(-100%);
         }
@@ -158,6 +160,7 @@
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
+            flex-shrink: 0;
         }
 
         .weatherford-logo {
@@ -213,7 +216,23 @@
 
         .drawer-nav {
             flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
             padding: 20px 0;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+
+        .drawer-nav::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .drawer-nav::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
         }
 
         .drawer-item {
@@ -244,6 +263,7 @@
             padding: 20px;
             text-align: center;
             border-top: 1px solid var(--border);
+            flex-shrink: 0;
         }
 
         .drawer-footer p {

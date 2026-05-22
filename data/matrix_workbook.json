@@ -652,6 +652,15 @@
           "index": 4
         },
         {
+          "id": "col_cv_doc",
+          "key": "doc_cv",
+          "label": "CV",
+          "type": "file",
+          "filterable": false,
+          "required": false,
+          "index": 42
+        },
+        {
           "id": "col_4",
           "key": "gender_4",
           "label": "Gender*",

@@ -5,9 +5,23 @@ import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-# Email ~3 bulan sebelum tanggal EXPIRED (MCU Expired, BST Expiry, dll.)
+# Default email lead time before EXPIRED column date
 MATRIX_REMINDER_DAYS = 90
 REMINDER_WINDOW = (88, 91)
+
+
+def reminder_days_for_column(col: Dict[str, Any]) -> int:
+    """Per-column reminder lead time (days before expiry)."""
+    label = (col.get("label") or "").replace("*", "").strip().lower()
+    if re.search(r"skck.*expir", label):
+        return 30  # 1 bulan sebelum SKCK Expiry
+    if re.search(r"mcu.*expir", label):
+        return 90
+    return MATRIX_REMINDER_DAYS
+
+
+def reminder_window_for_days(reminder_days: int) -> Tuple[int, int]:
+    return (max(1, reminder_days - 2), reminder_days + 1)
 
 SHEET_LABELS = {
     "employee_mandatory_training": "Pelatihan Wajib",
@@ -134,9 +148,8 @@ def collect_expiry_reminders(
     window: Tuple[int, int] = REMINDER_WINDOW,
     today: Optional[date] = None,
 ) -> List[Dict[str, Any]]:
-    """Return items whose expiry falls in the reminder window (default ~90 days)."""
+    """Return items whose expiry falls in each column's reminder window."""
     today = today or date.today()
-    lo, hi = window
     items: List[Dict[str, Any]] = []
     for sheet in workbook.get("sheets") or []:
         sheet_label = SHEET_LABELS.get(sheet.get("id", ""), sheet.get("title") or sheet.get("name") or "")
@@ -145,6 +158,8 @@ def collect_expiry_reminders(
             name, client, project, product_line = row_context(sheet, row)
             cells = row.get("cells") or {}
             for col in expiry_cols:
+                col_reminder_days = reminder_days_for_column(col)
+                lo, hi = reminder_window_for_days(col_reminder_days)
                 raw = cells.get(col["id"])
                 du = days_until(raw, today)
                 if du is None or du < lo or du > hi:
@@ -163,6 +178,7 @@ def collect_expiry_reminders(
                         "product_line": product_line or "—",
                         "expiry_date": expiry_d.isoformat() if expiry_d else str(raw),
                         "days_until": du,
+                        "reminder_days": col_reminder_days,
                     }
                 )
     items.sort(key=lambda x: (x["days_until"], x["sheet_label"], x["personnel_name"]))
