@@ -108,37 +108,38 @@
     const SHEET_KPI_RULES = {
         employee_mandatory_training: [
             { type: 'personnel' },
-            { label: 'BST Expired ≤3 bulan (90 hari)', match: /bst expiry/i, warnDays: 90, status: 'soon' },
-            { label: 'SBTC Expired ≤3 bulan (90 hari)', match: /sbtc expiry/i, warnDays: 90, status: 'soon' },
-            { label: 'One Sika Expired ≤3 bulan (90 hari)', match: /one sika expiry/i, warnDays: 90, status: 'soon' },
+            { label: 'BST Expired ≤3 bulan (90 hari)', shortLabel: 'BST ≤90 hari', match: /bst expiry/i, warnDays: 90, status: 'soon' },
+            { label: 'SBTC Expired ≤3 bulan (90 hari)', shortLabel: 'SBTC ≤90 hari', match: /sbtc expiry/i, warnDays: 90, status: 'soon' },
+            { label: 'One Sika Expired ≤3 bulan (90 hari)', shortLabel: 'One Sika ≤90 hari', match: /one sika expiry/i, warnDays: 90, status: 'soon' },
             {
                 label: 'Pelatihan Tambahan ≤3 bulan (90 hari)',
+                shortLabel: 'Pelatihan+ ≤90 hari',
                 match: /t-bosiet.*expir|h2s.*expir|sea survival.*expir|hse demo room.*expir|well control.*expir|first aid.*expir|fire.*expir|ohc.*expir|forklift.*expir|radiation.*expir|handak.*expir|k3 umum.*expir|tkpk.*expir|tkdn.*expir|hse 101.*expir|hse 201.*expir|hse 301.*expir/i,
                 warnDays: 90,
                 status: 'soon',
             },
-            { label: 'Training Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
+            { label: 'Training Sudah Expired', shortLabel: 'Training Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
             { type: 'missing' },
         ],
         personnel_health: [
             { type: 'personnel' },
-            { label: 'MCU Expired ≤3 bulan (90 hari)', match: /mcu expired/i, warnDays: 90, status: 'soon' },
-            { label: 'MCU Sudah Expired', match: /mcu expired/i, status: 'expired' },
+            { label: 'MCU Expired ≤3 bulan (90 hari)', shortLabel: 'MCU ≤90 hari', match: /mcu expired/i, warnDays: 90, status: 'soon' },
+            { label: 'MCU Sudah Expired', shortLabel: 'MCU Expired', match: /mcu expired/i, status: 'expired' },
             { type: 'missing' },
         ],
         personnel_data_information: [
             { type: 'personnel' },
-            { label: 'SKCK Expired ≤30 hari', match: /skck expiry/i, warnDays: 30, status: 'soon' },
-            { label: 'HSE Passport Expired ≤3 bulan (90 hari)', match: /hse passport expired/i, warnDays: 90, status: 'soon' },
-            { label: 'SIM Expiry Date ≤3 bulan (90 hari)', match: /^sim expiry date$/i, warnDays: 90, status: 'soon' },
-            { label: 'SIML Expiry ≤3 bulan (90 hari)', match: /siml(?:\s+\d+)?\s*expiry date/i, warnDays: 90, status: 'soon' },
-            { label: 'Dokumen Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
+            { label: 'SKCK Expired ≤30 hari', shortLabel: 'SKCK ≤30 hari', match: /skck expiry/i, warnDays: 30, status: 'soon' },
+            { label: 'HSE Passport Expired ≤3 bulan (90 hari)', shortLabel: 'HSE Pass ≤90 hari', match: /hse passport expired/i, warnDays: 90, status: 'soon' },
+            { label: 'SIM Expiry Date ≤3 bulan (90 hari)', shortLabel: 'SIM ≤90 hari', match: /^sim expiry date$/i, warnDays: 90, status: 'soon' },
+            { label: 'SIML Expiry ≤3 bulan (90 hari)', shortLabel: 'SIML ≤90 hari', match: /siml(?:\s+\d+)?\s*expiry date/i, warnDays: 90, status: 'soon' },
+            { label: 'Dokumen Sudah Expired', shortLabel: 'Dok Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
             { type: 'missing' },
         ],
         contract_information: [
             { type: 'personnel' },
-            { label: 'Kontrak Berakhir ≤30 hari', match: /contract end date/i, warnDays: 30, status: 'soon' },
-            { label: 'Kontrak Sudah Expired', match: /contract end date/i, status: 'expired' },
+            { label: 'Kontrak Berakhir ≤30 hari', shortLabel: 'Kontrak ≤30 hari', match: /contract end date/i, warnDays: 30, status: 'soon' },
+            { label: 'Kontrak Sudah Expired', shortLabel: 'Kontrak Expired', match: /contract end date/i, status: 'expired' },
             { type: 'missing' },
         ],
         emergency_contact_information: [
@@ -149,8 +150,8 @@
 
     const DEFAULT_KPI_RULES = [
         { type: 'personnel' },
-        { label: 'Kadaluarsa ≤30 hari', match: /(?:expir|expired)/i, warnDays: 30, status: 'soon' },
-        { label: 'Sudah Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
+        { label: 'Kadaluarsa ≤30 hari', shortLabel: '≤30 hari', match: /(?:expir|expired)/i, warnDays: 30, status: 'soon' },
+        { label: 'Sudah Expired', shortLabel: 'Expired', match: /(?:expir|expired)/i, status: 'expired', perRow: true },
         { type: 'missing' },
     ];
 
@@ -2339,16 +2340,28 @@
 
         const rules = SHEET_KPI_RULES[sheet.id] || DEFAULT_KPI_RULES;
         const kpis = rules.map((rule, idx) => {
+            const color = SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length];
             if (rule.type === 'personnel') {
-                return { label: 'Personel Aktif', value: uniquePersonnel, color: SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length] };
+                return {
+                    label: 'Personel Aktif',
+                    shortLabel: 'Personel Aktif',
+                    value: uniquePersonnel,
+                    color,
+                };
             }
             if (rule.type === 'missing') {
-                return { label: 'Field Wajib Kosong', value: missingRequired, color: SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length] };
+                return {
+                    label: 'Field Wajib Kosong',
+                    shortLabel: 'Field Wajib',
+                    value: missingRequired,
+                    color,
+                };
             }
             return {
                 label: rule.label,
+                shortLabel: rule.shortLabel || rule.label,
                 value: countDateMetric(rows, cols, rule),
-                color: SHEET_KPI_COLORS[idx % SHEET_KPI_COLORS.length],
+                color,
             };
         });
 
@@ -2356,6 +2369,7 @@
             && (sheet.id === PROFILE_SHEET_ID || sheet.id === 'personnel_health')) {
             kpis.push({
                 label: 'Gender (M/F/L)',
+                shortLabel: 'Gender M/F/L',
                 value: `${gender.Male}/${gender.Female}/${gender.Other}`,
                 color: '#1abc9c',
             });
@@ -3215,11 +3229,29 @@
 
     function renderDashboard(summary) {
         const cards = summary.kpis || [];
-        return `<div class="ex-kpi-strip">${cards.map(c => `
-            <div class="ex-kpi" style="--kpi-color:${c.color}">
-                <span>${esc(c.label)}</span>
+        return `<div class="ex-kpi-strip mx-kpi-strip">${cards.map(c => {
+            const short = c.shortLabel || c.label;
+            const full = c.label || short;
+            const tip = full !== short ? ` title="${esc(full)}"` : '';
+            return `
+            <div class="ex-kpi mx-kpi-card" style="--kpi-color:${c.color}"${tip}>
+                <span class="mx-kpi-label">${esc(short)}</span>
                 <strong>${esc(c.value)}</strong>
-            </div>`).join('')}</div>`;
+            </div>`;
+        }).join('')}</div>`;
+    }
+
+    function scheduleMatrixChartsRefresh() {
+        const sheet = activeSheet();
+        if (!sheet || typeof window.renderMatrixSheetCharts !== 'function') return;
+        const rows = filterRows(sheet);
+        const summary = computeSheetSummary(sheet);
+        const row = rows.find(r => r.id === MATRIX_STATE.selectedRowId);
+        const profileRow = row ? findPersonnelProfileRow(sheet, row) : null;
+        const name = profileName(profileRow) || rowPersonnelName(sheet, row) || '';
+        requestAnimationFrame(() => {
+            window.renderMatrixSheetCharts(sheet, rows, summary, row, name);
+        });
     }
 
     function renderStorageBadge() {
@@ -3574,6 +3606,10 @@
             return;
         }
 
+        if (typeof window.destroyMatrixSheetCharts === 'function') {
+            window.destroyMatrixSheetCharts();
+        }
+
         const summary = computeSheetSummary(sheet);
         const rows = filterRows(sheet);
         const tabLabel = TAB_LABELS[sheet.id] || sheet.title || sheet.name;
@@ -3598,6 +3634,7 @@
                     </div>
                 </header>
                 ${renderDashboard(summary)}
+                ${typeof window.renderMatrixChartsPanelHtml === 'function' ? window.renderMatrixChartsPanelHtml() : ''}
                 <div class="mx-layout">
                     ${renderSidebar(sheet)}
                     <div class="mx-main">
@@ -3608,6 +3645,7 @@
             </div>`;
         updateUndoRedoUI();
         bindMatrixTouchGuards();
+        scheduleMatrixChartsRefresh();
     }
 
     window.matrixSelectRow = function (rowId) {
@@ -3615,6 +3653,7 @@
         MATRIX_STATE.selectedRowId = rowId;
         highlightMatrixRow(rowId);
         replaceMatrixSidebar();
+        scheduleMatrixChartsRefresh();
     };
 
     window.matrixOnRowClick = function (event, rowId) {
@@ -4458,6 +4497,7 @@
             },
             kpis: (summary.kpis || []).map(k => ({
                 label: k.label,
+                short_label: k.shortLabel || k.label,
                 value: String(k.value),
                 color: k.color || '#C41E3A',
             })),
@@ -4478,12 +4518,26 @@
                 values: tableCols.map(c => formatCellForPdf(sheet, c, row.cells?.[c.id])),
             },
             charts: { compliance, expiry_days: expiryDays },
+            chart_images: typeof window.captureMatrixChartImagesForPdf === 'function'
+                ? window.captureMatrixChartImagesForPdf()
+                : {},
         };
     }
 
     window.matrixDownloadPdf = async function () {
         const btn = document.querySelector('.mx-btn-pdf');
         try {
+            if (typeof window.renderMatrixSheetCharts === 'function') {
+                const sheet = activeSheet();
+                if (sheet) {
+                    const rows = filterRows(sheet);
+                    const summary = computeSheetSummary(sheet);
+                    const row = rows.find(r => r.id === MATRIX_STATE.selectedRowId);
+                    const profileRow = row ? findPersonnelProfileRow(sheet, row) : null;
+                    const name = profileName(profileRow) || rowPersonnelName(sheet, row) || '';
+                    await window.renderMatrixSheetCharts(sheet, rows, summary, row, name);
+                }
+            }
             const payload = buildMatrixPdfPayload();
             if (btn) btn.disabled = true;
             showToast?.('Membuat PDF…', 'info');

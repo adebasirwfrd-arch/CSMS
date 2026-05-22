@@ -1,6 +1,7 @@
 """Landscape personnel matrix report PDF (ReportLab)."""
 from __future__ import annotations
 
+import base64
 import io
 import re
 from datetime import datetime
@@ -202,6 +203,81 @@ def _profile_block(personnel: Dict[str, Any], styles, photo_bytes: Optional[byte
     return flow
 
 
+def _decode_chart_image(data_url: str) -> Optional[bytes]:
+    if not data_url:
+        return None
+    s = (data_url or "").strip()
+    if "," in s:
+        s = s.split(",", 1)[1]
+    try:
+        return base64.b64decode(s)
+    except Exception:
+        return None
+
+
+def _chart_image_element(data_url: str, width: float, height: float) -> Optional[Image]:
+    raw = _decode_chart_image(data_url)
+    if not raw:
+        return None
+    try:
+        img = Image(io.BytesIO(raw), width=width, height=height)
+        img.hAlign = "CENTER"
+        return img
+    except Exception:
+        return None
+
+
+def _embedded_charts_section(chart_images: Dict[str, str], styles) -> List[Any]:
+    """2-column grid of Chart.js PNG captures from the matrix dashboard."""
+    order = [
+        ("compliance", "Status Compliance"),
+        ("kpi", "Indikator KPI"),
+        ("expiryStack", "Expiry per Kolom"),
+        ("coverage", "Kelengkapan Data"),
+        ("personExpiry", "Hari ke Expiry"),
+    ]
+    usable = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
+    cell_w = (usable - 8) / 2
+    img_h = 5.0 * cm
+    flows: List[Any] = []
+    row_cells: List[Any] = []
+    for key, title in order:
+        url = (chart_images or {}).get(key)
+        if not url:
+            continue
+        img = _chart_image_element(url, cell_w - 0.4 * cm, img_h)
+        if not img:
+            continue
+        cell = [
+            Paragraph(title, styles["label"]),
+            Spacer(1, 4),
+            img,
+        ]
+        row_cells.append(cell)
+        if len(row_cells) == 2:
+            tbl = Table([row_cells], colWidths=[cell_w, cell_w])
+            tbl.setStyle(TableStyle([
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            flows.append(tbl)
+            flows.append(Spacer(1, 8))
+            row_cells = []
+    if row_cells:
+        if len(row_cells) == 1:
+            tbl = Table([row_cells], colWidths=[cell_w])
+        else:
+            tbl = Table([row_cells], colWidths=[cell_w, cell_w])
+        tbl.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        flows.append(tbl)
+    return flows
+
+
 def _compliance_pie(compliance: Dict[str, int]) -> Drawing:
     d = Drawing(200, 120)
     pie = Pie()
@@ -332,27 +408,39 @@ def build_matrix_personnel_pdf(payload: Dict[str, Any]) -> bytes:
             photo_bytes = None
 
     profile_flow = _profile_block(personnel, styles, photo_bytes)
-    pie = _compliance_pie(charts.get("compliance") or {})
-    bar = _expiry_bar_chart(charts.get("expiry_days") or [])
+    chart_images = payload.get("chart_images") or {}
 
     mid_w = PAGE_SIZE[0] - MARGIN_L - MARGIN_R
     left_w = 8.5 * cm
-    right_w = mid_w - left_w - 0.4 * cm
-    mid_tbl = Table(
-        [[profile_flow, [pie, Spacer(1, 8), bar]]],
-        colWidths=[left_w, right_w],
-    )
-    mid_tbl.setStyle(TableStyle([
+    profile_tbl = Table([[profile_flow]], colWidths=[left_w])
+    profile_tbl.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BACKGROUND", (0, 0), (0, 0), PANEL),
-        ("BACKGROUND", (1, 0), (1, 0), WHITE),
+        ("BACKGROUND", (0, 0), (-1, -1), PANEL),
         ("BOX", (0, 0), (-1, -1), 0.5, LINE),
-        ("LEFTPADDING", (0, 0), (0, 0), 10),
-        ("RIGHTPADDING", (0, 0), (0, 0), 10),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
         ("TOPPADDING", (0, 0), (-1, -1), 10),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
     ]))
-    story.append(mid_tbl)
+    story.append(profile_tbl)
+    story.append(Spacer(1, 8))
+
+    embedded = _embedded_charts_section(chart_images, styles)
+    if embedded:
+        story.append(Paragraph("Ringkasan Visual", styles["section"]))
+        story.extend(embedded)
+    else:
+        pie = _compliance_pie(charts.get("compliance") or {})
+        bar = _expiry_bar_chart(charts.get("expiry_days") or [])
+        right_w = mid_w - left_w - 0.4 * cm
+        fallback_tbl = Table([[pie, Spacer(1, 8), bar]], colWidths=[right_w])
+        fallback_tbl.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BACKGROUND", (0, 0), (-1, -1), WHITE),
+            ("BOX", (0, 0), (-1, -1), 0.5, LINE),
+        ]))
+        story.append(fallback_tbl)
+
     story.append(Spacer(1, 10))
 
     table_title = table.get("title") or payload.get("tab_label") or "Data"
