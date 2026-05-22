@@ -66,7 +66,7 @@ _MCU_DOC_KEY_RE = re.compile(r"doc_.*mcu.*expired|mcu.*expired.*doc", re.I)
 _MCU_RESULT_DOC_RE = re.compile(r"mcu\s*result\s*doc", re.I)
 _MCU_REVIEW_RESULTS_RE = re.compile(r"mcu\s*review\s*results", re.I)
 _MCU_REVIEW_CLIENT_DATE_RE = re.compile(r"mcu\s*review\s*\(client\)\s*date", re.I)
-_MCU_DRIVE_FOLDER = "MCU Expired"
+DATA_PERSONEL_DRIVE_FOLDER = "DATA PERSONEL"
 _CV_DOC_RE = re.compile(r"^cv$", re.I)
 _SKCK_EXPIRY_RE = re.compile(r"skck.*expir", re.I)
 _SKCK_DOC_KEY_RE = re.compile(r"doc_.*skck.*expir|skck.*expir.*doc", re.I)
@@ -99,13 +99,73 @@ def _personnel_photo_folder(personnel_name: str) -> str:
     return parent_id
 
 
-def _pelatihan_personnel_folder(personnel_name: str) -> str:
-    """MATRIX ATTACHMENT / PELATIHAN / {personnel_name}."""
+def _resolve_product_line_folder_name(
+    sheet: Dict[str, Any],
+    row: Optional[Dict[str, Any]],
+    personnel_name: str,
+    product_line_hint: str = "",
+) -> str:
+    """Full product line name for Drive folder (not abbreviated code)."""
+    hint = (product_line_hint or "").strip()
+    if hint:
+        return _sanitize_folder_name(hint)
+
+    if row:
+        pl_col = _find_product_line_col_id(sheet)
+        if pl_col:
+            val = (row.get("cells", {}).get(pl_col) or "").strip()
+            if val:
+                return _sanitize_folder_name(val)
+
+    try:
+        workbook = get_workbook()
+        for sh in workbook.get("sheets", []):
+            if sh.get("id") != PROFILE_SHEET_ID:
+                continue
+            prow = _find_row_by_personnel_name(sh, personnel_name)
+            if not prow:
+                continue
+            pl_col2 = _find_product_line_col_id(sh)
+            if pl_col2:
+                val = (prow.get("cells", {}).get(pl_col2) or "").strip()
+                if val:
+                    return _sanitize_folder_name(val)
+            break
+    except Exception:
+        pass
+
+    return "Unknown Product Line"
+
+
+def _data_personel_personnel_folder(personnel_name: str, product_line_name: str = "") -> str:
+    """MATRIX ATTACHMENT / DATA PERSONEL / {product_line} / {personnel_name}."""
+    data_parent = drive_service.find_or_create_folder(
+        DATA_PERSONEL_DRIVE_FOLDER, parent_id=MATRIX_PROFILE_ROOT
+    )
+    if not data_parent:
+        raise HTTPException(status_code=500, detail="Gagal membuat folder DATA PERSONEL di Google Drive")
+    pl_folder = _sanitize_folder_name(product_line_name) or "Unknown Product Line"
+    pl_parent = drive_service.find_or_create_folder(pl_folder, parent_id=data_parent)
+    if not pl_parent:
+        raise HTTPException(status_code=500, detail="Gagal membuat folder Product Line DATA PERSONEL di Google Drive")
+    person_folder = _sanitize_folder_name(personnel_name)
+    personnel_parent = drive_service.find_or_create_folder(person_folder, parent_id=pl_parent)
+    if not personnel_parent:
+        raise HTTPException(status_code=500, detail="Gagal membuat folder personel DATA PERSONEL di Google Drive")
+    return personnel_parent
+
+
+def _pelatihan_personnel_folder(personnel_name: str, product_line_name: str = "") -> str:
+    """MATRIX ATTACHMENT / PELATIHAN / {product_line} / {personnel_name}."""
     pelatihan_parent = drive_service.find_or_create_folder(PELATIHAN_DRIVE_FOLDER, parent_id=MATRIX_PROFILE_ROOT)
     if not pelatihan_parent:
         raise HTTPException(status_code=500, detail="Gagal membuat folder PELATIHAN di Google Drive")
+    pl_folder = _sanitize_folder_name(product_line_name) or "Unknown Product Line"
+    pl_parent = drive_service.find_or_create_folder(pl_folder, parent_id=pelatihan_parent)
+    if not pl_parent:
+        raise HTTPException(status_code=500, detail="Gagal membuat folder Product Line PELATIHAN di Google Drive")
     person_folder = _sanitize_folder_name(personnel_name)
-    personnel_parent = drive_service.find_or_create_folder(person_folder, parent_id=pelatihan_parent)
+    personnel_parent = drive_service.find_or_create_folder(person_folder, parent_id=pl_parent)
     if not personnel_parent:
         raise HTTPException(status_code=500, detail="Gagal membuat folder personel PELATIHAN di Google Drive")
     return personnel_parent
@@ -117,12 +177,12 @@ def _resolve_upload_folder_name(
     col_id: str = "",
     sheet: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """MCU + CV personnel docs share the MCU Expired / {personnel} Drive folder."""
+    """Personnel docs → DATA PERSONEL / {product_line} / {personnel_name}."""
     if sheet_id == PERSONNEL_HEALTH_SHEET_ID and (
         _is_mcu_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_mcu_result_doc_upload(sheet_id, col_id, column_name, sheet)
     ):
-        return _MCU_DRIVE_FOLDER
+        return DATA_PERSONEL_DRIVE_FOLDER
     if sheet_id == PROFILE_SHEET_ID and (
         _is_cv_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_skck_doc_upload(sheet_id, col_id, column_name, sheet)
@@ -131,12 +191,12 @@ def _resolve_upload_folder_name(
         or _is_sim_upload_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_siml_upload_doc_upload(sheet_id, col_id, column_name, sheet)
     ):
-        return _MCU_DRIVE_FOLDER
+        return DATA_PERSONEL_DRIVE_FOLDER
     if sheet_id == EMERGENCY_CONTACT_SHEET_ID and (
         _is_bpjs_upload_doc_upload(sheet_id, col_id, column_name, sheet)
         or _is_insurance_upload_doc_upload(sheet_id, col_id, column_name, sheet)
     ):
-        return _MCU_DRIVE_FOLDER
+        return DATA_PERSONEL_DRIVE_FOLDER
     if sheet_id == TRAINING_SHEET_ID and _is_pelatihan_training_doc_upload(
         sheet_id, col_id, column_name, sheet
     ):
@@ -162,16 +222,29 @@ def _document_upload_parent_for_matrix(
     personnel_name: str,
     sheet_id: str = "",
     col_id: str = "",
+    product_line: str = "",
+    row_id: str = "",
 ) -> str:
     sheet = None
+    row = None
     if sheet_id:
         try:
             sheet = get_sheet(sheet_id)
+            if row_id:
+                row = next((r for r in sheet.get("rows", []) if r.get("id") == row_id), None)
         except KeyError:
             pass
     folder = _resolve_upload_folder_name(column_name, sheet_id, col_id, sheet)
-    if folder == PELATIHAN_DRIVE_FOLDER:
-        return _pelatihan_personnel_folder(personnel_name)
+    if folder in (PELATIHAN_DRIVE_FOLDER, DATA_PERSONEL_DRIVE_FOLDER):
+        pl_folder = _resolve_product_line_folder_name(
+            sheet or {},
+            row,
+            personnel_name,
+            product_line_hint=product_line,
+        )
+        if folder == PELATIHAN_DRIVE_FOLDER:
+            return _pelatihan_personnel_folder(personnel_name, pl_folder)
+        return _data_personel_personnel_folder(personnel_name, pl_folder)
     return _document_upload_folder(folder, personnel_name)
 
 
@@ -1596,7 +1669,12 @@ def matrix_initiate_document_upload(
     else:
         filename = _sanitize_doc_filename(filename)
     parent_id = _document_upload_parent_for_matrix(
-        column_name, personnel_name, sheet_id or "", col_id or ""
+        column_name,
+        personnel_name,
+        sheet_id or "",
+        col_id or "",
+        product_line=product_line or "",
+        row_id=row_id or "",
     )
     upload_url, _ = drive_service.get_resumable_upload_session(filename, mime_type, parent_id=parent_id)
     if not upload_url:
@@ -1667,7 +1745,14 @@ async def matrix_document_upload_simple(
     if not drive_service.enabled:
         raise HTTPException(status_code=503, detail="Google Drive not configured")
     content = await file.read()
-    parent_id = _document_upload_parent_for_matrix(column_name, personnel_name, sheet_id, col_id)
+    parent_id = _document_upload_parent_for_matrix(
+        column_name,
+        personnel_name,
+        sheet_id,
+        col_id,
+        product_line=product_line or "",
+        row_id=row_id,
+    )
     safe_name = _resolve_matrix_document_filename(
         sheet_id,
         row_id,

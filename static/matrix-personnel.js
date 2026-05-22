@@ -81,7 +81,7 @@
     const SIML_SLOTS = buildSimlSlotConfigs();
     const BPJS_UPLOAD_DOC_COL_ID = 'col_bpjs_upload_doc';
     const INSURANCE_UPLOAD_DOC_COL_ID = 'col_insurance_upload_doc';
-    const MCU_SHARED_DRIVE_FOLDER = 'MCU Expired';
+    const DATA_PERSONEL_SHARED_DRIVE_FOLDER = 'DATA PERSONEL';
     const PHOTO_COL_ID = 'col_photo';
     const AVATAR_MALE = '/static/images/matrix-avatar-male.png';
     const AVATAR_FEMALE = '/static/images/matrix-avatar-female.png';
@@ -997,16 +997,28 @@
 
     function docUploadFolderName(sheet, col) {
         if (isPelatihanTrainingDocUpload(sheet, col, docColumnFolderName(col))) return PELATIHAN_SHARED_DRIVE_FOLDER;
-        if (isSimlUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
-        if (isInsuranceUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
-        if (isBpjsUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
-        if (isSimDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
-        if (isHsePassportDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
-        if (isKtpUploadDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
-        if (isCvDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
-        if (isSkckDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
-        if (isMcuResultDocColumn(sheet, col)) return MCU_SHARED_DRIVE_FOLDER;
-        if (isMcuDocUpload(sheet, col, docColumnFolderName(col))) return MCU_SHARED_DRIVE_FOLDER;
+        if (sheet?.id === PROFILE_SHEET_ID && (
+            isSimlUploadDocColumn(sheet, col) ||
+            isKtpUploadDocColumn(sheet, col) ||
+            isSimDocUpload(sheet, col, docColumnFolderName(col)) ||
+            isHsePassportDocUpload(sheet, col, docColumnFolderName(col)) ||
+            isCvDocColumn(sheet, col) ||
+            isSkckDocUpload(sheet, col, docColumnFolderName(col))
+        )) {
+            return DATA_PERSONEL_SHARED_DRIVE_FOLDER;
+        }
+        if (sheet?.id === PERSONNEL_HEALTH_SHEET_ID && (
+            isMcuResultDocColumn(sheet, col) ||
+            isMcuDocUpload(sheet, col, docColumnFolderName(col))
+        )) {
+            return DATA_PERSONEL_SHARED_DRIVE_FOLDER;
+        }
+        if (sheet?.id === EMERGENCY_CONTACT_SHEET_ID && (
+            isInsuranceUploadDocColumn(sheet, col) ||
+            isBpjsUploadDocColumn(sheet, col)
+        )) {
+            return DATA_PERSONEL_SHARED_DRIVE_FOLDER;
+        }
         return docColumnFolderName(col);
     }
 
