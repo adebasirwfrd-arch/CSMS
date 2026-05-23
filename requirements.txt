@@ -12,6 +12,7 @@ pillow
 
 requests
 supabase
+PyJWT
 
 python-docx
 pdfplumber

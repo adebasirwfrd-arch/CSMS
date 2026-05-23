@@ -1937,11 +1937,176 @@
         .pl-employee-crud-table .pl-emp-field.pl-emp-yesno {
             min-width: 0;
         }
+
+        /* ===== GOOGLE LOGIN & ONBOARDING ===== */
+        body.auth-locked .header,
+        body.auth-locked .drawer-overlay,
+        body.auth-locked .drawer,
+        body.auth-locked main,
+        body.auth-locked .bottom-nav,
+        body.auth-locked .preview-banner {
+            display: none !important;
+        }
+        body.auth-locked { overflow: hidden; background: #fff; }
+
+        .csms-auth-screen {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background: #fff;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .csms-auth-screen.active { display: flex; }
+
+        .csms-login-hero {
+            background: linear-gradient(160deg, #9A1830 0%, #C41E3A 45%, #B91C1C 100%);
+            border-radius: 0 0 28px 28px;
+            padding: 48px 24px 40px;
+            text-align: center;
+            color: #fff;
+            flex-shrink: 0;
+        }
+        .csms-login-hero img {
+            height: 44px;
+            width: auto;
+            margin-bottom: 20px;
+            filter: brightness(0) invert(1);
+        }
+        .csms-login-hero h1 {
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        .csms-login-hero p {
+            font-size: 14px;
+            opacity: 0.92;
+        }
+        .csms-login-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 24px 32px;
+            gap: 20px;
+        }
+        .csms-login-body .g-icon {
+            width: 40px;
+            height: 40px;
+        }
+        #csms-google-btn-wrap {
+            min-height: 44px;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            max-width: 320px;
+        }
+        .csms-auth-error {
+            color: #e74c3c;
+            font-size: 13px;
+            text-align: center;
+            max-width: 320px;
+            display: none;
+        }
+        .csms-onboard-card {
+            width: 100%;
+            max-width: 420px;
+            padding: 24px;
+        }
+        .csms-onboard-card h2 {
+            font-size: 20px;
+            color: #141414;
+            margin-bottom: 8px;
+        }
+        .csms-onboard-card p {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        .csms-onboard-card .form-label { color: #333; }
+        .csms-onboard-card .form-input {
+            background: #f5f5f5;
+            color: #141414;
+            border-color: #ddd;
+            margin-bottom: 12px;
+        }
+        #onboard-personnel-preview {
+            font-size: 12px;
+            color: #666;
+            min-height: 18px;
+            margin-bottom: 12px;
+        }
+        .csms-onboard-submit {
+            width: 100%;
+            margin-top: 8px;
+            padding: 12px;
+            background: var(--netflix-red);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 15px;
+            cursor: pointer;
+        }
+        #csms-app-root { display: block; }
+        body.auth-locked #csms-app-root { display: none !important; }
     </style>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <!-- PDF Compression Library -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
+
+<body class="auth-locked">
+
+<!-- Google Login -->
+<div id="csms-login-screen" class="csms-auth-screen active">
+    <div class="csms-login-hero">
+        <img src="/static/weatherford_logo.png" alt="Weatherford">
+        <h1>Selamat Datang!</h1>
+        <p>Sistem Manajemen Proyek CSMS</p>
+    </div>
+    <div class="csms-login-body">
+        <svg class="g-icon" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.654 32.657 29.083 36 24 36c-5.522 0-10-4.477-10-10s4.478-10 10-10c2.43 0 4.653.86 6.396 2.284l5.657-5.657C33.64 10.26 29.028 8 24 8 14.059 8 6 16.059 6 26s8.059 18 18 18 18-8.059 18-18c0-1.341-.148-2.651-.389-3.917z"/>
+            <path fill="#FF3D00" d="M6 10.684l6.628 4.86C14.77 12.09 19.033 10 24 10c2.43 0 4.653.86 6.396 2.284l5.657-5.657C33.64 10.26 29.028 8 24 8 14.059 8 6 16.059 6 26s8.059 18 18 18c5.013 0 9.563-1.926 12.97-5.07l-6.63-4.86C32.35 36.657 28.528 38 24 38c-5.522 0-10-4.477-10-10s4.478-10 10-10z"/>
+            <path fill="#4CAF50" d="M24 44c5.013 0 9.563-1.926 12.97-5.07l-6.63-4.86C28.35 36.657 24.528 38 24 38c-5.522 0-10-4.477-10-10s4.478-10 10-10c2.43 0 4.653.86 6.396 2.284l5.657-5.657C33.64 10.26 29.028 8 24 8 14.059 8 6 16.059 6 26s8.059 18 18 18z"/>
+            <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.22 8-11.303 8-5.522 0-10-4.477-10-10s4.478-10 10-10c2.43 0 4.653.86 6.396 2.284l5.657-5.657C33.64 10.26 29.028 8 24 8c-9.941 0-18 8.059-18 18s8.059 18 18 18 18-8.059 18-18c0-1.341-.148-2.651-.389-3.917z"/>
+        </svg>
+        <div id="csms-google-btn-wrap"></div>
+        <div id="csms-login-error" class="csms-auth-error"></div>
+    </div>
+</div>
+
+<!-- Onboarding: Product Line + Personnel -->
+<div id="csms-onboarding-screen" class="csms-auth-screen">
+    <div class="csms-login-hero" style="padding: 32px 24px 28px;">
+        <img src="/static/weatherford_logo.png" alt="Weatherford">
+        <h1 style="font-size: 22px;">Konfirmasi Identitas</h1>
+        <p>Pilih Product Line dan nama Anda</p>
+    </div>
+    <div class="csms-login-body" style="justify-content: flex-start; padding-top: 24px;">
+        <form class="csms-onboard-card" onsubmit="submitOnboarding(event)">
+            <h2>Data Karyawan</h2>
+            <p>Pastikan nama sesuai daftar Master. Email Google Anda akan disimpan ke Master Data.</p>
+            <label class="form-label">Product Line</label>
+            <select class="form-input" id="onboard-pl-select" required onchange="onOnboardPlChange()">
+                <option value="">— Pilih Product Line —</option>
+            </select>
+            <label class="form-label">Personnel Name</label>
+            <select class="form-input" id="onboard-personnel-select" required onchange="onOnboardPersonnelChange()">
+                <option value="">Pilih Product Line dulu</option>
+            </select>
+            <div id="onboard-personnel-preview"></div>
+            <div id="onboard-error" class="csms-auth-error" style="margin-bottom: 12px;"></div>
+            <button type="submit" class="csms-onboard-submit">Konfirmasi &amp; Masuk</button>
+        </form>
+    </div>
+</div>
+
+<div id="csms-app-root">
 
 <!-- Header -->
 <header class="header">
@@ -2068,6 +2233,12 @@
                     d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
             </svg>
             <span data-i18n="adminLogin">Admin Login</span>
+        </div>
+        <div class="drawer-item" id="personnel-logout-btn" onclick="personnelSignOut()" style="color: #e74c3c; display: none;">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+            </svg>
+            <span>Keluar</span>
         </div>
         <div class="drawer-item admin-only" id="admin-logout-btn" onclick="adminLogout()" style="color: #e74c3c;">
             <svg viewBox="0 0 24 24" fill="currentColor">
@@ -4182,11 +4353,17 @@
     window.handleAdminLogin = handleAdminLogin;
     window.adminLogout = adminLogout;
 
-    // Check admin status on page load
-    checkAdminStatus();
+    // Check admin status on page load (legacy admin login; Google admin emails get admin via auth-flow)
     document.addEventListener('DOMContentLoaded', () => {
-        if (document.body.classList.contains('admin-mode')) {
-            loadMasterDataPage();
+        if (typeof initAuthFlow === 'function') {
+            initAuthFlow().then(() => {
+                if (document.body.classList.contains('admin-mode') && !document.body.classList.contains('auth-locked')) {
+                    loadMasterDataPage();
+                }
+            });
+        } else {
+            checkAdminStatus();
+            if (document.body.classList.contains('admin-mode')) loadMasterDataPage();
         }
     });
 
@@ -11003,6 +11180,8 @@
         }
     }
 </script>
+</div><!-- /#csms-app-root -->
+    <script src="/static/auth-flow.js"></script>
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
     <script src="/static/matrix-charts.js?v=3"></script>
