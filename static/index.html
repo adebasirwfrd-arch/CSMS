@@ -1938,7 +1938,7 @@
             min-width: 0;
         }
 
-        /* ===== GOOGLE LOGIN & ONBOARDING ===== */
+        /* ===== GOOGLE LOGIN & ONBOARDING (premium) ===== */
         body.auth-locked .header,
         body.auth-locked .drawer-overlay,
         body.auth-locked .drawer,
@@ -1947,109 +1947,248 @@
         body.auth-locked .preview-banner {
             display: none !important;
         }
-        body.auth-locked { overflow: hidden; background: #fff; }
+        body.auth-locked {
+            overflow: hidden;
+            background: #0f0f0f;
+        }
 
         .csms-auth-screen {
             display: none;
             position: fixed;
             inset: 0;
             z-index: 99999;
-            background: #fff;
-            flex-direction: column;
-            overflow-y: auto;
+            overflow: hidden;
         }
-        .csms-auth-screen.active { display: flex; }
+        .csms-auth-screen.active { display: block; }
 
-        .csms-login-hero {
-            background: linear-gradient(160deg, #9A1830 0%, #C41E3A 45%, #B91C1C 100%);
-            border-radius: 0 0 28px 28px;
-            padding: 48px 24px 40px;
-            text-align: center;
-            color: #fff;
-            flex-shrink: 0;
+        .csms-auth-layout {
+            display: flex;
+            min-height: 100vh;
+            min-height: 100dvh;
+            width: 100%;
         }
-        .csms-login-hero img {
-            height: 44px;
-            width: auto;
-            margin-bottom: 20px;
-            filter: brightness(0) invert(1);
-        }
-        .csms-login-hero h1 {
-            font-size: 26px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-        .csms-login-hero p {
-            font-size: 14px;
-            opacity: 0.92;
-        }
-        .csms-login-body {
+
+        .csms-auth-brand {
             flex: 1;
+            position: relative;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 40px 24px 32px;
-            gap: 20px;
+            padding: 48px 32px;
+            background: linear-gradient(145deg, #6b0f1a 0%, #9a1830 35%, #c41e3a 70%, #8b1428 100%);
+            color: #fff;
+            text-align: center;
+            overflow: hidden;
         }
-        .csms-login-body .g-icon {
-            width: 40px;
-            height: 40px;
+        .csms-auth-brand::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 80% 50% at 50% 0%, rgba(255,255,255,0.12) 0%, transparent 55%),
+                radial-gradient(ellipse 60% 40% at 100% 100%, rgba(0,0,0,0.25) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        .csms-auth-brand-inner {
+            position: relative;
+            z-index: 1;
+            max-width: 360px;
+        }
+        .csms-auth-logo {
+            width: min(280px, 85vw);
+            height: auto;
+            margin: 0 auto 28px;
+            display: block;
+            filter: drop-shadow(0 8px 24px rgba(0,0,0,0.35));
+        }
+        .csms-auth-brand h1 {
+            font-size: clamp(26px, 4vw, 34px);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin-bottom: 10px;
+            line-height: 1.2;
+        }
+        .csms-auth-brand .csms-auth-tagline {
+            font-size: 15px;
+            opacity: 0.9;
+            line-height: 1.5;
+            font-weight: 400;
+        }
+        .csms-auth-brand .csms-auth-badge {
+            display: inline-block;
+            margin-top: 24px;
+            padding: 6px 14px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.12);
+            border: 1px solid rgba(255,255,255,0.2);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+
+        .csms-auth-panel {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 24px;
+            background: #f8f9fb;
+            overflow-y: auto;
+        }
+        .csms-auth-card {
+            width: 100%;
+            max-width: 400px;
+            background: #fff;
+            border-radius: 16px;
+            padding: 36px 32px;
+            box-shadow:
+                0 1px 2px rgba(0,0,0,0.04),
+                0 8px 24px rgba(0,0,0,0.06),
+                0 24px 48px rgba(196, 30, 58, 0.08);
+            border: 1px solid rgba(0,0,0,0.06);
+        }
+        .csms-auth-card h2 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #141414;
+            margin-bottom: 6px;
+            letter-spacing: -0.02em;
+        }
+        .csms-auth-card .csms-auth-sub {
+            font-size: 14px;
+            color: #5c5c5c;
+            line-height: 1.5;
+            margin-bottom: 28px;
+        }
+        .csms-auth-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0;
+            color: #999;
+            font-size: 12px;
+        }
+        .csms-auth-divider::before,
+        .csms-auth-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e8e8e8;
         }
         #csms-google-btn-wrap {
-            min-height: 44px;
+            min-height: 48px;
             display: flex;
             justify-content: center;
             width: 100%;
-            max-width: 320px;
         }
         .csms-auth-error {
-            color: #e74c3c;
+            color: #c41e3a;
             font-size: 13px;
             text-align: center;
-            max-width: 320px;
+            margin-top: 16px;
+            padding: 10px 12px;
+            background: #fef2f2;
+            border-radius: 8px;
+            border: 1px solid #fecaca;
             display: none;
         }
-        .csms-onboard-card {
-            width: 100%;
-            max-width: 420px;
-            padding: 24px;
+        .csms-auth-steps {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
         }
-        .csms-onboard-card h2 {
-            font-size: 20px;
+        .csms-auth-step {
+            flex: 1;
+            height: 4px;
+            border-radius: 2px;
+            background: #e8e8e8;
+        }
+        .csms-auth-step.active { background: #c41e3a; }
+        .csms-auth-card .form-label {
+            color: #333;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 6px;
+        }
+        .csms-auth-card .form-input {
+            background: #fafafa;
             color: #141414;
-            margin-bottom: 8px;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .csms-onboard-card p {
-            font-size: 13px;
-            color: #666;
-            margin-bottom: 20px;
-        }
-        .csms-onboard-card .form-label { color: #333; }
-        .csms-onboard-card .form-input {
-            background: #f5f5f5;
-            color: #141414;
-            border-color: #ddd;
-            margin-bottom: 12px;
+        .csms-auth-card .form-input:focus {
+            outline: none;
+            border-color: #c41e3a;
+            box-shadow: 0 0 0 3px rgba(196, 30, 58, 0.12);
         }
         #onboard-personnel-preview {
-            font-size: 12px;
-            color: #666;
-            min-height: 18px;
-            margin-bottom: 12px;
+            font-size: 13px;
+            color: #5c5c5c;
+            min-height: 20px;
+            margin: -8px 0 16px;
+            padding: 10px 12px;
+            background: #f5f5f5;
+            border-radius: 8px;
         }
         .csms-onboard-submit {
             width: 100%;
             margin-top: 8px;
-            padding: 12px;
-            background: var(--netflix-red);
+            padding: 14px;
+            background: linear-gradient(180deg, #d42a45 0%, #c41e3a 100%);
             color: #fff;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: 600;
             font-size: 15px;
             cursor: pointer;
+            box-shadow: 0 4px 14px rgba(196, 30, 58, 0.35);
+            transition: transform 0.12s, box-shadow 0.12s;
         }
+        .csms-onboard-submit:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(196, 30, 58, 0.4);
+        }
+        .csms-auth-footer {
+            margin-top: 24px;
+            text-align: center;
+            font-size: 11px;
+            color: #999;
+        }
+        .csms-auth-mobile-logo {
+            display: none;
+            width: 140px;
+            margin: 0 auto 20px;
+        }
+
+        @media (max-width: 900px) {
+            .csms-auth-layout { flex-direction: column; }
+            .csms-auth-brand {
+                flex: 0;
+                padding: 32px 24px 28px;
+                min-height: auto;
+            }
+            .csms-auth-brand .csms-auth-logo { display: none; }
+            .csms-auth-mobile-logo { display: block; }
+            .csms-auth-brand h1 { font-size: 22px; }
+            .csms-auth-panel {
+                flex: 1;
+                padding: 24px 20px 32px;
+                align-items: flex-start;
+            }
+            .csms-auth-card {
+                padding: 28px 22px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            }
+        }
+
         #csms-app-root { display: block; }
         body.auth-locked #csms-app-root { display: none !important; }
     </style>
@@ -2063,46 +2202,64 @@
 
 <!-- Google Login -->
 <div id="csms-login-screen" class="csms-auth-screen active">
-    <div class="csms-login-hero">
-        <img src="/static/weatherford_logo.png" alt="Weatherford">
-        <h1>Selamat Datang!</h1>
-        <p>Sistem Manajemen Proyek CSMS</p>
-    </div>
-    <div class="csms-login-body">
-        <svg class="g-icon" viewBox="0 0 48 48" aria-hidden="true">
-            <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303C33.654 32.657 29.083 36 24 36c-5.522 0-10-4.477-10-10s4.478-10 10-10c2.43 0 4.653.86 6.396 2.284l5.657-5.657C33.64 10.26 29.028 8 24 8 14.059 8 6 16.059 6 26s8.059 18 18 18 18-8.059 18-18c0-1.341-.148-2.651-.389-3.917z"/>
-            <path fill="#FF3D00" d="M6 10.684l6.628 4.86C14.77 12.09 19.033 10 24 10c2.43 0 4.653.86 6.396 2.284l5.657-5.657C33.64 10.26 29.028 8 24 8 14.059 8 6 16.059 6 26s8.059 18 18 18c5.013 0 9.563-1.926 12.97-5.07l-6.63-4.86C32.35 36.657 28.528 38 24 38c-5.522 0-10-4.477-10-10s4.478-10 10-10z"/>
-            <path fill="#4CAF50" d="M24 44c5.013 0 9.563-1.926 12.97-5.07l-6.63-4.86C28.35 36.657 24.528 38 24 38c-5.522 0-10-4.477-10-10s4.478-10 10-10c2.43 0 4.653.86 6.396 2.284l5.657-5.657C33.64 10.26 29.028 8 24 8 14.059 8 6 16.059 6 26s8.059 18 18 18z"/>
-            <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.22 8-11.303 8-5.522 0-10-4.477-10-10s4.478-10 10-10c2.43 0 4.653.86 6.396 2.284l5.657-5.657C33.64 10.26 29.028 8 24 8c-9.941 0-18 8.059-18 18s8.059 18 18 18 18-8.059 18-18c0-1.341-.148-2.651-.389-3.917z"/>
-        </svg>
-        <div id="csms-google-btn-wrap"></div>
-        <div id="csms-login-error" class="csms-auth-error"></div>
+    <div class="csms-auth-layout">
+        <div class="csms-auth-brand">
+            <div class="csms-auth-brand-inner">
+                <img class="csms-auth-logo" src="/static/weatherford_logo_auth.png" alt="Weatherford">
+                <h1>Selamat Datang!</h1>
+                <p class="csms-auth-tagline">Sistem Manajemen Proyek CSMS — kelola proyek, matrix, dan data personel dengan aman.</p>
+                <span class="csms-auth-badge">Weatherford CSMS</span>
+            </div>
+        </div>
+        <div class="csms-auth-panel">
+            <div class="csms-auth-card">
+                <img class="csms-auth-mobile-logo" src="/static/weatherford_logo_auth.png" alt="Weatherford">
+                <h2>Masuk ke CSMS</h2>
+                <p class="csms-auth-sub">Gunakan akun Google perusahaan Anda untuk melanjutkan. Sesi akan tersimpan di perangkat ini.</p>
+                <div id="csms-google-btn-wrap"></div>
+                <div id="csms-login-error" class="csms-auth-error"></div>
+                <p class="csms-auth-footer">© Weatherford · Contractor Safety Management System</p>
+            </div>
+        </div>
     </div>
 </div>
 
 <!-- Onboarding: Product Line + Personnel -->
 <div id="csms-onboarding-screen" class="csms-auth-screen">
-    <div class="csms-login-hero" style="padding: 32px 24px 28px;">
-        <img src="/static/weatherford_logo.png" alt="Weatherford">
-        <h1 style="font-size: 22px;">Konfirmasi Identitas</h1>
-        <p>Pilih Product Line dan nama Anda</p>
-    </div>
-    <div class="csms-login-body" style="justify-content: flex-start; padding-top: 24px;">
-        <form class="csms-onboard-card" onsubmit="submitOnboarding(event)">
-            <h2>Data Karyawan</h2>
-            <p>Pastikan nama sesuai daftar Master. Email Google Anda akan disimpan ke Master Data.</p>
-            <label class="form-label">Product Line</label>
-            <select class="form-input" id="onboard-pl-select" required onchange="onOnboardPlChange()">
-                <option value="">— Pilih Product Line —</option>
-            </select>
-            <label class="form-label">Personnel Name</label>
-            <select class="form-input" id="onboard-personnel-select" required onchange="onOnboardPersonnelChange()">
-                <option value="">Pilih Product Line dulu</option>
-            </select>
-            <div id="onboard-personnel-preview"></div>
-            <div id="onboard-error" class="csms-auth-error" style="margin-bottom: 12px;"></div>
-            <button type="submit" class="csms-onboard-submit">Konfirmasi &amp; Masuk</button>
-        </form>
+    <div class="csms-auth-layout">
+        <div class="csms-auth-brand">
+            <div class="csms-auth-brand-inner">
+                <img class="csms-auth-logo" src="/static/weatherford_logo_auth.png" alt="Weatherford">
+                <h1>Konfirmasi Identitas</h1>
+                <p class="csms-auth-tagline">Pilih product line dan nama Anda sesuai data Master karyawan.</p>
+                <span class="csms-auth-badge">Langkah terakhir</span>
+            </div>
+        </div>
+        <div class="csms-auth-panel">
+            <div class="csms-auth-card">
+                <img class="csms-auth-mobile-logo" src="/static/weatherford_logo_auth.png" alt="Weatherford">
+                <div class="csms-auth-steps">
+                    <div class="csms-auth-step active"></div>
+                    <div class="csms-auth-step active"></div>
+                </div>
+                <h2>Data Karyawan</h2>
+                <p class="csms-auth-sub">Email Google akan disimpan ke Master. Akses PL/Personnel diatur otomatis dari posisi Anda.</p>
+                <form onsubmit="submitOnboarding(event)">
+                    <label class="form-label">Product Line</label>
+                    <select class="form-input" id="onboard-pl-select" required onchange="onOnboardPlChange()">
+                        <option value="">— Pilih Product Line —</option>
+                    </select>
+                    <label class="form-label">Personnel Name</label>
+                    <select class="form-input" id="onboard-personnel-select" required onchange="onOnboardPersonnelChange()">
+                        <option value="">Pilih Product Line dulu</option>
+                    </select>
+                    <div id="onboard-personnel-preview"></div>
+                    <div id="onboard-error" class="csms-auth-error"></div>
+                    <button type="submit" class="csms-onboard-submit">Konfirmasi &amp; Masuk ke Aplikasi</button>
+                </form>
+                <p class="csms-auth-footer">Nama tidak ada di daftar? Hubungi admin Master Data.</p>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -5755,7 +5912,7 @@
             const res = await fetch(`${API_BASE}/product-lines/sync-employees`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ use_excel: true }),
+                body: JSON.stringify({ use_excel: false }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {

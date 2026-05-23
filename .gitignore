@@ -9,6 +9,8 @@ logs/*.log
 2026 CSMS/
 *.pdf
 *.png
+!static/weatherford_logo.png
+!static/weatherford_logo_auth.png
 *.jpg
 *.jpeg
 *.xlsx

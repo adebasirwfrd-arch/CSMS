@@ -14,9 +14,12 @@
 
 ```env
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
 CSMS_AUTH_SECRET=long-random-secret-for-jwt-signing
 CSMS_ADMIN_EMAILS=your-admin@company.com,other@company.com
 ```
+
+`GOOGLE_CLIENT_SECRET` disimpan di env untuk referensi / integrasi Drive; login personel memakai **Client ID** + token ID dari tombol Google.
 
 `CSMS_ADMIN_EMAILS` — comma-separated Google emails that receive **Admin Mode** automatically after login.
 

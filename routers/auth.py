@@ -1,5 +1,5 @@
 """Personnel Google Sign-In and onboarding."""
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Header, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
@@ -86,7 +86,11 @@ def auth_onboarding_personnel(
 
 
 @router.post("/auth/onboard")
-def auth_onboard(body: OnboardBody, authorization: Optional[str] = Header(None)):
+def auth_onboard(
+    body: OnboardBody,
+    background_tasks: BackgroundTasks,
+    authorization: Optional[str] = Header(None),
+):
     token = _bearer_token(authorization)
     try:
         result = complete_onboarding(token, body.product_line_id, body.employee_id)
@@ -94,12 +98,17 @@ def auth_onboard(body: OnboardBody, authorization: Optional[str] = Header(None))
             "AUTH",
             f"Onboarded {result['session'].get('email')} as {result['session'].get('personnel_name')}",
         )
-        from services.matrix_roster_sync import sync_product_line_roster_to_workbook
+        pl_id = body.product_line_id
 
-        try:
-            sync_product_line_roster_to_workbook(body.product_line_id)
-        except Exception as sync_err:
-            log_error("AUTH", f"matrix sync after onboard: {sync_err}", sync_err)
+        def _matrix_sync() -> None:
+            try:
+                from services.matrix_roster_sync import sync_product_line_roster_to_workbook
+
+                sync_product_line_roster_to_workbook(pl_id)
+            except Exception as sync_err:
+                log_error("AUTH", f"matrix sync after onboard: {sync_err}", sync_err)
+
+        background_tasks.add_task(_matrix_sync)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -4,13 +4,27 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+
+from openpyxl import load_workbook
 
 from services.product_line_employee_utils import normalize_yes_no
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_EXCEL = ROOT / "Blueprint" / "Employee_Job_Data_2026.xlsx"
 SEED_JSON = ROOT / "data" / "product_line_employees_seed.json"
+
+# Excel header → internal key
+_EXCEL_HEADERS = {
+    "NO": "row_no",
+    "NAME": "name",
+    "Job Family Description": "job_family_description",
+    "Job Description": "job_description",
+    "ACCESS TO PL": "access_to_pl",
+    "ACCESS PERSONNEL ONLY": "access_personnel_only",
+    "Email": "email",
+    "Product Line": "product_line",
+}
 
 
 def _norm_name(value: str) -> str:
@@ -27,6 +41,17 @@ def _clean_cell(value: Any) -> str:
     return str(value).strip()
 
 
+def _parse_row_no(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def load_seed_payload(path: Optional[Path] = None) -> Dict[str, Any]:
     seed_path = path or SEED_JSON
     with open(seed_path, encoding="utf-8") as f:
@@ -34,32 +59,56 @@ def load_seed_payload(path: Optional[Path] = None) -> Dict[str, Any]:
 
 
 def load_from_excel(excel_path: Optional[Path] = None) -> Dict[str, Any]:
-    import pandas as pd
-
     xlsx = excel_path or DEFAULT_EXCEL
     if not xlsx.exists():
         raise FileNotFoundError(f"Excel not found: {xlsx}")
-    df = pd.read_excel(xlsx)
-    employees: List[Dict[str, Any]] = []
-    for _, row in df.iterrows():
-        row_no = row.get("NO")
-        employees.append(
-            {
-                "product_line": _clean_cell(row.get("Product Line")),
-                "row_no": int(row_no) if row_no is not None and not (
-                    isinstance(row_no, float) and math.isnan(row_no)
-                ) else None,
-                "name": _clean_cell(row.get("NAME")),
-                "job_family_description": _clean_cell(row.get("Job Family Description")),
-                "job_description": _clean_cell(row.get("Job Description")),
-                "access_to_pl": _clean_cell(row.get("ACCESS TO PL")),
-                "access_personnel_only": _clean_cell(row.get("ACCESS PERSONNEL ONLY")),
-                "email": _clean_cell(row.get("Email")),
+
+    wb = load_workbook(xlsx, read_only=True, data_only=True)
+    try:
+        ws = wb.active
+        rows_iter = ws.iter_rows(values_only=True)
+        header_row = next(rows_iter, None)
+        if not header_row:
+            raise ValueError("Excel sheet is empty")
+
+        col_map: Dict[int, str] = {}
+        for idx, label in enumerate(header_row):
+            key = _EXCEL_HEADERS.get(_clean_cell(label), "")
+            if key:
+                col_map[idx] = key
+
+        employees: List[Dict[str, Any]] = []
+        for row in rows_iter:
+            if not row or all(c is None or str(c).strip() == "" for c in row):
+                continue
+            record: Dict[str, Any] = {
+                "product_line": "",
+                "row_no": None,
+                "name": "",
+                "job_family_description": "",
+                "job_description": "",
+                "access_to_pl": "",
+                "access_personnel_only": "",
+                "email": "",
             }
-        )
+            for idx, field in col_map.items():
+                val = row[idx] if idx < len(row) else None
+                if field == "row_no":
+                    record["row_no"] = _parse_row_no(val)
+                else:
+                    record[field] = _clean_cell(val)
+            if record.get("name") or record.get("product_line"):
+                employees.append(record)
+    finally:
+        wb.close()
+
     product_lines = sorted({e["product_line"] for e in employees if e["product_line"]})
+    try:
+        source = str(xlsx.relative_to(ROOT))
+    except ValueError:
+        source = str(xlsx)
     return {
-        "source": str(xlsx.relative_to(ROOT)) if xlsx.is_relative_to(ROOT) else str(xlsx),
+        "source": source,
         "product_lines": product_lines,
         "employees": employees,
     }
@@ -74,7 +123,7 @@ def load_import_payload(
     if use_excel:
         try:
             return load_from_excel(excel_path)
-        except FileNotFoundError:
+        except (FileNotFoundError, ImportError, ValueError):
             pass
     return load_seed_payload(seed_path)
 

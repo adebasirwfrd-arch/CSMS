@@ -133,7 +133,8 @@
                 theme: 'outline',
                 size: 'large',
                 text: 'signin_with',
-                width: Math.min(320, container.clientWidth || 320),
+                shape: 'pill',
+                width: Math.min(360, Math.max(280, container.clientWidth || 320)),
             });
         }
         google.accounts.id.prompt();
@@ -231,10 +232,15 @@
         const plId = parseInt(document.getElementById('onboard-pl-select')?.value, 10);
         const empId = parseInt(document.getElementById('onboard-personnel-select')?.value, 10);
         const errEl = document.getElementById('onboard-error');
+        const submitBtn = document.querySelector('.csms-onboard-submit');
         if (errEl) errEl.style.display = 'none';
         if (!plId || !empId) {
             if (errEl) { errEl.textContent = 'Pilih Product Line dan Personnel Name'; errEl.style.display = 'block'; }
             return;
+        }
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Memproses...';
         }
         try {
             const res = await authFetch('/auth/onboard', {
@@ -253,6 +259,11 @@
             if (errEl) {
                 errEl.textContent = err.message || 'Konfirmasi gagal';
                 errEl.style.display = 'block';
+            }
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Konfirmasi & Masuk ke Aplikasi';
             }
         }
     }
