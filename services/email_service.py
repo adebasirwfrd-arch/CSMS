@@ -126,8 +126,9 @@ class EmailService:
         items: List[Dict],
         reminder_days: int = 90,
         product_line_name: str = "",
+        personnel_name: str = "",
     ) -> bool:
-        """Send digest email for matrix columns expiring in ~90 days (per Product Line)."""
+        """Send digest email for matrix columns expiring in ~90 days (per personnel or PL)."""
         if not recipients:
             print("[EMAIL WARN] No matrix reminder recipients configured")
             return False
@@ -136,7 +137,16 @@ class EmailService:
             return False
 
         pl_label = f" {product_line_name}" if product_line_name else ""
-        subject = f"[CSMS Matrix{pl_label}] Reminder — {len(items)} dokumen akan expired ({reminder_days} hari)"
+        who = (personnel_name or "").strip()
+        if who:
+            subject = (
+                f"[CSMS Matrix{pl_label}] Reminder untuk {who} — "
+                f"{len(items)} dokumen akan expired ({reminder_days} hari)"
+            )
+            greeting = f"<p>Yth. <strong>{who}</strong>,</p>"
+        else:
+            subject = f"[CSMS Matrix{pl_label}] Reminder — {len(items)} dokumen akan expired ({reminder_days} hari)"
+            greeting = ""
         rows_html = ""
         for it in items:
             rows_html += f"""
@@ -158,7 +168,8 @@ class EmailService:
                 <p style="margin: 8px 0 0;">Pengingat {reminder_days} hari sebelum tanggal expired</p>
             </div>
             <div style="padding: 20px; background: #f5f5f5; border-radius: 8px; margin-top: 10px;">
-                <p>Berikut daftar sertifikasi / dokumen personel yang akan expired dalam <strong>{reminder_days} hari</strong>:</p>
+                {greeting}
+                <p>Berikut daftar sertifikasi / dokumen Anda yang akan expired dalam <strong>{reminder_days} hari</strong>:</p>
                 <table style="width:100%;border-collapse:collapse;font-size:13px;">
                     <tr style="background:#333;color:#fff;">
                         <th style="padding:8px;border:1px solid #ddd;">Sheet</th>

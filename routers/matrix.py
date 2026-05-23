@@ -1318,57 +1318,43 @@ class SyncRosterBody(BaseModel):
 
 @router.get("/matrix/expiry-reminders/preview")
 def matrix_expiry_reminders_preview():
-    """Diagnose which matrix rows qualify for the 90-day email reminder."""
-    from database import get_product_lines
+    """Diagnose which matrix rows qualify for personnel email reminders."""
+    from database import get_product_line_employees, get_product_lines
     from services.email_service import email_service
     from services.matrix_expiry_reminder import (
         MATRIX_REMINDER_DAYS,
         REMINDER_WINDOW,
+        build_personnel_reminder_lookup,
         collect_expiry_reminders,
-        group_items_by_product_line,
-        product_line_recipients,
+        group_items_by_personnel_reminder,
     )
+    from services.product_line_employee_utils import normalize_yes_no
 
     today = date.today()
     product_lines = get_product_lines()
+    employees = get_product_line_employees()
     workbook = get_workbook()
     all_items = collect_expiry_reminders(workbook, reminder_days=MATRIX_REMINDER_DAYS)
     pending = filter_unsent_reminders(all_items) if all_items else []
-    groups = group_items_by_product_line(pending, product_lines) if pending else {}
+    groups, skipped = (
+        group_items_by_personnel_reminder(pending, employees, product_lines)
+        if pending
+        else ({}, [])
+    )
 
-    pl_email_status = []
-    for pl in product_lines:
-        name = (pl.get("name") or "").strip()
-        recipients = [
-            e
-            for e in (
-                pl.get("supervisor_email"),
-                pl.get("hse_email"),
-                pl.get("manager_email"),
-                pl.get("coordinator_email"),
-            )
-            if e and str(e).strip()
-        ]
-        pl_email_status.append(
-            {
-                "product_line": name,
-                "has_recipients": bool(recipients),
-                "recipients": recipients,
-            }
-        )
+    reminder_enabled = [
+        {
+            "name": e.get("name"),
+            "email": (e.get("email") or "").strip(),
+            "product_line_id": e.get("product_line_id"),
+            "email_reminder": normalize_yes_no(e.get("email_reminder")),
+        }
+        for e in employees
+        if normalize_yes_no(e.get("email_reminder")) == "Yes"
+    ]
 
     target_expiry = today + timedelta(days=MATRIX_REMINDER_DAYS)
-    pl_by_name = {(pl.get("name") or "").strip().lower(): pl for pl in product_lines}
-    skipped_no_email = []
-    seen_pl = set()
-    for item in pending:
-        pl_key = (item.get("product_line") or "").strip().lower()
-        if not pl_key or pl_key in seen_pl:
-            continue
-        seen_pl.add(pl_key)
-        pl = pl_by_name.get(pl_key)
-        if not pl or not product_line_recipients(pl):
-            skipped_no_email.append(item.get("product_line"))
+    lookup = build_personnel_reminder_lookup(employees, product_lines)
 
     return {
         "today": today.isoformat(),
@@ -1376,20 +1362,33 @@ def matrix_expiry_reminders_preview():
         "window_days": {"min": REMINDER_WINDOW[0], "max": REMINDER_WINDOW[1]},
         "target_expiry_example": target_expiry.isoformat(),
         "brevo_configured": bool(email_service.api_key),
-        "scans_column": "Kolom EXPIRED (bukan tanggal awal / MCU Date)",
+        "scans_column": "Kolom EXPIRED (MCU, Pelatihan Wajib, dll.) — bukan tanggal awal",
         "cron": "0 7 * * * UTC → /matrix/send-expiry-reminders",
+        "recipient_mode": "personnel (Master: Email Reminder=Yes + kolom Email)",
+        "personnel_reminder_enabled_count": len(reminder_enabled),
+        "personnel_reminder_enabled": reminder_enabled[:30],
+        "lookup_keys_count": len(lookup),
         "qualified_count": len(all_items),
         "pending_send_count": len(pending),
-        "sendable_product_lines": len(groups),
+        "sendable_personnel_count": len(groups),
         "qualified_items": all_items[:50],
         "pending_items": pending[:50],
-        "product_lines": pl_email_status,
-        "skipped_no_email": skipped_no_email,
+        "sendable_personnel": [
+            {
+                "recipient": g["recipient"],
+                "personnel_name": g["personnel_name"],
+                "product_line": g["product_line_name"],
+                "item_count": len(g["items"]),
+            }
+            for g in list(groups.values())[:30]
+        ],
+        "skipped": skipped[:30],
         "how_to_test": [
-            f"1. Isi MCU Expired* ≈ {MATRIX_REMINDER_DAYS} hari dari hari ini (contoh: {target_expiry.isoformat()})",
-            "2. Bukan MCU Date — hanya kolom berlabel Expired/Expiry",
-            "3. Baris harus punya Product Line yang sama dengan Master + email terisi",
-            f"4. GET /matrix/send-expiry-reminders?force=true untuk kirim manual (uji)",
+            f"1. Master: Email Reminder = Yes + isi Email (login Google) untuk personel",
+            f"2. Matrix: isi MCU Expired / training expiry ≈ {MATRIX_REMINDER_DAYS} hari dari hari ini",
+            "3. Personnel Name + Product Line di Matrix harus sama persis dengan Master",
+            "4. GET /matrix/send-expiry-reminders?force=true untuk uji kirim manual",
+            "5. GET /matrix/send-expiry-reminders/test?to=email@domain.com untuk email contoh",
         ],
     }
 
@@ -1454,19 +1453,20 @@ def matrix_send_expiry_reminders_test(to: Optional[str] = None):
 @router.post("/matrix/send-expiry-reminders")
 @router.get("/matrix/send-expiry-reminders")
 def matrix_send_expiry_reminders(force: bool = False):
-    """Send Brevo email digest per Product Line for matrix items expiring in ~90 days."""
-    from database import get_product_lines
+    """Send Brevo email to each personnel with Master Email Reminder=Yes when MCU/training nears expiry."""
+    from database import get_product_line_employees, get_product_lines
     from services.email_service import email_service
     from services.matrix_expiry_reminder import (
         MATRIX_REMINDER_DAYS,
         collect_expiry_reminders,
-        group_items_by_product_line,
+        group_items_by_personnel_reminder,
     )
 
     if not email_service.api_key:
         return {"sent": False, "message": "Brevo API key tidak dikonfigurasi", "count": 0}
 
     product_lines = get_product_lines()
+    employees = get_product_line_employees()
     workbook = get_workbook()
     items = collect_expiry_reminders(workbook, reminder_days=MATRIX_REMINDER_DAYS)
     if not force:
@@ -1474,59 +1474,69 @@ def matrix_send_expiry_reminders(force: bool = False):
     if not items:
         return {
             "sent": False,
-            "message": f"Tidak ada kolom yang akan expired ~{MATRIX_REMINDER_DAYS} hari",
+            "message": f"Tidak ada kolom yang akan expired dalam jendela reminder (MCU/training ~90 hari)",
             "count": 0,
         }
 
-    groups = group_items_by_product_line(items, product_lines)
+    groups, skipped_items = group_items_by_personnel_reminder(
+        items, employees, product_lines
+    )
     sent_total = 0
-    sent_pl = []
-    skipped = []
+    sent_personnel = []
     all_sent_items = []
 
-    for pl_key, group in groups.items():
-        recipients = group["recipients"]
-        pl_items = group["items"]
+    for _email_key, group in groups.items():
+        recipient = group["recipient"]
         pl_name = group["product_line_name"]
-        if not recipients:
-            skipped.append({"product_line": pl_name, "reason": "belum ada email penerima"})
-            continue
+        personnel_name = group["personnel_name"]
+        person_items = group["items"]
         by_reminder_days: Dict[int, list] = {}
-        for it in pl_items:
+        for it in person_items:
             rd = int(it.get("reminder_days") or MATRIX_REMINDER_DAYS)
             by_reminder_days.setdefault(rd, []).append(it)
-        pl_sent = 0
+        person_sent = 0
         for rd, day_items in by_reminder_days.items():
             ok = email_service.send_matrix_expiry_reminder(
-                recipients,
+                [recipient],
                 day_items,
                 reminder_days=rd,
                 product_line_name=pl_name,
+                personnel_name=personnel_name,
             )
             if ok:
-                pl_sent += len(day_items)
+                person_sent += len(day_items)
                 all_sent_items.extend(day_items)
-        if pl_sent:
-            sent_total += pl_sent
-            sent_pl.append({"product_line": pl_name, "count": pl_sent, "recipients": recipients})
+        if person_sent:
+            sent_total += person_sent
+            sent_personnel.append(
+                {
+                    "personnel_name": personnel_name,
+                    "recipient": recipient,
+                    "product_line": pl_name,
+                    "count": person_sent,
+                }
+            )
 
     if all_sent_items:
         log_reminder_sent(all_sent_items)
 
-    if sent_pl:
+    if sent_personnel:
         return {
             "sent": True,
-            "message": f"Email reminder terkirim untuk {len(sent_pl)} product line",
+            "message": f"Email reminder terkirim ke {len(sent_personnel)} personel",
             "count": sent_total,
-            "product_lines": sent_pl,
-            "skipped": skipped,
+            "personnel": sent_personnel,
+            "skipped": skipped_items[:50],
         }
 
     return {
         "sent": False,
-        "message": "Tidak ada email terkirim — pastikan Product Line di Master sudah diisi email",
+        "message": (
+            "Tidak ada email terkirim — pastikan Master: Email Reminder=Yes, Email terisi, "
+            "dan nama/Product Line cocok dengan Matrix"
+        ),
         "count": 0,
-        "skipped": skipped,
+        "skipped": skipped_items[:50],
     }
 
 

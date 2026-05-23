@@ -4048,7 +4048,7 @@
                         <input class="form-input" type="email" id="pl-hse-email-input" placeholder="HSE Email (opsional)">
                         <input class="form-input" type="email" id="pl-manager-email-input" placeholder="Manager Email (opsional)">
                         <input class="form-input" type="email" id="pl-coordinator-email-input" placeholder="Coordinator Email (opsional)">
-                        <p style="font-size: 11px; color: var(--text-muted); margin: 0;">Email reminder Matrix (90 hari sebelum expired). Tidak wajib diisi semua — hanya email yang diisi yang akan menerima.</p>
+                        <p style="font-size: 11px; color: var(--text-muted); margin: 0;">Email supervisor/HSE di atas opsional. Reminder MCU &amp; training dikirim ke personel lewat tabel karyawan di bawah (kolom Email + Email Reminder = Yes).</p>
                         <div style="display: flex; gap: 8px;">
                             <button type="submit" class="btn btn-save" style="flex:1;">Simpan Product Line</button>
                             <button type="button" class="btn btn-cancel" onclick="resetProductLineForm()">Reset</button>
@@ -4066,6 +4066,7 @@
                     </div>
                     <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 12px;">
                         Edit langsung di tabel. Perubahan tersimpan ke database dan Matrix otomatis disinkronkan (nama &amp; position).
+                        <strong>Email Reminder:</strong> set <em>Yes</em> + isi <em>Email</em> (sama dengan login Google personel) agar otomatis menerima pengingat MCU/training ~90 hari sebelum expired di Matrix. Nama &amp; Product Line harus cocok dengan baris Matrix.
                     </p>
                     <div id="product-line-employees-wrap"></div>
                 </div>
@@ -5969,6 +5970,20 @@
         return { [field]: String(rawValue ?? '').trim() };
     }
 
+    async function plEmployeePutField(plId, empId, field, value) {
+        const body = plEmployeeFieldPayload(field, value);
+        const res = await fetch(`${API_BASE}/product-lines/${plId}/employees/${empId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || 'Gagal menyimpan');
+        }
+        return res.json();
+    }
+
     async function saveProductLineEmployeeField(el) {
         if (el.dataset.saving === '1') return;
         const plId = parseInt(el.dataset.plId, 10);
@@ -5982,20 +5997,39 @@
             el.value = prev;
             return;
         }
+        if (field === 'email_reminder' && normalizeYesNoValue(value) === 'Yes') {
+            const row = el.closest('tr');
+            const emailEl = row?.querySelector('[data-field="email"]');
+            const emailVal = emailEl ? String(emailEl.value).trim() : '';
+            if (!emailVal) {
+                const session = typeof window.getCsmsAuthSession === 'function' ? window.getCsmsAuthSession() : null;
+                const isOwnRow = session?.employee_id && parseInt(session.employee_id, 10) === empId;
+                if (isOwnRow && session?.email) {
+                    try {
+                        const updated = await plEmployeePutField(plId, empId, 'email', session.email);
+                        if (emailEl) {
+                            emailEl.value = session.email;
+                            emailEl.dataset.prev = session.email;
+                        }
+                        const rows = cachedProductLineEmployees[plId] || [];
+                        const idx = rows.findIndex(r => r.id === empId);
+                        if (idx >= 0) rows[idx] = updated;
+                    } catch (e) {
+                        showToast(e.message || 'Gagal mengisi email dari login', 'error');
+                        el.value = prev;
+                        return;
+                    }
+                } else {
+                    showToast('Isi kolom Email (login Google personel) sebelum mengaktifkan Email Reminder', 'error');
+                    el.value = prev;
+                    return;
+                }
+            }
+        }
         el.dataset.saving = '1';
         try {
-            const body = plEmployeeFieldPayload(field, value);
-            const res = await fetch(`${API_BASE}/product-lines/${plId}/employees/${empId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.detail || 'Gagal menyimpan');
-            }
+            const updated = await plEmployeePutField(plId, empId, field, value);
             el.dataset.prev = value;
-            const updated = await res.json();
             const rows = cachedProductLineEmployees[plId] || [];
             const idx = rows.findIndex(r => r.id === empId);
             if (idx >= 0) rows[idx] = updated;

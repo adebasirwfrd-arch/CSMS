@@ -34,7 +34,10 @@ from database import (
     replace_product_line_employees,
     get_client_product_templates,
 )
-from services.product_line_employee_utils import sanitize_employee_payload
+from services.product_line_employee_utils import (
+    sanitize_employee_payload,
+    validate_email_reminder_requires_email,
+)
 from services.product_line_employee_import import (
     load_import_payload,
     sync_product_lines_and_employees,
@@ -142,6 +145,7 @@ def add_product_line_employee(
         raise HTTPException(status_code=400, detail="Nama karyawan wajib diisi")
     try:
         payload = sanitize_employee_payload(body.dict())
+        validate_email_reminder_requires_email(payload)
         payload["product_line_id"] = product_line_id
         created = create_product_line_employee(payload)
         _queue_matrix_sync(product_line_id, background_tasks)
@@ -169,6 +173,8 @@ def edit_product_line_employee(
         raise HTTPException(status_code=400, detail="Nama karyawan wajib diisi")
     try:
         payload = sanitize_employee_payload(updates, partial=True)
+        merged = {**emp, **payload}
+        validate_email_reminder_requires_email(merged)
         result = update_product_line_employee(employee_id, payload)
         if not result:
             raise HTTPException(status_code=404, detail="Employee not found")

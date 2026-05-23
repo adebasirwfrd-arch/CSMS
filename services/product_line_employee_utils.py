@@ -43,3 +43,10 @@ def sanitize_employee_payload(data: Dict[str, Any], *, partial: bool = False) ->
         if not partial or field in data:
             out[field] = normalize_yes_no(data.get(field))
     return out
+
+
+def validate_email_reminder_requires_email(data: Dict[str, Any]) -> None:
+    if normalize_yes_no(data.get("email_reminder")) == "Yes" and not (data.get("email") or "").strip():
+        raise ValueError(
+            "Kolom Email wajib diisi (email login Google personel) jika Email Reminder = Yes"
+        )

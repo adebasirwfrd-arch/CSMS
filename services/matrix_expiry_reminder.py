@@ -134,6 +134,98 @@ def product_line_recipients(pl: Dict[str, Any]) -> List[str]:
     ]
 
 
+def normalize_personnel_name(name: str) -> str:
+    """Match Master employee name to Matrix Personnel Name column."""
+    s = (name or "").strip().lower()
+    if not s or s in ("—", "-"):
+        return ""
+    s = re.sub(r"\s*,\s*", ", ", s)
+    return re.sub(r"\s+", " ", s)
+
+
+def build_personnel_reminder_lookup(
+    employees: List[Dict[str, Any]],
+    product_lines: List[Dict[str, Any]],
+) -> Dict[Tuple[str, str], Dict[str, Any]]:
+    """Map (normalized personnel name, product line lower) → email when email_reminder=Yes."""
+    from services.product_line_employee_utils import normalize_yes_no
+
+    pl_by_id: Dict[int, Dict[str, Any]] = {}
+    for pl in product_lines:
+        pid = pl.get("id")
+        if pid is not None:
+            pl_by_id[int(pid)] = pl
+
+    lookup: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for emp in employees or []:
+        if normalize_yes_no(emp.get("email_reminder")) != "Yes":
+            continue
+        email = (emp.get("email") or "").strip()
+        if not email:
+            continue
+        pl = pl_by_id.get(int(emp.get("product_line_id") or 0))
+        pl_name = ((pl or {}).get("name") or "").strip()
+        pl_key = pl_name.lower()
+        if not pl_key:
+            continue
+        name_key = normalize_personnel_name(emp.get("name") or "")
+        if not name_key:
+            continue
+        lookup[(name_key, pl_key)] = {
+            "email": email,
+            "personnel_name": (emp.get("name") or "").strip(),
+            "product_line_name": pl_name,
+            "employee_id": emp.get("id"),
+        }
+    return lookup
+
+
+def group_items_by_personnel_reminder(
+    items: List[Dict[str, Any]],
+    employees: List[Dict[str, Any]],
+    product_lines: List[Dict[str, Any]],
+) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Group expiry items by personnel email (Master: email_reminder=Yes + email filled).
+    Returns (groups keyed by lowercase email, items skipped with reason).
+    """
+    lookup = build_personnel_reminder_lookup(employees, product_lines)
+    groups: Dict[str, Dict[str, Any]] = {}
+    skipped: List[Dict[str, Any]] = []
+
+    for item in items:
+        pl_key = (item.get("product_line") or "").strip().lower()
+        name_key = normalize_personnel_name(item.get("personnel_name") or "")
+        if not name_key:
+            skipped.append({**item, "skip_reason": "nama personel kosong di Matrix"})
+            continue
+        if not pl_key:
+            skipped.append({**item, "skip_reason": "product line kosong di Matrix"})
+            continue
+
+        rec = lookup.get((name_key, pl_key))
+        if not rec:
+            skipped.append(
+                {
+                    **item,
+                    "skip_reason": "Email Reminder bukan Yes / email kosong di Master, atau nama tidak cocok",
+                }
+            )
+            continue
+
+        email_key = rec["email"].strip().lower()
+        if email_key not in groups:
+            groups[email_key] = {
+                "recipient": rec["email"],
+                "personnel_name": rec["personnel_name"],
+                "product_line_name": rec["product_line_name"],
+                "items": [],
+            }
+        groups[email_key]["items"].append(item)
+
+    return groups, skipped
+
+
 def group_items_by_product_line(
     items: List[Dict[str, Any]], product_lines: List[Dict[str, Any]]
 ) -> Dict[str, Dict[str, Any]]:
