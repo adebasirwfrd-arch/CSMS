@@ -1859,6 +1859,84 @@
             background: #e74c3c;
             color: white;
         }
+
+        /* Master — employee CRUD table horizontal scroll */
+        #screen-master-data {
+            overflow-x: auto;
+            overflow-y: auto;
+        }
+        #product-line-employees-wrap,
+        .master-product-line-card {
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
+        }
+        details.pl-employee-panel {
+            display: block;
+            overflow: visible;
+            min-width: 0;
+        }
+        .pl-employee-panel-body {
+            min-width: 0;
+            overflow: visible;
+        }
+        .pl-employee-scroll-wrap {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            max-height: 420px;
+            overflow-x: scroll;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior: contain;
+            border: 1px solid #333;
+            border-radius: 4px;
+            background: #111;
+            padding: 0 12px 8px 0;
+        }
+        .pl-employee-crud-table {
+            display: table;
+            width: max-content;
+            min-width: 1450px;
+            table-layout: fixed;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 11px;
+        }
+        .pl-employee-crud-table th {
+            white-space: nowrap;
+            vertical-align: middle;
+            text-align: left;
+            padding: 6px 8px;
+            border-bottom: 1px solid #444;
+            background: #1a1a1a;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .pl-employee-crud-table td {
+            vertical-align: middle;
+            padding: 4px 6px;
+            border-bottom: 1px solid #333;
+            overflow: visible;
+        }
+        .pl-employee-crud-table .pl-col-no { width: 56px; min-width: 56px; }
+        .pl-employee-crud-table .pl-col-name { width: 170px; min-width: 170px; }
+        .pl-employee-crud-table .pl-col-jfd { width: 160px; min-width: 160px; }
+        .pl-employee-crud-table .pl-col-jd { width: 140px; min-width: 140px; }
+        .pl-employee-crud-table .pl-col-yesno { width: 110px; min-width: 110px; }
+        .pl-employee-crud-table .pl-col-email { width: 180px; min-width: 180px; }
+        .pl-employee-crud-table .pl-col-actions { width: 80px; min-width: 80px; text-align: center; }
+        .pl-employee-crud-table .pl-emp-field {
+            font-size: 11px;
+            padding: 4px 6px;
+            box-sizing: border-box;
+            width: 100%;
+            max-width: none;
+        }
+        .pl-employee-crud-table .pl-emp-field.pl-emp-yesno {
+            min-width: 0;
+        }
     </style>
     <!-- PDF Compression Library -->
     <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -3288,7 +3366,7 @@
                 </form>
                 <div id="clients-table-wrap" style="overflow-x: auto;"></div>
             </div>
-            <div style="background: var(--bg-secondary); padding: 16px; border-radius: 8px; border: 1px solid #333;">
+            <div class="master-product-line-card" style="background: var(--bg-secondary); padding: 16px; border-radius: 8px; border: 1px solid #333;">
                 <h3 style="margin-bottom: 12px;">Product Line</h3>
                 <form id="product-line-form" onsubmit="saveProductLine(event)" style="margin-bottom: 12px;">
                     <input type="hidden" id="product-line-edit-id" value="">
@@ -5093,9 +5171,19 @@
         return s === 'yes' ? 'Yes' : 'No';
     }
 
+    function plEmployeeColClass(col) {
+        if (col.key === 'row_no') return 'pl-col-no';
+        if (col.key === 'name') return 'pl-col-name';
+        if (col.key === 'job_family_description') return 'pl-col-jfd';
+        if (col.key === 'job_description') return 'pl-col-jd';
+        if (col.key === 'email') return 'pl-col-email';
+        if (col.type === 'yesno') return 'pl-col-yesno';
+        return '';
+    }
+
     function renderPlEmployeeYesNoSelect(plId, empId, field, value) {
         const v = normalizeYesNoValue(value);
-        return `<select class="form-input pl-emp-field" style="font-size:11px;padding:4px 6px;min-width:70px;width:100%;"
+        return `<select class="form-input pl-emp-field pl-emp-yesno"
             data-pl-id="${plId}" data-emp-id="${empId}" data-field="${field}" data-prev="${v}"
             onchange="saveProductLineEmployeeField(this)">
             <option value="Yes"${v === 'Yes' ? ' selected' : ''}>Yes</option>
@@ -5106,36 +5194,36 @@
     function renderPlEmployeeInput(plId, empId, col, value) {
         const val = value === null || value === undefined ? '' : value;
         const inputType = col.type === 'email' ? 'email' : (col.type === 'number' ? 'number' : 'text');
-        const style = 'font-size:11px;padding:4px 6px;width:100%;min-width:80px;';
-        return `<input type="${inputType}" class="form-input pl-emp-field" style="${style}" value="${escapeHtmlMaster(val)}"
+        return `<input type="${inputType}" class="form-input pl-emp-field" value="${escapeHtmlMaster(val)}"
             data-pl-id="${plId}" data-emp-id="${empId}" data-field="${col.key}" data-prev="${escapeHtmlMaster(val)}"
             ${col.required ? 'required' : ''}
             onblur="saveProductLineEmployeeField(this)">`;
     }
 
     function renderPlEmployeeCell(plId, emp, col) {
+        const tdClass = plEmployeeColClass(col);
         if (col.type === 'yesno') {
-            return `<td style="padding:4px 6px;border-bottom:1px solid #333;vertical-align:middle;">${renderPlEmployeeYesNoSelect(plId, emp.id, col.key, emp[col.key])}</td>`;
+            return `<td class="${tdClass}">${renderPlEmployeeYesNoSelect(plId, emp.id, col.key, emp[col.key])}</td>`;
         }
-        return `<td style="padding:4px 6px;border-bottom:1px solid #333;vertical-align:middle;">${renderPlEmployeeInput(plId, emp.id, col, emp[col.key])}</td>`;
+        return `<td class="${tdClass}">${renderPlEmployeeInput(plId, emp.id, col, emp[col.key])}</td>`;
     }
 
     function renderProductLineEmployeeTable(plId, rows) {
         const heads = PL_EMPLOYEE_COLUMNS.map(c =>
-            `<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #444;white-space:nowrap;font-size:11px;">${c.label}</th>`
-        ).join('') + '<th style="padding:6px 8px;border-bottom:1px solid #444;font-size:11px;width:70px;">Aksi</th>';
+            `<th class="${plEmployeeColClass(c)}">${c.label}</th>`
+        ).join('') + '<th class="pl-col-actions">Aksi</th>';
 
         const body = rows.length ? rows.map(emp => {
             const cells = PL_EMPLOYEE_COLUMNS.map(c => renderPlEmployeeCell(plId, emp, c)).join('');
             return `<tr data-emp-id="${emp.id}">${cells}
-                <td style="padding:4px 6px;border-bottom:1px solid #333;vertical-align:middle;">
+                <td class="pl-col-actions">
                     <button type="button" class="btn btn-cancel" style="padding:3px 8px;font-size:10px;"
                         onclick="deleteProductLineEmployeeRow(${plId}, ${emp.id})">Hapus</button>
                 </td></tr>`;
         }).join('') : `<tr><td colspan="${PL_EMPLOYEE_COLUMNS.length + 1}" style="padding:12px;color:var(--text-muted);font-size:12px;">Belum ada karyawan.</td></tr>`;
 
-        return `<div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
-            <table class="pl-employee-crud-table" style="width:100%;font-size:11px;border-collapse:collapse;min-width:1000px;">
+        return `<div class="pl-employee-scroll-wrap">
+            <table class="pl-employee-crud-table">
                 <thead><tr>${heads}</tr></thead>
                 <tbody>${body}</tbody>
             </table>
@@ -5160,7 +5248,7 @@
                 <summary style="cursor:pointer;padding:10px 12px;font-size:13px;font-weight:600;list-style-position:inside;">
                     ${escapeHtmlMaster(pl.name)} <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(${countLabel})</span>
                 </summary>
-                <div style="padding:0 12px 12px;">${renderProductLineEmployeeTable(pl.id, rows)}</div>
+                <div class="pl-employee-panel-body" style="padding:0 12px 12px;">${renderProductLineEmployeeTable(pl.id, rows)}</div>
             </details>`;
         }).join('');
     }
