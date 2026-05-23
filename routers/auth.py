@@ -83,14 +83,15 @@ def auth_google_callback(
         id_token = exchange_oauth_code(code)
         result = login_with_google(id_token)
         log_info("AUTH", f"OAuth callback ok: {result['session'].get('email')}")
-        q = urllib.parse.urlencode(
+        # Hash fragment avoids proxy/browser truncating long JWT query strings (Android WebView).
+        fragment = urllib.parse.urlencode(
             {
                 "csms_token": result["token"],
                 "needs_onboarding": "1" if result["needs_onboarding"] else "0",
                 "auth_done": "1",
             }
         )
-        return RedirectResponse(f"{base}/?{q}", status_code=302)
+        return RedirectResponse(f"{base}/#{fragment}", status_code=302)
     except Exception as e:
         log_error("AUTH", f"google oauth callback failed: {e}", e)
         q = urllib.parse.urlencode({"auth_error": str(e)})

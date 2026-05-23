@@ -18,9 +18,31 @@ from services.product_line_employee_utils import normalize_yes_no, sanitize_empl
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
-AUTH_SECRET = os.getenv("CSMS_AUTH_SECRET", os.getenv("SUPABASE_KEY", "csms-dev-secret-change-me"))
 GOOGLE_OAUTH_SCOPES = "openid email profile"
 TOKEN_TTL_SECONDS = int(os.getenv("CSMS_AUTH_TOKEN_TTL_DAYS", "365")) * 86400
+
+
+def _signing_secret() -> str:
+    """Secret used to sign new JWTs (prefer CSMS_AUTH_SECRET)."""
+    explicit = os.getenv("CSMS_AUTH_SECRET", "").strip()
+    if explicit:
+        return explicit
+    return os.getenv("SUPABASE_KEY", "csms-dev-secret-change-me").strip()
+
+
+def _verification_secrets() -> List[str]:
+    """Secrets tried when verifying JWTs (supports migration from SUPABASE_KEY)."""
+    seen: set = set()
+    out: List[str] = []
+    for raw in (
+        os.getenv("CSMS_AUTH_SECRET", "").strip(),
+        os.getenv("SUPABASE_KEY", "").strip(),
+        "csms-dev-secret-change-me",
+    ):
+        if raw and raw not in seen:
+            seen.add(raw)
+            out.append(raw)
+    return out
 
 
 def _admin_emails() -> set:
@@ -63,13 +85,32 @@ def _sign_payload(payload: Dict[str, Any]) -> str:
     import jwt
 
     payload = {**payload, "exp": int(time.time()) + TOKEN_TTL_SECONDS}
-    return jwt.encode(payload, AUTH_SECRET, algorithm="HS256")
+    return jwt.encode(payload, _signing_secret(), algorithm="HS256")
 
 
 def _decode_token(token: str) -> Dict[str, Any]:
     import jwt
 
-    return jwt.decode(token, AUTH_SECRET, algorithms=["HS256"])
+    raw = (token or "").strip()
+    if not raw:
+        raise ValueError("Invalid session")
+
+    last_error: Optional[Exception] = None
+    for secret in _verification_secrets():
+        try:
+            return jwt.decode(raw, secret, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError as e:
+            raise ValueError("Sesi telah berakhir. Silakan login ulang.") from e
+        except jwt.InvalidSignatureError as e:
+            last_error = e
+            continue
+        except jwt.PyJWTError as e:
+            last_error = e
+            continue
+
+    if last_error:
+        raise ValueError("Sesi tidak valid. Silakan login ulang.") from last_error
+    raise ValueError("Sesi tidak valid. Silakan login ulang.")
 
 
 def find_employee_by_email(email: str) -> Optional[Dict[str, Any]]:
@@ -300,7 +341,7 @@ def create_oauth_state() -> str:
 
     return jwt.encode(
         {"purpose": "google_oauth", "exp": int(time.time()) + 600},
-        AUTH_SECRET,
+        _signing_secret(),
         algorithm="HS256",
     )
 
@@ -311,7 +352,7 @@ def verify_oauth_state(state: str) -> bool:
     if not state:
         return False
     try:
-        payload = jwt.decode(state, AUTH_SECRET, algorithms=["HS256"])
+        payload = jwt.decode(state, _signing_secret(), algorithms=["HS256"])
         return payload.get("purpose") == "google_oauth"
     except Exception:
         return False

@@ -358,6 +358,9 @@
     function startGoogleOAuthRedirect() {
         const errEl = document.getElementById('csms-login-error');
         if (errEl) errEl.style.display = 'none';
+        setToken('');
+        setSession(null);
+        localStorage.removeItem(SESSION_KEY);
         window.location.assign(`${apiBase()}/auth/google/start`);
     }
 
@@ -440,8 +443,15 @@
         google.accounts.id.prompt();
     }
 
+    function readAuthUrlParams() {
+        if (window.location.hash && window.location.hash.length > 1) {
+            return new URLSearchParams(window.location.hash.slice(1));
+        }
+        return new URLSearchParams(window.location.search);
+    }
+
     function consumeAuthFromUrl() {
-        const params = new URLSearchParams(window.location.search);
+        const params = readAuthUrlParams();
         const err = params.get('auth_error');
         const errEl = document.getElementById('csms-login-error');
         if (err) {
@@ -449,7 +459,7 @@
                 errEl.textContent = decodeURIComponent(err.replace(/\+/g, ' '));
                 errEl.style.display = 'block';
             }
-            window.history.replaceState({}, document.title, window.location.pathname);
+            window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
             return false;
         }
 
@@ -458,7 +468,7 @@
 
         setToken(token);
         const needsOnboarding = params.get('needs_onboarding') === '1';
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
 
         (async () => {
             try {
@@ -507,10 +517,11 @@
         } catch (e) {
             setToken('');
             setSession(null);
+            localStorage.removeItem(SESSION_KEY);
             showLogin();
             const errEl = document.getElementById('csms-login-error');
-            if (errEl && e.message) {
-                errEl.textContent = e.message;
+            if (errEl) {
+                errEl.textContent = e.message || 'Sesi tidak valid. Silakan login ulang.';
                 errEl.style.display = 'block';
             }
         }
