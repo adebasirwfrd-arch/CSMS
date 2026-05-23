@@ -48,7 +48,7 @@
             align-items: center;
             justify-content: space-between;
             padding: 0 16px;
-            z-index: 100;
+            z-index: 200;
             border-bottom: 1px solid var(--border);
         }
 
@@ -181,7 +181,8 @@
             display: none;
             position: fixed;
             inset: 0;
-            z-index: 150;
+            z-index: 10100;
+            background: rgba(0, 0, 0, 0.45);
         }
         .header-user-backdrop.active { display: block; }
 
@@ -190,15 +191,52 @@
             position: fixed;
             top: 62px;
             right: 12px;
-            width: min(320px, calc(100vw - 24px));
+            width: min(360px, calc(100vw - 24px));
+            max-height: calc(100vh - 76px);
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 14px;
-            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
-            z-index: 151;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+            z-index: 10150;
             overflow: hidden;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
         }
         .header-user-dropdown.active { display: block; }
+
+        .header-user-panel-back {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: left;
+        }
+        .header-user-panel-back:hover { background: rgba(255, 255, 255, 0.06); }
+
+        .header-user-settings-body {
+            padding: 12px 16px 16px;
+        }
+        .header-user-settings-body h3 {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin: 12px 0 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .header-user-settings-body h3:first-child { margin-top: 0; }
+
+        #logout-confirm-modal {
+            z-index: 10200 !important;
+            background: rgba(0, 0, 0, 0.75) !important;
+        }
 
         .header-user-dropdown-head {
             display: flex;
@@ -2448,7 +2486,7 @@
 <!-- Header -->
 <header class="header">
     <button class="menu-btn" onclick="toggleDrawer()">☰</button>
-    <button type="button" class="header-user-btn" id="header-user-menu" onclick="toggleHeaderUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+    <button type="button" class="header-user-btn" id="header-user-menu" aria-haspopup="true" aria-expanded="false" aria-label="Menu profil">
         <span class="header-user-avatar-wrap">
             <img id="header-user-avatar-img" class="header-user-avatar-img" alt="" style="display: none;">
             <span id="header-user-avatar-initials" class="header-user-avatar-initials">U</span>
@@ -2459,50 +2497,6 @@
         </svg>
     </button>
 </header>
-
-<div class="header-user-backdrop" id="header-user-backdrop" onclick="closeHeaderUserMenu()"></div>
-<div class="header-user-dropdown" id="header-user-dropdown" role="menu" onclick="event.stopPropagation()">
-    <div class="header-user-dropdown-head">
-        <img id="header-dd-photo" class="header-user-dropdown-photo" alt="" style="display: none;">
-        <div id="header-dd-photo-fallback" class="header-user-dropdown-photo-fallback">U</div>
-        <div class="header-user-dropdown-meta">
-            <h4 id="header-dd-name">Personnel</h4>
-            <p id="header-dd-email">—</p>
-            <p id="header-dd-pl" style="margin-top: 2px;">—</p>
-        </div>
-    </div>
-    <div class="header-user-dropdown-section">
-        <div class="header-user-dropdown-label">Akun</div>
-        <div class="header-user-dropdown-item muted" id="header-dd-login-status">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-            <span id="header-dd-login-text">Masuk dengan Google</span>
-        </div>
-    </div>
-    <div class="header-user-dropdown-section">
-        <div class="header-user-dropdown-label">Pengaturan</div>
-        <button type="button" class="header-user-dropdown-item" onclick="openSettingsFromHeader()">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-            <span data-i18n="settings">Pengaturan</span>
-        </button>
-    </div>
-    <div class="header-user-dropdown-section">
-        <div class="header-user-dropdown-label">Akses</div>
-        <button type="button" class="header-user-dropdown-item" id="header-dd-admin-login" onclick="openAdminLoginFromHeader()">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-            <span data-i18n="adminLogin">Admin Login</span>
-        </button>
-        <div class="header-user-dropdown-item muted" id="header-dd-admin-active" style="display: none;">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-            <span>Admin Mode Active</span>
-        </div>
-    </div>
-    <div class="header-user-dropdown-section">
-        <button type="button" class="header-user-dropdown-item danger" onclick="openLogoutConfirmModal()">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
-            <span>Keluar</span>
-        </button>
-    </div>
-</div>
 
 <!-- Preview Mode Banner -->
 <div class="preview-banner">
@@ -4198,28 +4192,6 @@
     </div>
 </div>
 
-<!-- Logout confirmation -->
-<div class="modal-overlay" id="logout-confirm-modal">
-    <div class="modal" style="max-width: 400px;">
-        <div class="modal-header" style="border-bottom: 1px solid var(--border);">
-            <span class="modal-title">Konfirmasi Keluar</span>
-            <button type="button" class="modal-back" onclick="closeLogoutConfirmModal()" aria-label="Tutup">✕</button>
-        </div>
-        <div class="modal-body" style="padding: 20px;">
-            <p style="margin: 0 0 8px; font-size: 15px; line-height: 1.5;">
-                Anda yakin ingin keluar dari CSMS?
-            </p>
-            <p style="margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.5;">
-                Sesi Google akan diakhiri di perangkat ini. Anda perlu login ulang untuk masuk kembali.
-            </p>
-            <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
-                <button type="button" class="btn btn-cancel" onclick="closeLogoutConfirmModal()">Batal</button>
-                <button type="button" class="btn btn-primary" style="background: #e74c3c;" onclick="executePersonnelSignOut()">Ya, Keluar</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- LL Add Indicator Modal -->
 <div class="modal-overlay" id="ll-add-modal">
     <div class="modal-header">
@@ -4787,6 +4759,10 @@
     let currentTheme = localStorage.getItem('csms_theme') || 'dark';
 
     function openSettingsFromHeader() {
+        if (typeof showHeaderSettingsPanel === 'function') {
+            showHeaderSettingsPanel();
+            return;
+        }
         if (typeof closeHeaderUserMenu === 'function') closeHeaderUserMenu();
         showSettingsModal();
     }
@@ -11606,7 +11582,122 @@
     }
 </script>
 </div><!-- /#csms-app-root -->
-    <script src="/static/auth-flow.js"></script>
+
+<!-- Header profile menu (outside app root — always on top) -->
+<div class="header-user-backdrop" id="header-user-backdrop"></div>
+<div class="header-user-dropdown" id="header-user-dropdown" role="menu">
+    <div id="header-user-view-menu">
+        <div class="header-user-dropdown-head">
+            <img id="header-dd-photo" class="header-user-dropdown-photo" alt="" style="display: none;">
+            <div id="header-dd-photo-fallback" class="header-user-dropdown-photo-fallback">U</div>
+            <div class="header-user-dropdown-meta">
+                <h4 id="header-dd-name">Personnel</h4>
+                <p id="header-dd-email">—</p>
+                <p id="header-dd-pl" style="margin-top: 2px;">—</p>
+            </div>
+        </div>
+        <div class="header-user-dropdown-section">
+            <div class="header-user-dropdown-label">Akun</div>
+            <div class="header-user-dropdown-item muted" id="header-dd-login-status">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span id="header-dd-login-text">Masuk dengan Google</span>
+            </div>
+        </div>
+        <div class="header-user-dropdown-section">
+            <div class="header-user-dropdown-label">Menu</div>
+            <button type="button" class="header-user-dropdown-item" id="header-dd-open-settings">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+                <span data-i18n="settings">Pengaturan</span>
+            </button>
+            <button type="button" class="header-user-dropdown-item" id="header-dd-admin-login">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                <span data-i18n="adminLogin">Admin Login</span>
+            </button>
+            <div class="header-user-dropdown-item muted" id="header-dd-admin-active" style="display: none;">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                <span>Admin Mode Active</span>
+            </div>
+        </div>
+        <div class="header-user-dropdown-section">
+            <button type="button" class="header-user-dropdown-item danger" id="header-dd-logout">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+                <span>Keluar</span>
+            </button>
+        </div>
+    </div>
+    <div id="header-user-view-settings" style="display: none;">
+        <button type="button" class="header-user-panel-back" id="header-dd-settings-back">← Kembali</button>
+        <div class="header-user-settings-body">
+            <h3>🌐 Bahasa</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div class="lang-option" data-lang="id" onclick="setLanguage('id')" style="background: var(--bg-tertiary); border: 2px solid transparent; border-radius: 12px; padding: 12px; text-align: center; cursor: pointer;">
+                    <div style="font-size: 22px; margin-bottom: 4px;">🇮🇩</div>
+                    <div style="font-weight: 600; font-size: 13px;">Indonesia</div>
+                </div>
+                <div class="lang-option" data-lang="en" onclick="setLanguage('en')" style="background: var(--bg-tertiary); border: 2px solid transparent; border-radius: 12px; padding: 12px; text-align: center; cursor: pointer;">
+                    <div style="font-size: 22px; margin-bottom: 4px;">🇬🇧</div>
+                    <div style="font-weight: 600; font-size: 13px;">English</div>
+                </div>
+                <div class="lang-option" data-lang="ar" onclick="setLanguage('ar')" style="background: var(--bg-tertiary); border: 2px solid transparent; border-radius: 12px; padding: 12px; text-align: center; cursor: pointer;">
+                    <div style="font-size: 22px; margin-bottom: 4px;">🇸🇦</div>
+                    <div style="font-weight: 600; font-size: 13px;">العربية</div>
+                </div>
+                <div class="lang-option" data-lang="hi" onclick="setLanguage('hi')" style="background: var(--bg-tertiary); border: 2px solid transparent; border-radius: 12px; padding: 12px; text-align: center; cursor: pointer;">
+                    <div style="font-size: 22px; margin-bottom: 4px;">🇮🇳</div>
+                    <div style="font-weight: 600; font-size: 13px;">हिन्दी</div>
+                </div>
+            </div>
+            <h3>🎨 Tema</h3>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                <div class="theme-option" data-theme="dark" onclick="setTheme('dark')" style="background: var(--bg-tertiary); border: 2px solid transparent; border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #1a1a1a, #2d2d2d); flex-shrink: 0;"></div>
+                    <div><div style="font-weight: 600; font-size: 13px;">Dark Mode</div><div style="font-size: 11px; color: var(--text-muted);">Default dark theme</div></div>
+                </div>
+                <div class="theme-option" data-theme="light" onclick="setTheme('light')" style="background: var(--bg-tertiary); border: 2px solid transparent; border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #ffffff, #f5f5f5); flex-shrink: 0;"></div>
+                    <div><div style="font-weight: 600; font-size: 13px;">Light Mode</div><div style="font-size: 11px; color: var(--text-muted);">Bright and clean</div></div>
+                </div>
+                <div class="theme-option" data-theme="ocean" onclick="setTheme('ocean')" style="background: var(--bg-tertiary); border: 2px solid transparent; border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #0c2d48, #1a5276); flex-shrink: 0;"></div>
+                    <div><div style="font-weight: 600; font-size: 13px;">Ocean Blue</div><div style="font-size: 11px; color: var(--text-muted);">Deep sea colors</div></div>
+                </div>
+                <div class="theme-option" data-theme="forest" onclick="setTheme('forest')" style="background: var(--bg-tertiary); border: 2px solid transparent; border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #134e0f, #1e7e19); flex-shrink: 0;"></div>
+                    <div><div style="font-weight: 600; font-size: 13px;">Forest Green</div><div style="font-size: 11px; color: var(--text-muted);">Nature inspired</div></div>
+                </div>
+                <div class="theme-option" data-theme="sunset" onclick="setTheme('sunset')" style="background: var(--bg-tertiary); border: 2px solid transparent; border-radius: 12px; padding: 12px; display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #6e1e14, #b04420); flex-shrink: 0;"></div>
+                    <div><div style="font-weight: 600; font-size: 13px;">Sunset Orange</div><div style="font-size: 11px; color: var(--text-muted);">Warm evening colors</div></div>
+                </div>
+            </div>
+            <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+                <button type="button" class="header-user-dropdown-item danger" id="header-dd-logout-settings" style="border-radius: 10px;">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+                    <span>Keluar dari CSMS</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="logout-confirm-modal">
+    <div class="modal" style="max-width: 400px; margin: auto;">
+        <div class="modal-header" style="border-bottom: 1px solid var(--border);">
+            <span class="modal-title">Konfirmasi Keluar</span>
+            <button type="button" class="modal-back" id="logout-confirm-close" aria-label="Tutup">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <p style="margin: 0 0 8px; font-size: 15px; line-height: 1.5;">Anda yakin ingin keluar dari CSMS?</p>
+            <p style="margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.5;">Sesi Google akan diakhiri di perangkat ini. Anda perlu login ulang untuk masuk kembali.</p>
+            <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+                <button type="button" class="btn btn-cancel" id="logout-confirm-cancel">Batal</button>
+                <button type="button" class="btn btn-primary" id="logout-confirm-yes" style="background: #e74c3c;">Ya, Keluar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <script src="/static/auth-flow.js?v=3"></script>
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
     <script src="/static/matrix-charts.js?v=3"></script>

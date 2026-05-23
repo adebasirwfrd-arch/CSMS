@@ -114,6 +114,7 @@
         }
 
         menuBtn.style.display = 'flex';
+        bindHeaderUserMenu();
         const names = personnelDisplayName(authSession);
         const nameEl = document.getElementById('header-user-name');
         if (nameEl) {
@@ -159,29 +160,93 @@
         if (adminActive) adminActive.style.display = isAdmin ? 'flex' : 'none';
     }
 
+    function showHeaderMenuPanel() {
+        const menuView = document.getElementById('header-user-view-menu');
+        const settingsView = document.getElementById('header-user-view-settings');
+        if (menuView) menuView.style.display = 'block';
+        if (settingsView) settingsView.style.display = 'none';
+    }
+
+    function showHeaderSettingsPanel() {
+        const menuView = document.getElementById('header-user-view-menu');
+        const settingsView = document.getElementById('header-user-view-settings');
+        if (menuView) menuView.style.display = 'none';
+        if (settingsView) settingsView.style.display = 'block';
+        if (typeof updateSettingsUI === 'function') updateSettingsUI();
+        openHeaderUserMenu(false);
+    }
+
+    function openHeaderUserMenu(resetPanel) {
+        if (resetPanel !== false) showHeaderMenuPanel();
+        const menuBtn = document.getElementById('header-user-menu');
+        const dropdown = document.getElementById('header-user-dropdown');
+        const backdrop = document.getElementById('header-user-backdrop');
+        if (!dropdown) return;
+        dropdown.classList.add('active');
+        backdrop?.classList.add('active');
+        menuBtn?.classList.add('open');
+        if (menuBtn) menuBtn.setAttribute('aria-expanded', 'true');
+    }
+
     function closeHeaderUserMenu() {
         document.getElementById('header-user-menu')?.classList.remove('open');
         document.getElementById('header-user-dropdown')?.classList.remove('active');
         document.getElementById('header-user-backdrop')?.classList.remove('active');
         const btn = document.getElementById('header-user-menu');
         if (btn) btn.setAttribute('aria-expanded', 'false');
+        showHeaderMenuPanel();
     }
 
     function toggleHeaderUserMenu(event) {
-        event?.stopPropagation();
-        const menuBtn = document.getElementById('header-user-menu');
-        const dropdown = document.getElementById('header-user-dropdown');
-        const backdrop = document.getElementById('header-user-backdrop');
-        if (!menuBtn || !dropdown) return;
-        const open = dropdown.classList.toggle('active');
-        menuBtn.classList.toggle('open', open);
-        backdrop?.classList.toggle('active', open);
-        menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
-        if (open) {
-            setTimeout(() => {
-                document.addEventListener('click', closeHeaderUserMenu, { once: true });
-            }, 0);
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
         }
+        const dropdown = document.getElementById('header-user-dropdown');
+        if (!dropdown) return;
+        if (dropdown.classList.contains('active')) {
+            closeHeaderUserMenu();
+        } else {
+            openHeaderUserMenu(true);
+        }
+    }
+
+    function bindHeaderUserMenu() {
+        const btn = document.getElementById('header-user-menu');
+        if (!btn || btn.dataset.bound === '1') return;
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleHeaderUserMenu(e);
+        });
+
+        document.getElementById('header-user-backdrop')?.addEventListener('click', closeHeaderUserMenu);
+        document.getElementById('header-dd-open-settings')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showHeaderSettingsPanel();
+        });
+        document.getElementById('header-dd-settings-back')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showHeaderMenuPanel();
+        });
+        document.getElementById('header-dd-admin-login')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeHeaderUserMenu();
+            if (typeof showAdminLoginModal === 'function') showAdminLoginModal();
+        });
+        const openLogout = () => openLogoutConfirmModal();
+        document.getElementById('header-dd-logout')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openLogout();
+        });
+        document.getElementById('header-dd-logout-settings')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openLogout();
+        });
+        document.getElementById('logout-confirm-close')?.addEventListener('click', closeLogoutConfirmModal);
+        document.getElementById('logout-confirm-cancel')?.addEventListener('click', closeLogoutConfirmModal);
+        document.getElementById('logout-confirm-yes')?.addEventListener('click', executePersonnelSignOut);
     }
 
     function openLogoutConfirmModal() {
@@ -437,6 +502,7 @@
     }
 
     async function initAuthFlow() {
+        bindHeaderUserMenu();
         const isPreview = new URLSearchParams(window.location.search).get('mode') === 'preview';
         if (isPreview) {
             document.body.classList.remove('auth-locked');
@@ -478,7 +544,10 @@
     window.personnelSignOut = personnelSignOut;
     window.updateHeaderUser = updateHeaderUser;
     window.toggleHeaderUserMenu = toggleHeaderUserMenu;
+    window.openHeaderUserMenu = openHeaderUserMenu;
     window.closeHeaderUserMenu = closeHeaderUserMenu;
+    window.showHeaderMenuPanel = showHeaderMenuPanel;
+    window.showHeaderSettingsPanel = showHeaderSettingsPanel;
     window.openLogoutConfirmModal = openLogoutConfirmModal;
     window.closeLogoutConfirmModal = closeLogoutConfirmModal;
     window.executePersonnelSignOut = executePersonnelSignOut;
