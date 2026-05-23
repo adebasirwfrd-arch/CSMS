@@ -312,21 +312,41 @@
         return res.json();
     }
 
+    function isNativeAppShell() {
+        return !!(window.ReactNativeWebView || (window.AndroidInterface && window.AndroidInterface.googleSignIn));
+    }
+
+    function useGoogleRedirectFlow() {
+        return isNativeAppShell() || /Android/i.test(navigator.userAgent);
+    }
+
+    async function completeLoginFromServerResult(data) {
+        setToken(data.token);
+        setSession(data.session);
+        if (data.needs_onboarding) showOnboarding();
+        else showApp();
+        if (typeof showToast === 'function') showToast('Login berhasil', 'success');
+    }
+
     async function handleGoogleCredential(response) {
         const errEl = document.getElementById('csms-login-error');
         if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+        const idToken = response?.credential || response?.id_token || response;
+        if (!idToken || typeof idToken !== 'string') {
+            if (errEl) {
+                errEl.textContent = 'Token Google tidak valid';
+                errEl.style.display = 'block';
+            }
+            return;
+        }
         try {
             const res = await authFetch('/auth/google', {
                 method: 'POST',
-                body: JSON.stringify({ id_token: response.credential }),
+                body: JSON.stringify({ id_token: idToken }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data.detail || 'Login gagal');
-            setToken(data.token);
-            setSession(data.session);
-            if (data.needs_onboarding) showOnboarding();
-            else showApp();
-            if (typeof showToast === 'function') showToast('Login berhasil', 'success');
+            await completeLoginFromServerResult(data);
         } catch (e) {
             if (errEl) {
                 errEl.textContent = e.message || 'Login gagal';
@@ -335,7 +355,72 @@
         }
     }
 
+    function startGoogleOAuthRedirect() {
+        const errEl = document.getElementById('csms-login-error');
+        if (errEl) errEl.style.display = 'none';
+        window.location.assign(`${apiBase()}/auth/google/start`);
+    }
+
+    function renderGoogleRedirectButton() {
+        const container = document.getElementById('csms-google-btn-wrap');
+        if (!container) return;
+        container.innerHTML = `
+            <button type="button" class="csms-google-redirect-btn" id="csms-google-redirect-btn">
+                <span class="csms-google-redirect-icon" aria-hidden="true">G</span>
+                <span>Masuk dengan Google</span>
+            </button>
+            <p class="csms-auth-hint">Login di jendela aplikasi (cocok untuk Android).</p>
+        `;
+        document.getElementById('csms-google-redirect-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            startGoogleOAuthRedirect();
+        });
+    }
+
+    function renderNativeGoogleButton() {
+        const container = document.getElementById('csms-google-btn-wrap');
+        if (!container) return;
+        container.innerHTML = `
+            <button type="button" class="csms-google-redirect-btn" id="csms-native-google-btn">
+                <span class="csms-google-redirect-icon" aria-hidden="true">G</span>
+                <span>Masuk dengan Google</span>
+            </button>
+            <button type="button" class="csms-google-redirect-link" id="csms-google-redirect-fallback">
+                Atau masuk via browser aplikasi
+            </button>
+        `;
+        document.getElementById('csms-native-google-btn')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'googleSignIn',
+                    clientId: googleClientId,
+                }));
+            } else if (window.AndroidInterface?.googleSignIn) {
+                window.AndroidInterface.googleSignIn(googleClientId);
+            } else {
+                startGoogleOAuthRedirect();
+            }
+        });
+        document.getElementById('csms-google-redirect-fallback')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            startGoogleOAuthRedirect();
+        });
+    }
+
     function initGoogleButton() {
+        const container = document.getElementById('csms-google-btn-wrap');
+        if (!container) return;
+
+        if (isNativeAppShell()) {
+            renderNativeGoogleButton();
+            return;
+        }
+        if (useGoogleRedirectFlow()) {
+            renderGoogleRedirectButton();
+            return;
+        }
+
         if (!googleClientId || !window.google?.accounts?.id) return;
         google.accounts.id.initialize({
             client_id: googleClientId,
@@ -343,19 +428,66 @@
             auto_select: true,
             itp_support: true,
         });
-        const container = document.getElementById('csms-google-btn-wrap');
-        if (container) {
-            container.innerHTML = '';
-            google.accounts.id.renderButton(container, {
-                type: 'standard',
-                theme: 'outline',
-                size: 'large',
-                text: 'signin_with',
-                shape: 'pill',
-                width: Math.min(360, Math.max(280, container.clientWidth || 320)),
-            });
-        }
+        container.innerHTML = '';
+        google.accounts.id.renderButton(container, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            text: 'signin_with',
+            shape: 'pill',
+            width: Math.min(360, Math.max(280, container.clientWidth || 320)),
+        });
         google.accounts.id.prompt();
+    }
+
+    function consumeAuthFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const err = params.get('auth_error');
+        const errEl = document.getElementById('csms-login-error');
+        if (err) {
+            if (errEl) {
+                errEl.textContent = decodeURIComponent(err.replace(/\+/g, ' '));
+                errEl.style.display = 'block';
+            }
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return false;
+        }
+
+        const token = params.get('csms_token');
+        if (!token) return false;
+
+        setToken(token);
+        const needsOnboarding = params.get('needs_onboarding') === '1';
+        window.history.replaceState({}, document.title, window.location.pathname);
+
+        (async () => {
+            try {
+                const res = await authFetch('/auth/me');
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'Login gagal');
+                setSession(data.session);
+                if (needsOnboarding || data.needs_onboarding) showOnboarding();
+                else showApp();
+                if (typeof showToast === 'function') showToast('Login berhasil', 'success');
+            } catch (e) {
+                setToken('');
+                setSession(null);
+                showLogin();
+                if (errEl) {
+                    errEl.textContent = e.message || 'Login gagal';
+                    errEl.style.display = 'block';
+                }
+            }
+        })();
+        return true;
+    }
+
+    function handleNativeAuthMessage(data) {
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'googleAuthSuccess' || data.type === 'googleIdToken') {
+            const token = data.idToken || data.id_token || data.credential || data.token;
+            if (token) handleGoogleCredential({ credential: token });
+        }
     }
 
     async function validateExistingSession() {
@@ -503,11 +635,16 @@
 
     async function initAuthFlow() {
         bindHeaderUserMenu();
+        window.handleNativeGoogleCredential = (idToken) => handleGoogleCredential({ credential: idToken });
+
         const isPreview = new URLSearchParams(window.location.search).get('mode') === 'preview';
         if (isPreview) {
             document.body.classList.remove('auth-locked');
             return;
         }
+
+        if (consumeAuthFromUrl()) return;
+
         try {
             const cfg = await fetchAuthConfig();
             googleClientId = cfg.google_client_id || '';
@@ -540,7 +677,22 @@
         }
     });
 
+    window.addEventListener('message', (event) => {
+        try {
+            const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+            handleNativeAuthMessage(data);
+        } catch (e) { /* ignore */ }
+    });
+    document.addEventListener('message', (event) => {
+        try {
+            const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+            handleNativeAuthMessage(data);
+        } catch (e) { /* ignore */ }
+    });
+
     window.initAuthFlow = initAuthFlow;
+    window.handleGoogleCredential = handleGoogleCredential;
+    window.startGoogleOAuthRedirect = startGoogleOAuthRedirect;
     window.personnelSignOut = personnelSignOut;
     window.updateHeaderUser = updateHeaderUser;
     window.toggleHeaderUserMenu = toggleHeaderUserMenu;

@@ -17,7 +17,9 @@ from services.personnel_profile_photo import get_profile_photo_file_id
 from services.product_line_employee_utils import normalize_yes_no, sanitize_employee_payload
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
 AUTH_SECRET = os.getenv("CSMS_AUTH_SECRET", os.getenv("SUPABASE_KEY", "csms-dev-secret-change-me"))
+GOOGLE_OAUTH_SCOPES = "openid email profile"
 TOKEN_TTL_SECONDS = int(os.getenv("CSMS_AUTH_TOKEN_TTL_DAYS", "365")) * 86400
 
 
@@ -275,3 +277,84 @@ def complete_onboarding(
     full_session = build_session_from_employee(updated, profile)
     new_token = _sign_payload(full_session)
     return {"token": new_token, "session": full_session}
+
+
+def public_base_url() -> str:
+    """Canonical HTTPS origin for OAuth redirects (production / Vercel)."""
+    explicit = os.getenv("CSMS_PUBLIC_URL", "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    for key in ("VERCEL_PROJECT_PRODUCTION_URL", "VERCEL_URL"):
+        host = os.getenv(key, "").strip()
+        if host:
+            return host if host.startswith("http") else f"https://{host}"
+    return "https://csms-gamma.vercel.app"
+
+
+def google_oauth_redirect_uri() -> str:
+    return f"{public_base_url()}/auth/google/callback"
+
+
+def create_oauth_state() -> str:
+    import jwt
+
+    return jwt.encode(
+        {"purpose": "google_oauth", "exp": int(time.time()) + 600},
+        AUTH_SECRET,
+        algorithm="HS256",
+    )
+
+
+def verify_oauth_state(state: str) -> bool:
+    import jwt
+
+    if not state:
+        return False
+    try:
+        payload = jwt.decode(state, AUTH_SECRET, algorithms=["HS256"])
+        return payload.get("purpose") == "google_oauth"
+    except Exception:
+        return False
+
+
+def build_google_oauth_url(state: str) -> str:
+    import urllib.parse
+
+    if not GOOGLE_CLIENT_ID:
+        raise ValueError("GOOGLE_CLIENT_ID is not configured on the server")
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": google_oauth_redirect_uri(),
+        "response_type": "code",
+        "scope": GOOGLE_OAUTH_SCOPES,
+        "access_type": "online",
+        "prompt": "select_account",
+        "state": state,
+    }
+    return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(params)
+
+
+def exchange_oauth_code(code: str) -> str:
+    import requests
+
+    if not GOOGLE_CLIENT_SECRET:
+        raise ValueError("GOOGLE_CLIENT_SECRET is not configured on the server")
+    resp = requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "redirect_uri": google_oauth_redirect_uri(),
+            "grant_type": "authorization_code",
+        },
+        timeout=30,
+    )
+    data = resp.json()
+    if resp.status_code != 200:
+        err = data.get("error_description") or data.get("error") or resp.text
+        raise ValueError(f"Google token exchange failed: {err}")
+    id_token = data.get("id_token")
+    if not id_token:
+        raise ValueError("Google did not return id_token")
+    return id_token
