@@ -6,7 +6,7 @@ import uuid
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 MATRIX_FILE = Path(__file__).resolve().parent.parent / "data" / "matrix_workbook.json"
 
@@ -81,6 +81,35 @@ def get_sheet(sheet_id: str) -> Dict[str, Any]:
         return supabase_service.get_matrix_sheet(sheet_id)
     data = _load_json()
     return deepcopy(_find_sheet_json(data, sheet_id))
+
+
+def bulk_add_rows(sheet_id: str, cells_list: List[Dict[str, str]]) -> int:
+    if SUPABASE_MATRIX and supabase_service:
+        return supabase_service.bulk_add_matrix_rows(sheet_id, cells_list)
+    data = _load_json()
+    sheet = _find_sheet_json(data, sheet_id)
+    for cells in cells_list:
+        row_cells = {}
+        for col in sheet.get("columns", []):
+            cid = col["id"]
+            row_cells[cid] = (cells or {}).get(cid, "")
+        sheet.setdefault("rows", []).append(
+            {"id": f"row_{uuid.uuid4().hex[:12]}", "cells": row_cells}
+        )
+    _save_json(data)
+    return len(cells_list)
+
+
+def bulk_delete_rows(sheet_id: str, row_ids: List[str]) -> int:
+    if SUPABASE_MATRIX and supabase_service:
+        return supabase_service.bulk_delete_matrix_rows(sheet_id, row_ids)
+    data = _load_json()
+    sheet = _find_sheet_json(data, sheet_id)
+    before = len(sheet.get("rows", []))
+    ids = set(row_ids)
+    sheet["rows"] = [r for r in sheet.get("rows", []) if r.get("id") not in ids]
+    _save_json(data)
+    return before - len(sheet.get("rows", []))
 
 
 def add_row(sheet_id: str, cells: Optional[Dict[str, str]] = None) -> Dict[str, Any]:

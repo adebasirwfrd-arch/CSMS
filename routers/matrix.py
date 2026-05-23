@@ -1312,6 +1312,10 @@ class ColumnUpdateBody(BaseModel):
     filterable: Optional[bool] = None
 
 
+class SyncRosterBody(BaseModel):
+    product_line_id: Optional[int] = None
+
+
 @router.get("/matrix/expiry-reminders/preview")
 def matrix_expiry_reminders_preview():
     """Diagnose which matrix rows qualify for the 90-day email reminder."""
@@ -1561,6 +1565,28 @@ def matrix_personnel_report_pdf(body: MatrixPersonnelReportBody):
 @router.get("/matrix/workbook")
 def matrix_workbook():
     return get_workbook()
+
+
+@router.post("/matrix/sync-roster")
+def matrix_sync_roster(body: SyncRosterBody):
+    """
+    Sync product_line_employees into master-level Matrix rows on every sheet.
+    Updates Personnel Name and Position (Job Family Description) only for roster fields;
+    other filled cells are preserved. Empty roster-only rows removed when employee deleted.
+    """
+    from services.matrix_roster_sync import (
+        sync_all_product_line_rosters,
+        sync_product_line_roster_to_workbook,
+    )
+
+    try:
+        if body.product_line_id is not None:
+            return sync_product_line_roster_to_workbook(body.product_line_id)
+        return sync_all_product_line_rosters()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/matrix/ensure-doc-columns")

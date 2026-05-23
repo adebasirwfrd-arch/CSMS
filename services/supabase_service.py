@@ -1191,6 +1191,52 @@ class SupabaseService:
             self._log_err("SEED", "matrix_workbook", e)
             raise
 
+    def bulk_add_matrix_rows(
+        self, sheet_id: str, cells_list: List[Dict[str, str]]
+    ) -> int:
+        if not self.enabled:
+            raise RuntimeError("Supabase not enabled")
+        if not cells_list:
+            return 0
+        sheet = self.get_matrix_sheet(sheet_id)
+        base_order = len(sheet.get("rows", []))
+        payloads = []
+        for i, cells in enumerate(cells_list):
+            row_cells = {}
+            for col in sheet.get("columns", []):
+                cid = col["id"]
+                row_cells[cid] = (cells or {}).get(cid, "")
+            payloads.append(
+                {
+                    "id": f"row_{uuid.uuid4().hex[:12]}",
+                    "sheet_id": sheet_id,
+                    "cells": row_cells,
+                    "sort_order": base_order + i,
+                }
+            )
+        self.client.table("matrix_rows").insert(payloads).execute()
+        self.client.table("matrix_sheets").update(
+            {"updated_at": datetime.utcnow().isoformat()}
+        ).eq("id", sheet_id).execute()
+        return len(payloads)
+
+    def bulk_delete_matrix_rows(self, sheet_id: str, row_ids: List[str]) -> int:
+        if not self.enabled:
+            raise RuntimeError("Supabase not enabled")
+        if not row_ids:
+            return 0
+        (
+            self.client.table("matrix_rows")
+            .delete()
+            .eq("sheet_id", sheet_id)
+            .in_("id", row_ids)
+            .execute()
+        )
+        self.client.table("matrix_sheets").update(
+            {"updated_at": datetime.utcnow().isoformat()}
+        ).eq("id", sheet_id).execute()
+        return len(row_ids)
+
     def add_matrix_row(self, sheet_id: str, cells: Optional[Dict[str, str]] = None) -> Dict:
         if not self.enabled:
             raise RuntimeError("Supabase not enabled")

@@ -3163,6 +3163,32 @@
         }
     }
 
+    async function syncMatrixRosterFromMaster(options = {}) {
+        const silent = options.silent !== false;
+        const plId = options.productLineId != null
+            ? options.productLineId
+            : MATRIX_STATE.filterProductLineId;
+        if (!plId) return null;
+        try {
+            const result = await matrixRequest('POST', '/matrix/sync-roster', {
+                product_line_id: parseInt(plId, 10),
+            });
+            MATRIX_STATE.workbook = await fetchWorkbook();
+            if (!silent && result && ((result.added || 0) > 0 || (result.removed || 0) > 0)) {
+                showToast?.(
+                    `Roster Matrix: +${result.added || 0} baris, diperbarui ${result.updated || 0}, dihapus ${result.removed || 0}`,
+                    'success'
+                );
+            }
+            return result;
+        } catch (e) {
+            console.warn('syncMatrixRosterFromMaster:', e.message || e);
+            if (!silent) showToast?.(e.message || 'Gagal sync roster Matrix', 'error');
+            return null;
+        }
+    }
+    window.syncMatrixRosterFromMaster = syncMatrixRosterFromMaster;
+
     function runMatrixBackgroundSetup() {
         const tasks = [
             ensureStandardColumns(),
@@ -3182,7 +3208,10 @@
             ensureBpjsUploadDocColumn(),
             ensureInsuranceUploadDocColumn(),
         ];
-        Promise.allSettled(tasks).then(() => {
+        Promise.allSettled(tasks).then(async () => {
+            if (MATRIX_STATE.filterProductLineId) {
+                await syncMatrixRosterFromMaster({ silent: true });
+            }
             if (MATRIX_STATE.workbook) paintMatrixScreen();
         });
         fetch(`${apiBase()}/matrix/ensure-doc-columns`, { method: 'POST', cache: 'no-store' })
@@ -4541,12 +4570,16 @@
         paintMatrixScreen();
     };
 
-    window.matrixOnProductLineFilterChange = function (plId) {
+    window.matrixOnProductLineFilterChange = async function (plId) {
         MATRIX_STATE.filterProductLineId = plId || '';
         MATRIX_STATE.filterProjectId = 'ALL';
         syncProjectFilterSelection();
         MATRIX_STATE.selectedRowId = null;
         paintMatrixScreen();
+        if (plId) {
+            await syncMatrixRosterFromMaster({ silent: true });
+            paintMatrixScreen();
+        }
     };
 
     window.matrixOnProjectFilterChange = function (projectId) {

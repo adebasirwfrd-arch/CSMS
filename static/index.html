@@ -5363,11 +5363,21 @@
             const created = (data.product_lines_created || []).join(', ') || '-';
             const total = data.total_employees || 0;
             showToast(`Import selesai: ${total} karyawan`, 'success');
+            try {
+                await fetch(`${API_BASE}/matrix/sync-roster`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({}),
+                });
+            } catch (mxErr) {
+                console.warn('[MasterData] matrix roster sync:', mxErr);
+            }
             alert(
                 `Import selesai.\n\n` +
                 `Sumber: ${data.source || '-'}\n` +
                 `Product line baru: ${created}\n` +
-                `Total karyawan: ${total}`
+                `Total karyawan: ${total}\n` +
+                `Matrix roster ikut disinkronkan.`
             );
             await loadMasterDataPage();
         } catch (e) {
