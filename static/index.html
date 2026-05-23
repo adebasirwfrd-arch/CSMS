@@ -2408,6 +2408,55 @@
             border-color: #c41e3a;
             box-shadow: 0 0 0 3px rgba(196, 30, 58, 0.12);
         }
+        .csms-search-select {
+            position: relative;
+            margin-bottom: 16px;
+        }
+        .csms-search-select-input {
+            width: 100%;
+            margin-bottom: 0 !important;
+        }
+        .csms-search-select-list {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% + 4px);
+            z-index: 1200;
+            max-height: 220px;
+            overflow-y: auto;
+            margin: 0;
+            padding: 6px 0;
+            list-style: none;
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+        }
+        .csms-search-select-list:not(.open) {
+            display: none;
+        }
+        .csms-search-select-list.open {
+            display: block;
+        }
+        .csms-search-select-item {
+            padding: 10px 14px;
+            font-size: 14px;
+            color: #141414;
+            cursor: pointer;
+        }
+        .csms-search-select-item:hover,
+        .csms-search-select-item.active {
+            background: rgba(196, 30, 58, 0.08);
+        }
+        .csms-search-select-item.muted {
+            color: #888;
+            cursor: default;
+        }
+        .csms-search-select-empty {
+            padding: 10px 14px;
+            font-size: 13px;
+            color: #888;
+        }
         #onboard-personnel-preview {
             font-size: 13px;
             color: #5c5c5c;
@@ -2524,14 +2573,22 @@
                 <h2>Data Karyawan</h2>
                 <p class="csms-auth-sub">Email Google akan disimpan ke Master. Akses PL/Personnel diatur otomatis dari posisi Anda.</p>
                 <form onsubmit="submitOnboarding(event)">
-                    <label class="form-label">Product Line</label>
-                    <select class="form-input" id="onboard-pl-select" required onchange="onOnboardPlChange()">
-                        <option value="">— Pilih Product Line —</option>
-                    </select>
-                    <label class="form-label">Personnel Name</label>
-                    <select class="form-input" id="onboard-personnel-select" required onchange="onOnboardPersonnelChange()">
-                        <option value="">Pilih Product Line dulu</option>
-                    </select>
+                    <label class="form-label" for="onboard-pl-input">Product Line</label>
+                    <div class="csms-search-select" id="onboard-pl-wrap">
+                        <input type="text" class="form-input csms-search-select-input" id="onboard-pl-input"
+                            placeholder="Ketik untuk cari Product Line..." autocomplete="off" role="combobox"
+                            aria-expanded="false" aria-controls="onboard-pl-list">
+                        <input type="hidden" id="onboard-pl-value">
+                        <ul class="csms-search-select-list" id="onboard-pl-list" role="listbox"></ul>
+                    </div>
+                    <label class="form-label" for="onboard-personnel-input">Personnel Name</label>
+                    <div class="csms-search-select" id="onboard-personnel-wrap">
+                        <input type="text" class="form-input csms-search-select-input" id="onboard-personnel-input"
+                            placeholder="Pilih Product Line dulu, lalu ketik nama..." autocomplete="off" role="combobox"
+                            aria-expanded="false" aria-controls="onboard-personnel-list" disabled>
+                        <input type="hidden" id="onboard-personnel-value">
+                        <ul class="csms-search-select-list" id="onboard-personnel-list" role="listbox"></ul>
+                    </div>
                     <div id="onboard-personnel-preview"></div>
                     <div id="onboard-error" class="csms-auth-error"></div>
                     <button type="submit" class="csms-onboard-submit">Konfirmasi &amp; Masuk ke Aplikasi</button>
@@ -11767,7 +11824,7 @@
     </div>
 </div>
 
-    <script src="/static/auth-flow.js?v=5"></script>
+    <script src="/static/auth-flow.js?v=6"></script>
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
     <script src="/static/matrix-charts.js?v=3"></script>

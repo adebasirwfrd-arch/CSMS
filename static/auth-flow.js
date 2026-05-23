@@ -7,33 +7,223 @@
 
     let googleClientId = '';
     let authSession = null;
+    let lastSessionRefresh = 0;
+    let onboardPlCombo = null;
+    let onboardPersonnelCombo = null;
+    let onboardPersonnelRows = [];
 
     function apiBase() {
         return typeof API_BASE !== 'undefined' ? API_BASE : '';
     }
 
+    function readStorage(key) {
+        try {
+            return localStorage.getItem(key) || sessionStorage.getItem(key) || '';
+        } catch (e) {
+            return '';
+        }
+    }
+
+    function writeStorage(key, value) {
+        try {
+            if (value) {
+                localStorage.setItem(key, value);
+                sessionStorage.setItem(key, value);
+            } else {
+                localStorage.removeItem(key);
+                sessionStorage.removeItem(key);
+            }
+        } catch (e) {
+            try {
+                if (value) sessionStorage.setItem(key, value);
+                else sessionStorage.removeItem(key);
+            } catch (e2) { /* ignore */ }
+        }
+    }
+
     function getToken() {
-        return localStorage.getItem(TOKEN_KEY) || '';
+        return readStorage(TOKEN_KEY);
     }
 
     function setToken(token) {
-        if (token) localStorage.setItem(TOKEN_KEY, token);
-        else localStorage.removeItem(TOKEN_KEY);
+        writeStorage(TOKEN_KEY, token || '');
     }
 
     function setSession(session) {
         authSession = session || null;
-        if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-        else localStorage.removeItem(SESSION_KEY);
+        if (session) writeStorage(SESSION_KEY, JSON.stringify(session));
+        else writeStorage(SESSION_KEY, '');
         updateHeaderUser();
     }
 
     function loadCachedSession() {
         try {
-            const raw = localStorage.getItem(SESSION_KEY);
+            const raw = readStorage(SESSION_KEY);
             return raw ? JSON.parse(raw) : null;
         } catch (e) {
             return null;
+        }
+    }
+
+    function isAuthHttpFailure(status, message) {
+        const msg = (message || '').toLowerCase();
+        if (status === 401 || status === 403) return true;
+        return /expired|invalid session|tidak valid|authorization required|signature|unauthorized/.test(msg);
+    }
+
+    function restoreUIFromCachedSession() {
+        const cached = loadCachedSession();
+        if (!cached || !getToken()) return false;
+        authSession = cached;
+        if (cached.onboarded && cached.employee_id) {
+            showApp();
+            return true;
+        }
+        if (!cached.onboarded) {
+            showOnboarding();
+            return true;
+        }
+        return false;
+    }
+
+    function createSearchableSelect(config) {
+        const input = document.getElementById(config.inputId);
+        const list = document.getElementById(config.listId);
+        const hidden = document.getElementById(config.hiddenId);
+        if (!input || !list || !hidden) return null;
+
+        let items = [];
+        let open = false;
+        let highlight = -1;
+
+        function closeList() {
+            open = false;
+            highlight = -1;
+            list.classList.remove('open');
+            input.setAttribute('aria-expanded', 'false');
+        }
+
+        function openList() {
+            if (input.disabled) return;
+            open = true;
+            list.classList.add('open');
+            input.setAttribute('aria-expanded', 'true');
+            renderList(input.value);
+        }
+
+        function setValue(id, label) {
+            hidden.value = id ? String(id) : '';
+            input.value = label || '';
+            closeList();
+            if (typeof config.onChange === 'function') config.onChange(id || '');
+        }
+
+        function clearValue(placeholder) {
+            hidden.value = '';
+            input.value = '';
+            input.placeholder = placeholder || config.placeholder || '';
+            closeList();
+        }
+
+        function renderList(query) {
+            const q = (query || '').trim().toLowerCase();
+            const filtered = q
+                ? items.filter(it => it.label.toLowerCase().includes(q))
+                : items.slice();
+            list.innerHTML = '';
+            if (!filtered.length) {
+                const li = document.createElement('li');
+                li.className = 'csms-search-select-empty';
+                li.textContent = items.length ? 'Tidak ada hasil' : (config.emptyText || 'Tidak ada data');
+                list.appendChild(li);
+                return;
+            }
+            filtered.forEach((it, idx) => {
+                const li = document.createElement('li');
+                li.className = 'csms-search-select-item' + (idx === highlight ? ' active' : '');
+                li.setAttribute('role', 'option');
+                li.textContent = it.label;
+                li.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    setValue(it.id, it.label);
+                });
+                list.appendChild(li);
+            });
+        }
+
+        input.addEventListener('focus', () => openList());
+        input.addEventListener('click', () => openList());
+        input.addEventListener('input', () => {
+            hidden.value = '';
+            openList();
+        });
+        input.addEventListener('keydown', (e) => {
+            const options = list.querySelectorAll('.csms-search-select-item');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!open) openList();
+                highlight = Math.min(highlight + 1, options.length - 1);
+                options.forEach((el, i) => el.classList.toggle('active', i === highlight));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                highlight = Math.max(highlight - 1, 0);
+                options.forEach((el, i) => el.classList.toggle('active', i === highlight));
+            } else if (e.key === 'Enter' && highlight >= 0 && options[highlight]) {
+                e.preventDefault();
+                options[highlight].dispatchEvent(new MouseEvent('mousedown'));
+            } else if (e.key === 'Escape') {
+                closeList();
+            }
+        });
+        document.addEventListener('click', (e) => {
+            if (!input.contains(e.target) && !list.contains(e.target)) closeList();
+        });
+
+        return {
+            setItems(newItems) {
+                items = (newItems || []).map(it => ({
+                    id: it.id,
+                    label: it.label,
+                    meta: it.meta || {},
+                }));
+            },
+            setValue,
+            clearValue,
+            getValue: () => hidden.value,
+            setDisabled(disabled) {
+                input.disabled = !!disabled;
+                if (disabled) closeList();
+            },
+            setLoading(text) {
+                items = [];
+                hidden.value = '';
+                input.value = '';
+                input.placeholder = text || 'Memuat...';
+                closeList();
+            },
+        };
+    }
+
+    function initOnboardingCombos() {
+        if (!onboardPlCombo) {
+            onboardPlCombo = createSearchableSelect({
+                inputId: 'onboard-pl-input',
+                listId: 'onboard-pl-list',
+                hiddenId: 'onboard-pl-value',
+                placeholder: 'Ketik untuk cari Product Line...',
+                emptyText: 'Product line tidak ditemukan',
+                onChange: (plId) => onOnboardPlChange(plId),
+            });
+        }
+        if (!onboardPersonnelCombo) {
+            onboardPersonnelCombo = createSearchableSelect({
+                inputId: 'onboard-personnel-input',
+                listId: 'onboard-personnel-list',
+                hiddenId: 'onboard-personnel-value',
+                placeholder: 'Ketik untuk cari nama personnel...',
+                emptyText: 'Nama tidak ditemukan',
+                onChange: () => onOnboardPersonnelChange(),
+            });
         }
     }
 
@@ -282,6 +472,7 @@
         document.body.classList.add('auth-locked');
         document.getElementById('csms-login-screen')?.classList.remove('active');
         document.getElementById('csms-onboarding-screen')?.classList.add('active');
+        initOnboardingCombos();
         loadOnboardingProductLines();
     }
 
@@ -370,7 +561,6 @@
         if (errEl) errEl.style.display = 'none';
         setToken('');
         setSession(null);
-        localStorage.removeItem(SESSION_KEY);
         window.location.assign(`${apiBase()}/auth/google/start`);
     }
 
@@ -484,15 +674,21 @@
             try {
                 const res = await authFetch('/auth/me');
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data.detail || 'Login gagal');
+                if (!res.ok) {
+                    if (isAuthHttpFailure(res.status, data.detail)) throw new Error(data.detail || 'Login gagal');
+                    if (typeof showToast === 'function') showToast('Koneksi lemah — sesi disimpan di perangkat', 'warning');
+                    return;
+                }
                 setSession(data.session);
                 if (needsOnboarding || data.needs_onboarding) showOnboarding();
                 else showApp();
                 if (typeof showToast === 'function') showToast('Login berhasil', 'success');
             } catch (e) {
-                setToken('');
-                setSession(null);
-                showLogin();
+                if (isAuthHttpFailure(401, e.message)) {
+                    setToken('');
+                    setSession(null);
+                    showLogin();
+                }
                 if (errEl) {
                     errEl.textContent = e.message || 'Login gagal';
                     errEl.style.display = 'block';
@@ -510,98 +706,127 @@
         }
     }
 
-    async function validateExistingSession() {
+    async function validateExistingSession(silent) {
         const token = getToken();
         if (!token) {
             showLogin();
             return;
         }
+        if (!silent) restoreUIFromCachedSession();
         try {
             const res = await authFetch('/auth/me');
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.detail || 'Session expired');
+            if (!res.ok) {
+                if (isAuthHttpFailure(res.status, data.detail)) {
+                    throw new Error(data.detail || 'Session expired');
+                }
+                if (!silent && typeof showToast === 'function') {
+                    showToast('Offline — menggunakan sesi tersimpan', 'warning');
+                }
+                return;
+            }
             setToken(token);
             setSession(data.session);
             if (data.needs_onboarding) showOnboarding();
             else showApp();
+            lastSessionRefresh = Date.now();
         } catch (e) {
-            setToken('');
-            setSession(null);
-            localStorage.removeItem(SESSION_KEY);
-            showLogin();
-            const errEl = document.getElementById('csms-login-error');
-            if (errEl) {
-                errEl.textContent = e.message || 'Sesi tidak valid. Silakan login ulang.';
-                errEl.style.display = 'block';
+            if (isAuthHttpFailure(401, e.message)) {
+                setToken('');
+                setSession(null);
+                showLogin();
+                const errEl = document.getElementById('csms-login-error');
+                if (errEl && !silent) {
+                    errEl.textContent = e.message || 'Sesi tidak valid. Silakan login ulang.';
+                    errEl.style.display = 'block';
+                }
+            } else if (!silent && restoreUIFromCachedSession() && typeof showToast === 'function') {
+                showToast('Tidak dapat memverifikasi sesi — mode offline', 'warning');
             }
         }
     }
 
+    function refreshSessionOnResume() {
+        if (!getToken() || document.body.classList.contains('auth-locked')) return;
+        const now = Date.now();
+        if (now - lastSessionRefresh < 45000) return;
+        validateExistingSession(true);
+    }
+
     async function loadOnboardingProductLines() {
-        const sel = document.getElementById('onboard-pl-select');
-        const nameSel = document.getElementById('onboard-personnel-select');
-        if (!sel) return;
-        sel.innerHTML = '<option value="">Memuat product line...</option>';
-        if (nameSel) nameSel.innerHTML = '<option value="">Pilih Product Line dulu</option>';
+        initOnboardingCombos();
+        if (!onboardPlCombo) return;
+        onboardPlCombo.setLoading('Memuat product line...');
+        onboardPersonnelCombo?.setDisabled(true);
+        onboardPersonnelCombo?.clearValue('Pilih Product Line dulu');
+        const preview = document.getElementById('onboard-personnel-preview');
+        if (preview) preview.textContent = '';
         try {
             const res = await authFetch('/auth/onboarding/product-lines');
             const lines = await res.json();
             if (!res.ok) throw new Error(lines.detail || 'Gagal memuat product line');
-            sel.innerHTML = '<option value="">— Pilih Product Line —</option>' +
-                lines.map(pl => `<option value="${pl.id}">${pl.name} (${pl.employee_count})</option>`).join('');
+            onboardPlCombo.setItems(lines.map(pl => ({
+                id: pl.id,
+                label: `${pl.name} (${pl.employee_count})`,
+            })));
+            document.getElementById('onboard-pl-input').placeholder = 'Ketik untuk cari Product Line...';
         } catch (e) {
-            sel.innerHTML = '<option value="">Gagal memuat</option>';
+            onboardPlCombo.setItems([]);
             if (typeof showToast === 'function') showToast(e.message, 'error');
         }
     }
 
-    async function onOnboardPlChange() {
-        const plId = document.getElementById('onboard-pl-select')?.value;
-        const nameSel = document.getElementById('onboard-personnel-select');
+    async function onOnboardPlChange(plIdArg) {
+        initOnboardingCombos();
+        const plId = plIdArg || onboardPlCombo?.getValue() || '';
         const preview = document.getElementById('onboard-personnel-preview');
-        if (!nameSel) return;
+        if (!onboardPersonnelCombo) return;
         if (!plId) {
-            nameSel.innerHTML = '<option value="">Pilih Product Line dulu</option>';
+            onboardPersonnelCombo.setDisabled(true);
+            onboardPersonnelCombo.clearValue('Pilih Product Line dulu');
             if (preview) preview.textContent = '';
             return;
         }
-        nameSel.innerHTML = '<option value="">Memuat nama...</option>';
+        onboardPersonnelCombo.setDisabled(false);
+        onboardPersonnelCombo.setLoading('Memuat nama...');
+        if (preview) preview.textContent = '';
         try {
             const res = await authFetch(`/auth/onboarding/personnel?product_line_id=${encodeURIComponent(plId)}`);
             const rows = await res.json();
             if (!res.ok) throw new Error(rows.detail || 'Gagal memuat personnel');
-            if (!rows.length) {
-                nameSel.innerHTML = '<option value="">Tidak ada nama tersedia</option>';
-                return;
-            }
-            nameSel.innerHTML = '<option value="">— Pilih Personnel Name —</option>' +
-                rows.map(r => {
-                    const pos = r.job_family_description || r.job_description || '';
-                    return `<option value="${r.id}" data-jfd="${encodeURIComponent(pos)}">${r.name}${pos ? ' — ' + pos : ''}</option>`;
-                }).join('');
+            onboardPersonnelRows = rows;
+            onboardPersonnelCombo.setItems(rows.map(r => {
+                const pos = r.job_family_description || r.job_description || '';
+                return {
+                    id: r.id,
+                    label: `${r.name}${pos ? ' — ' + pos : ''}`,
+                    meta: { jfd: pos },
+                };
+            }));
+            document.getElementById('onboard-personnel-input').placeholder = 'Ketik untuk cari nama personnel...';
         } catch (e) {
-            nameSel.innerHTML = '<option value="">Gagal memuat</option>';
+            onboardPersonnelCombo.setItems([]);
             if (typeof showToast === 'function') showToast(e.message, 'error');
         }
     }
 
     function onOnboardPersonnelChange() {
-        const sel = document.getElementById('onboard-personnel-select');
         const preview = document.getElementById('onboard-personnel-preview');
-        if (!sel || !preview) return;
-        const opt = sel.options[sel.selectedIndex];
-        if (!opt || !sel.value) {
+        if (!preview || !onboardPersonnelCombo) return;
+        const empId = onboardPersonnelCombo.getValue();
+        if (!empId) {
             preview.textContent = '';
             return;
         }
-        const jfd = decodeURIComponent(opt.getAttribute('data-jfd') || '');
-        preview.textContent = jfd ? `Posisi: ${jfd}` : '';
+        const row = onboardPersonnelRows.find(r => String(r.id) === String(empId));
+        const pos = row?.job_family_description || row?.job_description || '';
+        preview.textContent = pos ? `Posisi: ${pos}` : '';
     }
 
     async function submitOnboarding(e) {
         e.preventDefault();
-        const plId = parseInt(document.getElementById('onboard-pl-select')?.value, 10);
-        const empId = parseInt(document.getElementById('onboard-personnel-select')?.value, 10);
+        const plId = parseInt(onboardPlCombo?.getValue() || document.getElementById('onboard-pl-value')?.value, 10);
+        const empId = parseInt(onboardPersonnelCombo?.getValue() || document.getElementById('onboard-personnel-value')?.value, 10);
         const errEl = document.getElementById('onboard-error');
         const submitBtn = document.querySelector('.csms-onboard-submit');
         if (errEl) errEl.style.display = 'none';
@@ -709,6 +934,14 @@
             const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
             handleNativeAuthMessage(data);
         } catch (e) { /* ignore */ }
+    });
+
+    window.addEventListener('pageshow', (event) => {
+        if (getToken()) refreshSessionOnResume();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshSessionOnResume();
     });
 
     window.initAuthFlow = initAuthFlow;
