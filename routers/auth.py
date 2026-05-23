@@ -41,10 +41,25 @@ def _bearer_token(authorization: Optional[str] = Header(None)) -> str:
 
 @router.get("/auth/config")
 def auth_config():
+    from services.auth_service import google_oauth_redirect_uri
+
     return {
         "google_client_id": GOOGLE_CLIENT_ID,
         "google_enabled": bool(GOOGLE_CLIENT_ID),
         "google_oauth_redirect": True,
+        "oauth_redirect_uri": google_oauth_redirect_uri(),
+    }
+
+
+@router.get("/auth/google/redirect-uri")
+def auth_google_redirect_uri():
+    """Debug: exact redirect URI registered with Google (must match Cloud Console)."""
+    from services.auth_service import google_oauth_redirect_uri, public_base_url
+
+    return {
+        "public_base_url": public_base_url(),
+        "redirect_uri": google_oauth_redirect_uri(),
+        "hint": "Add redirect_uri exactly to Google Cloud Console → OAuth client → Authorized redirect URIs",
     }
 
 

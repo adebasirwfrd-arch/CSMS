@@ -7,10 +7,18 @@
 3. **Authorized JavaScript origins:**
    - `http://localhost:8000`
    - `https://csms-gamma.vercel.app` (your production URL)
-4. **Authorized redirect URIs** (required for Android / mobile WebView):
+4. **Authorized redirect URIs** (wajib untuk login Android — tanpa ini error `redirect_uri_mismatch`):
    - `https://csms-gamma.vercel.app/auth/google/callback`
    - `http://localhost:8000/auth/google/callback` (local dev)
+   - Salin **persis** (https, tanpa slash di akhir path). Tunggu 1–5 menit setelah Save.
 5. Copy **Client ID** and **Client Secret**
+
+Pastikan OAuth client yang diedit adalah client yang sama dengan `GOOGLE_CLIENT_ID` di Vercel  
+(contoh dari error: `382751875054-....apps.googleusercontent.com`).
+
+Cek URI yang dipakai server: buka  
+`https://csms-gamma.vercel.app/auth/google/redirect-uri`  
+→ field `redirect_uri` harus **identik** dengan yang didaftarkan di Google Console.
 
 ## 2. Environment variables (Vercel / `.env`)
 
@@ -63,7 +71,29 @@ Lalu kirim balik ke WebView:
 
 atau panggil `window.handleNativeGoogleCredential(idToken)`.
 
-## 5. Personnel flow
+## 5. Troubleshooting Android: `Error 400: redirect_uri_mismatch`
+
+| Gejala | Penyebab |
+|--------|----------|
+| Google menolak login, detail `redirect_uri_mismatch` | URI callback belum didaftarkan di OAuth client yang benar |
+
+**Langkah perbaikan:**
+
+1. Buka [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials)
+2. Klik OAuth 2.0 Client ID yang sama dengan `GOOGLE_CLIENT_ID` di Vercel
+3. Di **Authorized redirect URIs**, klik **+ ADD URI** dan paste:
+   ```
+   https://csms-gamma.vercel.app/auth/google/callback
+   ```
+4. Di **Authorized JavaScript origins**, pastikan ada:
+   ```
+   https://csms-gamma.vercel.app
+   ```
+5. **Save** → tunggu beberapa menit → coba login lagi di HP (clear cache app jika perlu)
+
+Jika domain Vercel Anda berbeda, set `CSMS_PUBLIC_URL` di Vercel ke domain itu, redeploy, lalu daftarkan URI dari `/auth/google/redirect-uri`.
+
+## 6. Personnel flow
 
 1. User opens app → Google Sign-In screen
 2. First time → pick **Product Line** + **Personnel Name** → email saved on Master row
