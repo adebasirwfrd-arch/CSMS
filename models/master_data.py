@@ -68,17 +68,37 @@ class ClientProductTemplate(BaseModel):
     created_at: Optional[str] = None
 
 
-class ProductLineEmployee(BaseModel):
-    id: int
-    product_line_id: int
+class ProductLineEmployeeBase(BaseModel):
     row_no: Optional[int] = None
     name: str = ""
     job_family_description: str = ""
     job_description: str = ""
-    access_to_pl: str = ""
-    access_personnel_only: str = ""
+    access_to_pl: str = "No"
+    access_personnel_only: str = "No"
     email: str = ""
+    email_reminder: str = "No"
+
+
+class ProductLineEmployeeCreate(ProductLineEmployeeBase):
+    pass
+
+
+class ProductLineEmployeeUpdate(BaseModel):
+    row_no: Optional[int] = None
+    name: Optional[str] = None
+    job_family_description: Optional[str] = None
+    job_description: Optional[str] = None
+    access_to_pl: Optional[str] = None
+    access_personnel_only: Optional[str] = None
+    email: Optional[str] = None
+    email_reminder: Optional[str] = None
+
+
+class ProductLineEmployee(ProductLineEmployeeBase):
+    id: int
+    product_line_id: int
     created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class SyncProductLineEmployeesRequest(BaseModel):

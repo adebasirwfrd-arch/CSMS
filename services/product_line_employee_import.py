@@ -6,6 +6,8 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from services.product_line_employee_utils import normalize_yes_no
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_EXCEL = ROOT / "Blueprint" / "Employee_Job_Data_2026.xlsx"
 SEED_JSON = ROOT / "data" / "product_line_employees_seed.json"
@@ -137,9 +139,10 @@ def sync_product_lines_and_employees(
                 "name": r.get("name") or "",
                 "job_family_description": r.get("job_family_description") or "",
                 "job_description": r.get("job_description") or "",
-                "access_to_pl": r.get("access_to_pl") or "",
-                "access_personnel_only": r.get("access_personnel_only") or "",
+                "access_to_pl": normalize_yes_no(r.get("access_to_pl")),
+                "access_personnel_only": normalize_yes_no(r.get("access_personnel_only")),
                 "email": r.get("email") or "",
+                "email_reminder": normalize_yes_no(r.get("email_reminder")),
             }
             for r in sorted_rows
         ]

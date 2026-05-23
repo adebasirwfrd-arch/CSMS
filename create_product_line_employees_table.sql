@@ -8,9 +8,10 @@ CREATE TABLE IF NOT EXISTS product_line_employees (
   name TEXT NOT NULL DEFAULT '',
   job_family_description TEXT DEFAULT '',
   job_description TEXT DEFAULT '',
-  access_to_pl TEXT DEFAULT '',
-  access_personnel_only TEXT DEFAULT '',
+  access_to_pl TEXT NOT NULL DEFAULT 'No',
+  access_personnel_only TEXT NOT NULL DEFAULT 'No',
   email TEXT DEFAULT '',
+  email_reminder TEXT NOT NULL DEFAULT 'No',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

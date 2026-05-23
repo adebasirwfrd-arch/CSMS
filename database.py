@@ -542,6 +542,59 @@ def get_product_line_employees(product_line_id: Optional[int] = None) -> List[Di
     return [e for e in employees if e.get("product_line_id") == product_line_id]
 
 
+def get_product_line_employee(employee_id: int) -> Optional[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.get_product_line_employee(employee_id)
+    return next(
+        (e for e in get_product_line_employees() if e.get("id") == employee_id), None
+    )
+
+
+def create_product_line_employee(data: Dict) -> Dict:
+    if SUPABASE_ENABLED:
+        return supabase_service.create_product_line_employee(data)
+    employees = get_product_line_employees()
+    now = datetime.now().isoformat()
+    new_emp = {
+        "id": _next_serial_id(employees),
+        "created_at": now,
+        "updated_at": now,
+        **data,
+    }
+    employees.append(new_emp)
+    _write_json_robust(PRODUCT_LINE_EMPLOYEES_FILE, employees)
+    return new_emp
+
+
+def update_product_line_employee(
+    employee_id: int, updates: Dict
+) -> Optional[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.update_product_line_employee(employee_id, updates)
+    employees = get_product_line_employees()
+    for i, e in enumerate(employees):
+        if e.get("id") == employee_id:
+            employees[i] = {
+                **e,
+                **updates,
+                "updated_at": datetime.now().isoformat(),
+            }
+            _write_json_robust(PRODUCT_LINE_EMPLOYEES_FILE, employees)
+            return employees[i]
+    return None
+
+
+def delete_product_line_employee(employee_id: int) -> bool:
+    if SUPABASE_ENABLED:
+        return supabase_service.delete_product_line_employee(employee_id)
+    employees = get_product_line_employees()
+    filtered = [e for e in employees if e.get("id") != employee_id]
+    if len(filtered) == len(employees):
+        return False
+    _write_json_robust(PRODUCT_LINE_EMPLOYEES_FILE, filtered)
+    return True
+
+
 def replace_product_line_employees(
     product_line_id: int, records: List[Dict]
 ) -> List[Dict]:

@@ -977,6 +977,64 @@ class SupabaseService:
             self._log_err("SELECT", "product_line_employees", e)
             return []
 
+    def get_product_line_employee(self, employee_id: int) -> Optional[Dict]:
+        if not self.enabled:
+            return None
+        try:
+            result = (
+                self.client.table("product_line_employees")
+                .select("*")
+                .eq("id", employee_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self._log_err("SELECT", "product_line_employees", e)
+            return None
+
+    def create_product_line_employee(self, data: Dict) -> Dict:
+        if not self.enabled:
+            return data
+        try:
+            payload = {**data, "updated_at": datetime.utcnow().isoformat()}
+            result = (
+                self.client.table("product_line_employees").insert(payload).execute()
+            )
+            return result.data[0] if result.data else payload
+        except Exception as e:
+            self._log_err("INSERT", "product_line_employees", e)
+            raise
+
+    def update_product_line_employee(
+        self, employee_id: int, updates: Dict
+    ) -> Optional[Dict]:
+        if not self.enabled:
+            return None
+        try:
+            payload = {**updates, "updated_at": datetime.utcnow().isoformat()}
+            result = (
+                self.client.table("product_line_employees")
+                .update(payload)
+                .eq("id", employee_id)
+                .execute()
+            )
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self._log_err("UPDATE", "product_line_employees", e)
+            return None
+
+    def delete_product_line_employee(self, employee_id: int) -> bool:
+        if not self.enabled:
+            return False
+        try:
+            self.client.table("product_line_employees").delete().eq(
+                "id", employee_id
+            ).execute()
+            return True
+        except Exception as e:
+            self._log_err("DELETE", "product_line_employees", e)
+            return False
+
     def replace_product_line_employees(
         self, product_line_id: int, records: List[Dict]
     ) -> List[Dict]:
@@ -990,7 +1048,9 @@ class SupabaseService:
                 .execute()
             )
             if records:
-                self.client.table("product_line_employees").insert(records).execute()
+                now = datetime.utcnow().isoformat()
+                rows = [{**r, "updated_at": now} for r in records]
+                self.client.table("product_line_employees").insert(rows).execute()
             return self.get_product_line_employees(product_line_id)
         except Exception as e:
             self._log_err("REPLACE", "product_line_employees", e)

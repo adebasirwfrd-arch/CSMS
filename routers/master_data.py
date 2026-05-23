@@ -9,6 +9,8 @@ from models.master_data import (
     ProductLineCreate,
     ProductLineUpdate,
     ProductLineEmployee,
+    ProductLineEmployeeCreate,
+    ProductLineEmployeeUpdate,
     GenerateTemplateRequest,
     PropagateTemplateRequest,
     SyncProductLineEmployeesRequest,
@@ -24,10 +26,15 @@ from database import (
     create_product_line,
     update_product_line,
     delete_product_line,
+    get_product_line_employee,
     get_product_line_employees,
+    create_product_line_employee,
+    update_product_line_employee,
+    delete_product_line_employee,
     replace_product_line_employees,
     get_client_product_templates,
 )
+from services.product_line_employee_utils import sanitize_employee_payload
 from services.product_line_employee_import import (
     load_import_payload,
     sync_product_lines_and_employees,
@@ -111,8 +118,89 @@ def list_product_line_employees(product_line_id: int):
     return get_product_line_employees(product_line_id)
 
 
+def _queue_matrix_sync(product_line_id: int, background_tasks: BackgroundTasks) -> None:
+    def _run() -> None:
+        try:
+            from services.matrix_roster_sync import sync_product_line_roster_to_workbook
+
+            sync_product_line_roster_to_workbook(product_line_id)
+            log_info("MASTER", f"matrix roster synced for pl={product_line_id}")
+        except Exception as e:
+            log_error("MASTER", f"matrix roster sync failed pl={product_line_id}: {e}", e)
+
+    background_tasks.add_task(_run)
+
+
+@router.post("/product-lines/{product_line_id}/employees", response_model=dict)
+def add_product_line_employee(
+    product_line_id: int, body: ProductLineEmployeeCreate, background_tasks: BackgroundTasks
+):
+    pl = get_product_line(product_line_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Product Line not found")
+    if not (body.name or "").strip():
+        raise HTTPException(status_code=400, detail="Nama karyawan wajib diisi")
+    try:
+        payload = sanitize_employee_payload(body.dict())
+        payload["product_line_id"] = product_line_id
+        created = create_product_line_employee(payload)
+        _queue_matrix_sync(product_line_id, background_tasks)
+        return created
+    except Exception as e:
+        log_error("MASTER", f"create_product_line_employee failed: {e}", e)
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/product-lines/{product_line_id}/employees/{employee_id}", response_model=dict)
+def edit_product_line_employee(
+    product_line_id: int,
+    employee_id: int,
+    body: ProductLineEmployeeUpdate,
+    background_tasks: BackgroundTasks,
+):
+    pl = get_product_line(product_line_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Product Line not found")
+    emp = get_product_line_employee(employee_id)
+    if not emp or emp.get("product_line_id") != product_line_id:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    updates = {k: v for k, v in body.dict().items() if v is not None}
+    if "name" in updates and not str(updates["name"]).strip():
+        raise HTTPException(status_code=400, detail="Nama karyawan wajib diisi")
+    try:
+        payload = sanitize_employee_payload(updates, partial=True)
+        result = update_product_line_employee(employee_id, payload)
+        if not result:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        _queue_matrix_sync(product_line_id, background_tasks)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        log_error("MASTER", f"update_product_line_employee failed: {e}", e)
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/product-lines/{product_line_id}/employees/{employee_id}")
+def remove_product_line_employee(
+    product_line_id: int, employee_id: int, background_tasks: BackgroundTasks
+):
+    pl = get_product_line(product_line_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Product Line not found")
+    emp = get_product_line_employee(employee_id)
+    if not emp or emp.get("product_line_id") != product_line_id:
+        raise HTTPException(status_code=404, detail="Employee not found")
+    if not delete_product_line_employee(employee_id):
+        raise HTTPException(status_code=404, detail="Employee not found")
+    _queue_matrix_sync(product_line_id, background_tasks)
+    return {"status": "deleted"}
+
+
 @router.post("/product-lines/sync-employees")
-def sync_employees_from_excel(body: SyncProductLineEmployeesRequest):
+def sync_employees_from_excel(
+    body: SyncProductLineEmployeesRequest, background_tasks: BackgroundTasks
+):
     """
     Create missing product lines from Excel/seed and load employee rows per line.
     Uses Blueprint Excel when use_excel=true and file exists; otherwise bundled seed JSON.
@@ -126,6 +214,17 @@ def sync_employees_from_excel(body: SyncProductLineEmployeesRequest):
             replace_employees_for_product_line=replace_product_line_employees,
         )
         log_info("MASTER", f"sync-employees: {result}")
+
+        def _sync_all_matrix() -> None:
+            try:
+                from services.matrix_roster_sync import sync_all_product_line_rosters
+
+                sync_all_product_line_rosters()
+                log_info("MASTER", "matrix roster synced for all product lines")
+            except Exception as e:
+                log_error("MASTER", f"matrix roster sync all failed: {e}", e)
+
+        background_tasks.add_task(_sync_all_matrix)
         return {"status": "ok", **result}
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

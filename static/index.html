@@ -3316,7 +3316,7 @@
                         </button>
                     </div>
                     <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 12px;">
-                        Kolom sesuai <strong>Employee_Job_Data_2026.xlsx</strong>. Product line baru dari Excel akan otomatis ditambahkan; data karyawan diperbarui per product line.
+                        Edit langsung di tabel. Perubahan tersimpan ke database dan Matrix otomatis disinkronkan (nama &amp; position).
                     </p>
                     <div id="product-line-employees-wrap"></div>
                 </div>
@@ -5026,13 +5026,14 @@
     let cachedProductLines = [];
     let cachedProductLineEmployees = {};
     const PL_EMPLOYEE_COLUMNS = [
-        { key: 'row_no', label: 'NO' },
-        { key: 'name', label: 'NAME' },
-        { key: 'job_family_description', label: 'Job Family Description' },
-        { key: 'job_description', label: 'Job Description' },
-        { key: 'access_to_pl', label: 'ACCESS TO PL' },
-        { key: 'access_personnel_only', label: 'ACCESS PERSONNEL ONLY' },
-        { key: 'email', label: 'Email' },
+        { key: 'row_no', label: 'NO', type: 'number' },
+        { key: 'name', label: 'NAME', type: 'text', required: true },
+        { key: 'job_family_description', label: 'Job Family Description', type: 'text' },
+        { key: 'job_description', label: 'Job Description', type: 'text' },
+        { key: 'access_to_pl', label: 'ACCESS TO PL', type: 'yesno' },
+        { key: 'access_personnel_only', label: 'ACCESS PERSONNEL ONLY', type: 'yesno' },
+        { key: 'email', label: 'Email', type: 'email' },
+        { key: 'email_reminder', label: 'Email Reminder', type: 'yesno' },
     ];
 
     function renderMasterTable(items, columns, onEdit, onDelete) {
@@ -5087,26 +5088,61 @@
             .replace(/"/g, '&quot;');
     }
 
-    function renderProductLineEmployeeTable(rows) {
-        if (!rows.length) {
-            return '<p style="color:var(--text-muted);font-size:12px;margin:8px 0;">Belum ada data karyawan. Klik <strong>Import / Sinkron dari Excel</strong>.</p>';
+    function normalizeYesNoValue(val) {
+        const s = String(val ?? '').trim().toLowerCase();
+        return s === 'yes' ? 'Yes' : 'No';
+    }
+
+    function renderPlEmployeeYesNoSelect(plId, empId, field, value) {
+        const v = normalizeYesNoValue(value);
+        return `<select class="form-input pl-emp-field" style="font-size:11px;padding:4px 6px;min-width:70px;width:100%;"
+            data-pl-id="${plId}" data-emp-id="${empId}" data-field="${field}" data-prev="${v}"
+            onchange="saveProductLineEmployeeField(this)">
+            <option value="Yes"${v === 'Yes' ? ' selected' : ''}>Yes</option>
+            <option value="No"${v === 'No' ? ' selected' : ''}>No</option>
+        </select>`;
+    }
+
+    function renderPlEmployeeInput(plId, empId, col, value) {
+        const val = value === null || value === undefined ? '' : value;
+        const inputType = col.type === 'email' ? 'email' : (col.type === 'number' ? 'number' : 'text');
+        const style = 'font-size:11px;padding:4px 6px;width:100%;min-width:80px;';
+        return `<input type="${inputType}" class="form-input pl-emp-field" style="${style}" value="${escapeHtmlMaster(val)}"
+            data-pl-id="${plId}" data-emp-id="${empId}" data-field="${col.key}" data-prev="${escapeHtmlMaster(val)}"
+            ${col.required ? 'required' : ''}
+            onblur="saveProductLineEmployeeField(this)">`;
+    }
+
+    function renderPlEmployeeCell(plId, emp, col) {
+        if (col.type === 'yesno') {
+            return `<td style="padding:4px 6px;border-bottom:1px solid #333;vertical-align:middle;">${renderPlEmployeeYesNoSelect(plId, emp.id, col.key, emp[col.key])}</td>`;
         }
+        return `<td style="padding:4px 6px;border-bottom:1px solid #333;vertical-align:middle;">${renderPlEmployeeInput(plId, emp.id, col, emp[col.key])}</td>`;
+    }
+
+    function renderProductLineEmployeeTable(plId, rows) {
         const heads = PL_EMPLOYEE_COLUMNS.map(c =>
             `<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #444;white-space:nowrap;font-size:11px;">${c.label}</th>`
-        ).join('');
-        const body = rows.map(row => {
-            const cells = PL_EMPLOYEE_COLUMNS.map(c => {
-                const val = row[c.key];
-                const display = (val === null || val === undefined || val === '') ? '-' : val;
-                return `<td style="padding:6px 8px;border-bottom:1px solid #333;font-size:11px;vertical-align:top;">${escapeHtmlMaster(display)}</td>`;
-            }).join('');
-            return `<tr>${cells}</tr>`;
-        }).join('');
-        return `<div style="overflow-x:auto;max-height:360px;overflow-y:auto;">
-            <table style="width:100%;font-size:11px;border-collapse:collapse;min-width:900px;">
+        ).join('') + '<th style="padding:6px 8px;border-bottom:1px solid #444;font-size:11px;width:70px;">Aksi</th>';
+
+        const body = rows.length ? rows.map(emp => {
+            const cells = PL_EMPLOYEE_COLUMNS.map(c => renderPlEmployeeCell(plId, emp, c)).join('');
+            return `<tr data-emp-id="${emp.id}">${cells}
+                <td style="padding:4px 6px;border-bottom:1px solid #333;vertical-align:middle;">
+                    <button type="button" class="btn btn-cancel" style="padding:3px 8px;font-size:10px;"
+                        onclick="deleteProductLineEmployeeRow(${plId}, ${emp.id})">Hapus</button>
+                </td></tr>`;
+        }).join('') : `<tr><td colspan="${PL_EMPLOYEE_COLUMNS.length + 1}" style="padding:12px;color:var(--text-muted);font-size:12px;">Belum ada karyawan.</td></tr>`;
+
+        return `<div style="overflow-x:auto;max-height:400px;overflow-y:auto;">
+            <table class="pl-employee-crud-table" style="width:100%;font-size:11px;border-collapse:collapse;min-width:1000px;">
                 <thead><tr>${heads}</tr></thead>
                 <tbody>${body}</tbody>
             </table>
+        </div>
+        <div style="margin-top:8px;">
+            <button type="button" class="btn btn-secondary" style="font-size:11px;padding:6px 12px;"
+                onclick="addProductLineEmployeeRow(${plId})">+ Tambah Karyawan</button>
         </div>`;
     }
 
@@ -5119,15 +5155,116 @@
         }
         wrap.innerHTML = cachedProductLines.map(pl => {
             const rows = cachedProductLineEmployees[pl.id] || [];
-            const countLabel = rows.length ? `${rows.length} karyawan` : 'belum diimport';
+            const countLabel = rows.length ? `${rows.length} karyawan` : 'belum ada';
             return `<details class="pl-employee-panel" style="margin-bottom:10px;background:#1a1a1a;border:1px solid #333;border-radius:6px;" open>
                 <summary style="cursor:pointer;padding:10px 12px;font-size:13px;font-weight:600;list-style-position:inside;">
                     ${escapeHtmlMaster(pl.name)} <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(${countLabel})</span>
                 </summary>
-                <div style="padding:0 12px 12px;">${renderProductLineEmployeeTable(rows)}</div>
+                <div style="padding:0 12px 12px;">${renderProductLineEmployeeTable(pl.id, rows)}</div>
             </details>`;
         }).join('');
     }
+
+    async function refreshProductLineEmployees(plId) {
+        cachedProductLineEmployees[plId] = await fetchProductLineEmployees(plId);
+        renderProductLineEmployeesSection();
+    }
+
+    function plEmployeeFieldPayload(field, rawValue) {
+        if (field === 'row_no') {
+            const s = String(rawValue ?? '').trim();
+            return { row_no: s === '' ? null : parseInt(s, 10) };
+        }
+        if (['access_to_pl', 'access_personnel_only', 'email_reminder'].includes(field)) {
+            return { [field]: normalizeYesNoValue(rawValue) };
+        }
+        return { [field]: String(rawValue ?? '').trim() };
+    }
+
+    async function saveProductLineEmployeeField(el) {
+        if (el.dataset.saving === '1') return;
+        const plId = parseInt(el.dataset.plId, 10);
+        const empId = parseInt(el.dataset.empId, 10);
+        const field = el.dataset.field;
+        const prev = el.dataset.prev ?? '';
+        const value = el.value;
+        if (prev === value) return;
+        if (field === 'name' && !String(value).trim()) {
+            showToast('Nama karyawan wajib diisi', 'error');
+            el.value = prev;
+            return;
+        }
+        el.dataset.saving = '1';
+        try {
+            const body = plEmployeeFieldPayload(field, value);
+            const res = await fetch(`${API_BASE}/product-lines/${plId}/employees/${empId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Gagal menyimpan');
+            }
+            el.dataset.prev = value;
+            const updated = await res.json();
+            const rows = cachedProductLineEmployees[plId] || [];
+            const idx = rows.findIndex(r => r.id === empId);
+            if (idx >= 0) rows[idx] = updated;
+        } catch (e) {
+            if (prev !== undefined) el.value = prev;
+            showToast(e.message || 'Gagal menyimpan', 'error');
+        } finally {
+            delete el.dataset.saving;
+        }
+    }
+    window.saveProductLineEmployeeField = saveProductLineEmployeeField;
+
+    async function addProductLineEmployeeRow(plId) {
+        const rows = cachedProductLineEmployees[plId] || [];
+        const maxNo = rows.reduce((m, r) => Math.max(m, parseInt(r.row_no, 10) || 0), 0);
+        try {
+            const res = await fetch(`${API_BASE}/product-lines/${plId}/employees`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    row_no: maxNo + 1,
+                    name: 'NAMA BARU',
+                    job_family_description: '',
+                    job_description: '',
+                    access_to_pl: 'No',
+                    access_personnel_only: 'No',
+                    email: '',
+                    email_reminder: 'No',
+                }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Gagal menambah karyawan');
+            }
+            showToast('Karyawan ditambahkan', 'success');
+            await refreshProductLineEmployees(plId);
+        } catch (e) {
+            showToast(e.message || 'Gagal menambah', 'error');
+        }
+    }
+    window.addProductLineEmployeeRow = addProductLineEmployeeRow;
+
+    async function deleteProductLineEmployeeRow(plId, empId) {
+        if (!confirm('Hapus karyawan ini dari product line?')) return;
+        try {
+            const res = await fetch(`${API_BASE}/product-lines/${plId}/employees/${empId}`, { method: 'DELETE' });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Gagal menghapus');
+            }
+            showToast('Karyawan dihapus', 'success');
+            await refreshProductLineEmployees(plId);
+        } catch (e) {
+            showToast(e.message || 'Gagal menghapus', 'error');
+        }
+    }
+    window.deleteProductLineEmployeeRow = deleteProductLineEmployeeRow;
 
     async function loadAllProductLineEmployees() {
         cachedProductLineEmployees = {};
