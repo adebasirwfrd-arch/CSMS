@@ -66,3 +66,20 @@ class ClientProductTemplate(BaseModel):
     template_folder_name: str
     drive_folder_id: Optional[str] = None
     created_at: Optional[str] = None
+
+
+class ProductLineEmployee(BaseModel):
+    id: int
+    product_line_id: int
+    row_no: Optional[int] = None
+    name: str = ""
+    job_family_description: str = ""
+    job_description: str = ""
+    access_to_pl: str = ""
+    access_personnel_only: str = ""
+    email: str = ""
+    created_at: Optional[str] = None
+
+
+class SyncProductLineEmployeesRequest(BaseModel):
+    use_excel: bool = False

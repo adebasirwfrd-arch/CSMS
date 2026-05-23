@@ -8,8 +8,10 @@ from models.master_data import (
     ProductLine,
     ProductLineCreate,
     ProductLineUpdate,
+    ProductLineEmployee,
     GenerateTemplateRequest,
     PropagateTemplateRequest,
+    SyncProductLineEmployeesRequest,
 )
 from database import (
     get_clients,
@@ -22,7 +24,13 @@ from database import (
     create_product_line,
     update_product_line,
     delete_product_line,
+    get_product_line_employees,
+    replace_product_line_employees,
     get_client_product_templates,
+)
+from services.product_line_employee_import import (
+    load_import_payload,
+    sync_product_lines_and_employees,
 )
 from services.master_data_drive import generate_client_product_template
 from services.template_project_sync import propagate_client_template_to_all_projects
@@ -93,6 +101,37 @@ def remove_product_line(product_line_id: int):
     if not delete_product_line(product_line_id):
         raise HTTPException(status_code=404, detail="Product Line not found")
     return {"status": "deleted"}
+
+
+@router.get("/product-lines/{product_line_id}/employees", response_model=list)
+def list_product_line_employees(product_line_id: int):
+    pl = get_product_line(product_line_id)
+    if not pl:
+        raise HTTPException(status_code=404, detail="Product Line not found")
+    return get_product_line_employees(product_line_id)
+
+
+@router.post("/product-lines/sync-employees")
+def sync_employees_from_excel(body: SyncProductLineEmployeesRequest):
+    """
+    Create missing product lines from Excel/seed and load employee rows per line.
+    Uses Blueprint Excel when use_excel=true and file exists; otherwise bundled seed JSON.
+    """
+    try:
+        payload = load_import_payload(use_excel=body.use_excel)
+        result = sync_product_lines_and_employees(
+            payload,
+            create_product_line=create_product_line,
+            get_product_lines=get_product_lines,
+            replace_employees_for_product_line=replace_product_line_employees,
+        )
+        log_info("MASTER", f"sync-employees: {result}")
+        return {"status": "ok", **result}
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        log_error("MASTER", f"sync-employees failed: {e}", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------- Templates ----------

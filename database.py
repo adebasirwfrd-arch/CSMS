@@ -41,6 +41,7 @@ RELATED_DOCS_FILE = os.path.join(DATA_DIR, "related_docs.json")
 LL_INDICATOR_FILE = os.path.join(DATA_DIR, "ll_indicator.json")
 CLIENTS_FILE = os.path.join(DATA_DIR, "clients.json")
 PRODUCT_LINES_FILE = os.path.join(DATA_DIR, "product_lines.json")
+PRODUCT_LINE_EMPLOYEES_FILE = os.path.join(DATA_DIR, "product_line_employees.json")
 CLIENT_PRODUCT_TEMPLATES_FILE = os.path.join(DATA_DIR, "client_product_templates.json")
 
 
@@ -523,7 +524,47 @@ def delete_product_line(product_line_id: int) -> bool:
         return supabase_service.delete_product_line(product_line_id)
     lines = [p for p in get_product_lines() if p.get("id") != product_line_id]
     _write_json_robust(PRODUCT_LINES_FILE, lines)
+    employees = [
+        e
+        for e in get_product_line_employees()
+        if e.get("product_line_id") != product_line_id
+    ]
+    _write_json_robust(PRODUCT_LINE_EMPLOYEES_FILE, employees)
     return True
+
+
+def get_product_line_employees(product_line_id: Optional[int] = None) -> List[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.get_product_line_employees(product_line_id)
+    employees = _read_json_list(PRODUCT_LINE_EMPLOYEES_FILE)
+    if product_line_id is None:
+        return employees
+    return [e for e in employees if e.get("product_line_id") == product_line_id]
+
+
+def replace_product_line_employees(
+    product_line_id: int, records: List[Dict]
+) -> List[Dict]:
+    if SUPABASE_ENABLED:
+        return supabase_service.replace_product_line_employees(
+            product_line_id, records
+        )
+    employees = [
+        e
+        for e in get_product_line_employees()
+        if e.get("product_line_id") != product_line_id
+    ]
+    now = datetime.now().isoformat()
+    for rec in records:
+        employees.append(
+            {
+                "id": _next_serial_id(employees),
+                "created_at": now,
+                **rec,
+            }
+        )
+    _write_json_robust(PRODUCT_LINE_EMPLOYEES_FILE, employees)
+    return get_product_line_employees(product_line_id)
 
 
 def get_client_product_templates() -> List[Dict]:

@@ -3307,6 +3307,19 @@
                     </div>
                 </form>
                 <div id="product-lines-table-wrap" style="overflow-x: auto;"></div>
+
+                <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #333;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <h4 style="margin: 0; font-size: 14px;">Data Karyawan per Product Line</h4>
+                        <button type="button" class="btn btn-secondary" style="font-size: 12px; white-space: nowrap;" onclick="syncProductLineEmployees()">
+                            Import / Sinkron dari Excel
+                        </button>
+                    </div>
+                    <p style="font-size: 11px; color: var(--text-muted); margin: 0 0 12px;">
+                        Kolom sesuai <strong>Employee_Job_Data_2026.xlsx</strong>. Product line baru dari Excel akan otomatis ditambahkan; data karyawan diperbarui per product line.
+                    </p>
+                    <div id="product-line-employees-wrap"></div>
+                </div>
             </div>
         </div>
     </section>
@@ -5011,6 +5024,16 @@
     // ===== MASTER DATA (Client / Product Line) =====
     let cachedClients = [];
     let cachedProductLines = [];
+    let cachedProductLineEmployees = {};
+    const PL_EMPLOYEE_COLUMNS = [
+        { key: 'row_no', label: 'NO' },
+        { key: 'name', label: 'NAME' },
+        { key: 'job_family_description', label: 'Job Family Description' },
+        { key: 'job_description', label: 'Job Description' },
+        { key: 'access_to_pl', label: 'ACCESS TO PL' },
+        { key: 'access_personnel_only', label: 'ACCESS PERSONNEL ONLY' },
+        { key: 'email', label: 'Email' },
+    ];
 
     function renderMasterTable(items, columns, onEdit, onDelete) {
         if (!items.length) return '<p style="color:var(--text-muted);font-size:12px;">Belum ada data.</p>';
@@ -5044,6 +5067,79 @@
         if (!res.ok) throw new Error('Gagal memuat product lines');
         const data = await res.json();
         return Array.isArray(data) ? data : [];
+    }
+
+    async function fetchProductLineEmployees(productLineId) {
+        const res = await fetch(`${API_BASE}/product-lines/${productLineId}/employees?t=${Date.now()}`, {
+            cache: 'no-store',
+            headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (!res.ok) throw new Error('Gagal memuat data karyawan');
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+    }
+
+    function escapeHtmlMaster(text) {
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function renderProductLineEmployeeTable(rows) {
+        if (!rows.length) {
+            return '<p style="color:var(--text-muted);font-size:12px;margin:8px 0;">Belum ada data karyawan. Klik <strong>Import / Sinkron dari Excel</strong>.</p>';
+        }
+        const heads = PL_EMPLOYEE_COLUMNS.map(c =>
+            `<th style="text-align:left;padding:6px 8px;border-bottom:1px solid #444;white-space:nowrap;font-size:11px;">${c.label}</th>`
+        ).join('');
+        const body = rows.map(row => {
+            const cells = PL_EMPLOYEE_COLUMNS.map(c => {
+                const val = row[c.key];
+                const display = (val === null || val === undefined || val === '') ? '-' : val;
+                return `<td style="padding:6px 8px;border-bottom:1px solid #333;font-size:11px;vertical-align:top;">${escapeHtmlMaster(display)}</td>`;
+            }).join('');
+            return `<tr>${cells}</tr>`;
+        }).join('');
+        return `<div style="overflow-x:auto;max-height:360px;overflow-y:auto;">
+            <table style="width:100%;font-size:11px;border-collapse:collapse;min-width:900px;">
+                <thead><tr>${heads}</tr></thead>
+                <tbody>${body}</tbody>
+            </table>
+        </div>`;
+    }
+
+    function renderProductLineEmployeesSection() {
+        const wrap = document.getElementById('product-line-employees-wrap');
+        if (!wrap) return;
+        if (!cachedProductLines.length) {
+            wrap.innerHTML = '<p style="color:var(--text-muted);font-size:12px;">Belum ada product line.</p>';
+            return;
+        }
+        wrap.innerHTML = cachedProductLines.map(pl => {
+            const rows = cachedProductLineEmployees[pl.id] || [];
+            const countLabel = rows.length ? `${rows.length} karyawan` : 'belum diimport';
+            return `<details class="pl-employee-panel" style="margin-bottom:10px;background:#1a1a1a;border:1px solid #333;border-radius:6px;" open>
+                <summary style="cursor:pointer;padding:10px 12px;font-size:13px;font-weight:600;list-style-position:inside;">
+                    ${escapeHtmlMaster(pl.name)} <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(${countLabel})</span>
+                </summary>
+                <div style="padding:0 12px 12px;">${renderProductLineEmployeeTable(rows)}</div>
+            </details>`;
+        }).join('');
+    }
+
+    async function loadAllProductLineEmployees() {
+        cachedProductLineEmployees = {};
+        await Promise.all(cachedProductLines.map(async pl => {
+            try {
+                cachedProductLineEmployees[pl.id] = await fetchProductLineEmployees(pl.id);
+            } catch (e) {
+                console.warn('[MasterData] employees pl', pl.id, e);
+                cachedProductLineEmployees[pl.id] = [];
+            }
+        }));
+        renderProductLineEmployeesSection();
     }
 
     async function fetchClientProductTemplates() {
@@ -5124,6 +5220,8 @@
                 'editProductLine',
                 'deleteProductLineRow'
             );
+
+            await loadAllProductLineEmployees();
 
             const tplList = document.getElementById('templates-list');
             if (templates.length) {
@@ -5243,6 +5341,40 @@
         await loadMasterDataPage();
     }
     window.deleteProductLineRow = deleteProductLineRow;
+
+    async function syncProductLineEmployees() {
+        if (!confirm(
+            'Import data karyawan dari Employee_Job_Data_2026?\n\n' +
+            'Product line baru akan ditambahkan. Data karyawan per product line akan diganti sesuai Excel.'
+        )) {
+            return;
+        }
+        try {
+            const res = await fetch(`${API_BASE}/product-lines/sync-employees`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ use_excel: true }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                showToast(data.detail || 'Gagal import data karyawan', 'error');
+                return;
+            }
+            const created = (data.product_lines_created || []).join(', ') || '-';
+            const total = data.total_employees || 0;
+            showToast(`Import selesai: ${total} karyawan`, 'success');
+            alert(
+                `Import selesai.\n\n` +
+                `Sumber: ${data.source || '-'}\n` +
+                `Product line baru: ${created}\n` +
+                `Total karyawan: ${total}`
+            );
+            await loadMasterDataPage();
+        } catch (e) {
+            showToast('Error: ' + (e.message || e), 'error');
+        }
+    }
+    window.syncProductLineEmployees = syncProductLineEmployees;
 
     async function generateDriveTemplate() {
         const clientId = document.getElementById('tpl-client-select')?.value;

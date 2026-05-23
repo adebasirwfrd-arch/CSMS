@@ -960,6 +960,42 @@ class SupabaseService:
             self._log_err("DELETE", "product_lines", e)
             return False
 
+    # ==================== PRODUCT LINE EMPLOYEES ====================
+
+    def get_product_line_employees(
+        self, product_line_id: Optional[int] = None
+    ) -> List[Dict]:
+        if not self.enabled:
+            return []
+        try:
+            query = self.client.table("product_line_employees").select("*")
+            if product_line_id is not None:
+                query = query.eq("product_line_id", product_line_id)
+            result = query.order("row_no").order("name").execute()
+            return result.data or []
+        except Exception as e:
+            self._log_err("SELECT", "product_line_employees", e)
+            return []
+
+    def replace_product_line_employees(
+        self, product_line_id: int, records: List[Dict]
+    ) -> List[Dict]:
+        if not self.enabled:
+            return records
+        try:
+            (
+                self.client.table("product_line_employees")
+                .delete()
+                .eq("product_line_id", product_line_id)
+                .execute()
+            )
+            if records:
+                self.client.table("product_line_employees").insert(records).execute()
+            return self.get_product_line_employees(product_line_id)
+        except Exception as e:
+            self._log_err("REPLACE", "product_line_employees", e)
+            raise
+
     # ==================== CLIENT + PRODUCT LINE TEMPLATES ====================
 
     def get_client_product_templates(self) -> List[Dict]:
