@@ -119,6 +119,8 @@
 
     function matrixAuthHeaders(extra) {
         const h = Object.assign({}, extra || {});
+        // Admin drawer login must see all PLs — skip Bearer so API returns full workbook.
+        if (document.body.classList.contains('admin-mode')) return h;
         const token = typeof getCsmsAuthToken === 'function' ? getCsmsAuthToken() : '';
         if (token) h.Authorization = `Bearer ${token}`;
         return h;
