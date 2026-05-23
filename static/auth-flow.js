@@ -263,11 +263,19 @@
         personnelSignOut();
     }
 
+    function updateMatrixAccessClass() {
+        const pl = (authSession?.access_to_pl || '').toLowerCase() === 'yes';
+        const po = (authSession?.access_personnel_only || '').toLowerCase() === 'yes';
+        const allow = !!(authSession?.onboarded && (authSession?.is_admin || pl || po));
+        document.body.classList.toggle('matrix-access', allow);
+    }
+
     function showLogin() {
         document.body.classList.add('auth-locked');
         document.getElementById('csms-login-screen')?.classList.add('active');
         document.getElementById('csms-onboarding-screen')?.classList.remove('active');
         document.body.classList.remove('personnel-authenticated');
+        document.body.classList.remove('matrix-access');
     }
 
     function showOnboarding() {
@@ -282,9 +290,11 @@
         document.getElementById('csms-login-screen')?.classList.remove('active');
         document.getElementById('csms-onboarding-screen')?.classList.remove('active');
         document.body.classList.add('personnel-authenticated');
+        updateMatrixAccessClass();
         updateHeaderUser();
         const logoutBtn = document.getElementById('personnel-logout-btn');
         if (logoutBtn) logoutBtn.style.display = 'flex';
+        updateMatrixAccessClass();
         if (authSession?.is_admin) {
             document.body.classList.add('admin-mode');
             localStorage.setItem('csms_admin_logged_in', 'true');

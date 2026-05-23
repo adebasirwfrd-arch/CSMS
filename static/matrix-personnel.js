@@ -114,7 +114,99 @@
         productLines: [],
         projects: [],
         storage: null,
+        rbacLockedPl: false,
     };
+
+    function matrixAuthHeaders(extra) {
+        const h = Object.assign({}, extra || {});
+        const token = typeof getCsmsAuthToken === 'function' ? getCsmsAuthToken() : '';
+        if (token) h.Authorization = `Bearer ${token}`;
+        return h;
+    }
+
+    function getMatrixRbac() {
+        if (document.body.classList.contains('admin-mode')) {
+            return { mode: 'admin', canManageStructure: true, canEditAllRows: true };
+        }
+        const session = typeof getCsmsAuthSession === 'function' ? getCsmsAuthSession() : null;
+        if (!session || !session.onboarded) {
+            return { mode: 'none', canManageStructure: false, canEditAllRows: false };
+        }
+        const accessPl = (session.access_to_pl || '').toLowerCase() === 'yes';
+        const personnelOnly = (session.access_personnel_only || '').toLowerCase() === 'yes';
+        const base = {
+            productLineId: session.product_line_id,
+            productLineName: session.product_line_name || '',
+            personnelName: session.personnel_name || '',
+        };
+        if (accessPl) {
+            return {
+                mode: 'product_line',
+                canManageStructure: false,
+                canEditAllRows: true,
+                ...base,
+            };
+        }
+        if (personnelOnly) {
+            return {
+                mode: 'personnel_only',
+                canManageStructure: false,
+                canEditAllRows: false,
+                ...base,
+            };
+        }
+        return { mode: 'none', canManageStructure: false, canEditAllRows: false, ...base };
+    }
+
+    function canAccessMatrix() {
+        const rbac = getMatrixRbac();
+        return rbac.mode === 'admin' || rbac.mode === 'product_line' || rbac.mode === 'personnel_only';
+    }
+
+    function isMatrixAdmin() {
+        return getMatrixRbac().mode === 'admin';
+    }
+
+    function canEditMatrixRow(sheet, row) {
+        const rbac = getMatrixRbac();
+        if (rbac.mode === 'admin' || rbac.mode === 'product_line') return true;
+        if (rbac.mode !== 'personnel_only') return false;
+        return normalizePersonnelName(rowPersonnelName(sheet, row)) === normalizePersonnelName(rbac.personnelName);
+    }
+
+    function rowMatchesPersonnelRbac(sheet, row) {
+        const rbac = getMatrixRbac();
+        if (rbac.mode === 'admin') return true;
+        const plCol = getProductLineCol(sheet);
+        if (plCol && rbac.productLineName) {
+            const rowPl = (row.cells?.[plCol.id] || '').trim();
+            if (rowPl && rowPl !== rbac.productLineName) return false;
+        }
+        if (rbac.mode === 'product_line') return true;
+        if (rbac.mode === 'personnel_only') {
+            return normalizePersonnelName(rowPersonnelName(sheet, row)) === normalizePersonnelName(rbac.personnelName);
+        }
+        return false;
+    }
+
+    function applyRbacProductLineLock() {
+        const rbac = getMatrixRbac();
+        if (rbac.mode === 'admin' || !rbac.productLineId) {
+            MATRIX_STATE.rbacLockedPl = false;
+            return;
+        }
+        MATRIX_STATE.rbacLockedPl = true;
+        MATRIX_STATE.filterProductLineId = String(rbac.productLineId);
+        if (rbac.productLineName) {
+            const match = MATRIX_STATE.productLines.find(p => String(p.id) === String(rbac.productLineId));
+            if (!match) {
+                MATRIX_STATE.productLines = [
+                    { id: rbac.productLineId, name: rbac.productLineName },
+                    ...MATRIX_STATE.productLines,
+                ];
+            }
+        }
+    }
 
     const SHEET_KPI_COLORS = ['#46D369', '#F5A623', '#e74c3c', '#4A90D9', '#9b59b6', '#E50914', '#1abc9c'];
 
@@ -2691,6 +2783,8 @@
     }
 
     function rowMatchesFilters(sheet, row) {
+        if (!rowMatchesPersonnelRbac(sheet, row)) return false;
+
         const plName = getSelectedProductLineName();
         const plCol = getProductLineCol(sheet);
 
@@ -2817,6 +2911,7 @@
             if (!MATRIX_STATE.filterProductLineId && MATRIX_STATE.productLines.length) {
                 MATRIX_STATE.filterProductLineId = String(MATRIX_STATE.productLines[0].id);
             }
+            applyRbacProductLineLock();
             syncProjectFilterSelection();
         } catch (e) {
             console.warn('loadMasterFilters:', e.message);
@@ -3036,6 +3131,7 @@
             const res = await fetch(`${apiBase()}/matrix/workbook?t=${Date.now()}`, {
                 cache: 'no-store',
                 signal: controller.signal,
+                headers: matrixAuthHeaders(),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return await res.json();
@@ -3222,7 +3318,7 @@
         const res = await fetch(`${apiBase()}${path}`, {
             method,
             cache: 'no-store',
-            headers: { 'Content-Type': 'application/json' },
+            headers: matrixAuthHeaders({ 'Content-Type': 'application/json' }),
             body: body ? JSON.stringify(body) : undefined,
         });
         if (!res.ok) {
@@ -3828,10 +3924,18 @@
                 `<option value="${esc(String(c.id))}"${String(c.id) === String(MATRIX_STATE.filterClientId) ? ' selected' : ''}>${esc(c.name)}</option>`
             ).join('');
 
-        const plOptions = `<option value="">Pilih Product Line</option>` +
-            MATRIX_STATE.productLines.map(pl =>
+        const rbac = getMatrixRbac();
+        const plList = MATRIX_STATE.rbacLockedPl && rbac.productLineId
+            ? MATRIX_STATE.productLines.filter(p => String(p.id) === String(rbac.productLineId))
+            : MATRIX_STATE.productLines;
+        const plOptions = MATRIX_STATE.rbacLockedPl
+            ? plList.map(pl =>
+                `<option value="${esc(String(pl.id))}" selected>${esc(pl.name)}</option>`
+            ).join('')
+            : (`<option value="">Pilih Product Line</option>` +
+            plList.map(pl =>
                 `<option value="${esc(String(pl.id))}"${String(pl.id) === String(MATRIX_STATE.filterProductLineId) ? ' selected' : ''}>${esc(pl.name)}</option>`
-            ).join('');
+            ).join(''));
 
         const filteredProjects = getFilteredProjects();
         const projectOptions = `<option value="ALL"${MATRIX_STATE.filterProjectId === 'ALL' ? ' selected' : ''}>ALL</option>` +
@@ -3843,7 +3947,7 @@
         <div class="mx-toolbar-card">
             <div class="mx-toolbar-row mx-toolbar-filters">
                 <select id="mx-filter-client" class="form-input mx-select" title="Client" onchange="matrixOnClientFilterChange(this.value)">${clientOptions}</select>
-                <select id="mx-filter-product-line" class="form-input mx-select" title="Product Line" onchange="matrixOnProductLineFilterChange(this.value)">${plOptions}</select>
+                <select id="mx-filter-product-line" class="form-input mx-select" title="Product Line" onchange="matrixOnProductLineFilterChange(this.value)"${MATRIX_STATE.rbacLockedPl ? ' disabled' : ''}>${plOptions}</select>
                 <select id="mx-filter-project" class="form-input mx-select" title="Project" onchange="matrixOnProjectFilterChange(this.value)"${MATRIX_STATE.filterProductLineId ? '' : ' disabled'}>${projectOptions}</select>
             </div>
             <div class="mx-toolbar-row">
@@ -3860,8 +3964,8 @@
                     </button>
                 </div>
                 <div class="mx-btn-group">
-                    <button type="button" class="mx-btn mx-btn-primary" onclick="matrixAddRow()">+ Baris</button>
-                    <button type="button" class="mx-btn mx-btn-secondary" onclick="matrixAddColumn()">+ Kolom</button>
+                    ${isMatrixAdmin() ? `<button type="button" class="mx-btn mx-btn-primary" onclick="matrixAddRow()">+ Baris</button>
+                    <button type="button" class="mx-btn mx-btn-secondary" onclick="matrixAddColumn()">+ Kolom</button>` : ''}
                     <button type="button" class="mx-btn mx-btn-secondary" onclick="matrixReload()">↻ Muat Ulang</button>
                     <button type="button" class="mx-btn mx-btn-secondary mx-btn-pdf" onclick="matrixDownloadPdf()" title="Download laporan PDF personel terpilih">
                         <span class="mx-btn-dl-icon" aria-hidden="true">↓</span> PDF
@@ -3874,14 +3978,14 @@
         </div>`;
     }
 
-    function renderPhotoCell(sheet, row, col) {
+    function renderPhotoCell(sheet, row, col, editable) {
         const profileRow = findPersonnelProfileRow(sheet, row);
         const profileSheet = sheetById(PROFILE_SHEET_ID);
         const fileId = profilePhotoFileId(profileRow);
         const gender = personnelFieldFromRows(/gender/i, profileSheet, profileRow, sheet, row)
             || profileGender(profileRow);
         const src = fileId ? photoViewUrl(fileId) : defaultAvatar(gender);
-        const canUpload = sheet.id === PROFILE_SHEET_ID;
+        const canUpload = editable !== false && sheet.id === PROFILE_SHEET_ID;
         const name = rowPersonnelName(sheet, row);
         const uploadBtn = canUpload
             ? `<button type="button" class="mx-doc-btn mx-photo-btn"
@@ -3898,7 +4002,7 @@
         </td>`;
     }
 
-    function renderDocCell(sheet, row, col) {
+    function renderDocCell(sheet, row, col, editable) {
         const val = row.cells?.[col.id] ?? '';
         const { fileId, fileName } = parseDocCellValue(val);
         const displayName = fileName || '';
@@ -3911,6 +4015,11 @@
             ? `<a class="mx-doc-name" href="${docViewUrl(fileId)}" target="_blank" rel="noopener"
                 onclick="event.stopPropagation()">${esc(displayName || 'Document')}</a>`
             : '';
+        if (editable === false) {
+            return `<td class="mx-td mx-td-doc mx-td-readonly">
+            <div class="mx-doc-cell">${fileLink || '<span class="mx-muted">—</span>'}</div>
+        </td>`;
+        }
         const uploadBtn = `<button type="button" class="mx-doc-btn"
             onclick="matrixTriggerDocUpload('${esc(inputId)}', event)">${fileId ? 'Ganti' : '📄 Upload'}</button>`;
         return `<td class="mx-td mx-td-doc mx-td-edit">
@@ -3963,13 +4072,18 @@
     }
 
     function renderCell(sheet, row, c) {
+        const editable = canEditMatrixRow(sheet, row);
         if (c.type === 'image' || c.id === PHOTO_COL_ID) {
-            return renderPhotoCell(sheet, row, c);
+            return renderPhotoCell(sheet, row, c, editable);
         }
         if (isDocUploadColumn(c)) {
-            return renderDocCell(sheet, row, c);
+            return renderDocCell(sheet, row, c, editable);
         }
         const val = row.cells?.[c.id] ?? '';
+
+        if (!editable) {
+            return `<td class="mx-td mx-td-readonly${stickyTdClass(c)}"><span class="mx-cell-readonly">${esc(val) || '—'}</span></td>`;
+        }
 
         if (getProductLineCol(sheet)?.id === c.id) {
             return renderProductLineSelect(sheet, row, c, val);
@@ -4005,26 +4119,31 @@
                 const shortLabel = (c.label || '').replace(/^Doc:\s/i, '').trim();
                 return `<th class="mx-th mx-th-doc${sticky}"><span title="${esc(c.label.replace(/\*/g, ''))}">Upload Doc</span><span class="mx-th-doc-sub">${esc(shortLabel)}</span></th>`;
             }
+            const colActions = isMatrixAdmin()
+                ? `<div class="mx-th-actions">
+                        <button type="button" title="Edit kolom" onclick="matrixEditColumn('${esc(sheet.id)}','${esc(c.id)}')">✎</button>
+                        <button type="button" title="Hapus kolom" onclick="matrixDeleteColumn('${esc(sheet.id)}','${esc(c.id)}')">×</button>
+                    </div>`
+                : '';
             return `
             <th class="mx-th${sticky}">
                 <div class="mx-th-inner">
                     <span title="${esc(c.label)}">${esc(c.label.replace(/\*/g, ''))}</span>
-                    <div class="mx-th-actions">
-                        <button type="button" title="Edit kolom" onclick="matrixEditColumn('${esc(sheet.id)}','${esc(c.id)}')">✎</button>
-                        <button type="button" title="Hapus kolom" onclick="matrixDeleteColumn('${esc(sheet.id)}','${esc(c.id)}')">×</button>
-                    </div>
+                    ${colActions}
                 </div>
             </th>`;
-        }).join('') + '<th class="mx-th">Aksi</th>';
+        }).join('') + (isMatrixAdmin() ? '<th class="mx-th">Aksi</th>' : '');
 
         const body = rows.map(row => {
             const selected = row.id === MATRIX_STATE.selectedRowId ? ' mx-row-selected' : '';
             const cells = cols.map(c => renderCell(sheet, row, c)).join('');
-            return `<tr class="mx-data-row${selected}" data-row-id="${esc(row.id)}"
-                onclick="matrixOnRowClick(event, '${esc(row.id)}')">${cells}
-                <td class="mx-td mx-td-actions" onclick="event.stopPropagation()">
+            const deleteBtn = isMatrixAdmin()
+                ? `<td class="mx-td mx-td-actions" onclick="event.stopPropagation()">
                     <button type="button" class="mx-btn mx-btn-danger-sm" onclick="matrixDeleteRow('${esc(sheet.id)}','${esc(row.id)}')">Hapus</button>
-                </td></tr>`;
+                </td>`
+                : '';
+            return `<tr class="mx-data-row${selected}" data-row-id="${esc(row.id)}"
+                onclick="matrixOnRowClick(event, '${esc(row.id)}')">${cells}${deleteBtn}</tr>`;
         }).join('');
 
         return `
@@ -4032,7 +4151,7 @@
             <div class="mx-table-wrap">
                 <table class="mx-data-table">
                     <thead><tr>${head}</tr></thead>
-                    <tbody>${body || `<tr><td colspan="${cols.length + 1}" class="mx-empty-row">Tidak ada baris.</td></tr>`}</tbody>
+                    <tbody>${body || `<tr><td colspan="${cols.length + (isMatrixAdmin() ? 1 : 0)}" class="mx-empty-row">Tidak ada baris.</td></tr>`}</tbody>
                 </table>
             </div>
         </div>`;
@@ -4143,8 +4262,8 @@
         const root = document.getElementById('matrix-content');
         if (!root) return;
 
-        if (!document.body.classList.contains('admin-mode')) {
-            root.innerHTML = `<div class="mx-locked"><p>🔒 Matrix hanya tersedia dalam <strong>Admin Mode</strong>.</p><p class="mx-muted">Login admin dari menu drawer.</p></div>`;
+        if (!canAccessMatrix()) {
+            root.innerHTML = `<div class="mx-locked"><p>🔒 Matrix memerlukan login personnel dengan akses Matrix.</p><p class="mx-muted">Hubungi admin jika Anda memerlukan akses Product Line atau Personnel.</p></div>`;
             return;
         }
 
@@ -4182,7 +4301,7 @@
                         </svg>
                         <div>
                             <h2 class="mx-title">${esc(sheet.title || tabLabel)}</h2>
-                            <p class="mx-subtitle">${esc(sheet.name)} · ${rows.length} baris ditampilkan ${renderStorageBadge()}</p>
+                            <p class="mx-subtitle">${esc(sheet.name)} · ${rows.length} baris ditampilkan${getMatrixRbac().mode === 'personnel_only' ? ' (data Anda)' : ''} ${renderStorageBadge()}</p>
                         </div>
                     </div>
                 </header>
@@ -4571,6 +4690,7 @@
     };
 
     window.matrixOnProductLineFilterChange = async function (plId) {
+        if (MATRIX_STATE.rbacLockedPl) return;
         MATRIX_STATE.filterProductLineId = plId || '';
         MATRIX_STATE.filterProjectId = 'ALL';
         syncProjectFilterSelection();
@@ -4654,12 +4774,19 @@
 
     window.matrixOnDateCellChange = async function (input) {
         if (!input || input.dataset.saving === '1' || input.dataset.reminderFlow === '1') return;
+        const sheetId = input.dataset.sheet;
+        const rowId = input.dataset.row;
+        const sheet = sheetById(sheetId);
+        const row = sheet?.rows?.find(r => r.id === rowId);
+        if (sheet && row && !canEditMatrixRow(sheet, row)) {
+            input.value = input.dataset.prev ?? input.value;
+            showToast?.('Anda hanya dapat mengubah data personnel Anda sendiri', 'error');
+            return;
+        }
         const oldVal = input.dataset.prev ?? '';
         const newVal = input.value;
         if (oldVal === newVal) return;
 
-        const sheetId = input.dataset.sheet;
-        const sheet = sheetById(sheetId);
         const col = sheet?.columns?.find(c => c.id === input.dataset.col);
 
         if (isMcuDateColumn(sheet, col)) {
@@ -4771,6 +4898,13 @@
         const sheetId = input.dataset.sheet;
         const rowId = input.dataset.row;
         const colId = input.dataset.col;
+        const sheet = sheetById(sheetId);
+        const row = sheet?.rows?.find(r => r.id === rowId);
+        if (sheet && row && !canEditMatrixRow(sheet, row)) {
+            input.value = input.dataset.prev ?? input.value;
+            showToast?.('Anda hanya dapat mengubah data personnel Anda sendiri', 'error');
+            return;
+        }
         const oldVal = input.dataset.prev ?? '';
         const newVal = input.value;
         if (oldVal === newVal) return;
@@ -4798,6 +4932,10 @@
     };
 
     window.matrixAddRow = async function () {
+        if (!isMatrixAdmin()) {
+            showToast?.('Hanya admin yang dapat menambah baris baru', 'error');
+            return;
+        }
         const sheet = activeSheet();
         if (!sheet) return;
         if (!MATRIX_STATE.filterProductLineId) {
@@ -4846,6 +4984,10 @@
         const sheet = sheetById(sheetId);
         const row = sheet?.rows?.find(r => r.id === rowId);
         if (!row) return;
+        if (!canEditMatrixRow(sheet, row)) {
+            showToast?.('Anda hanya dapat mengubah data personnel Anda sendiri', 'error');
+            return;
+        }
         const snap = clone(row);
         const ref = { restoredId: null };
         try {
@@ -4873,6 +5015,10 @@
     };
 
     window.matrixAddColumn = async function () {
+        if (!isMatrixAdmin()) {
+            showToast?.('Hanya admin yang dapat menambah kolom', 'error');
+            return;
+        }
         const sheet = activeSheet();
         if (!sheet) return;
         const label = prompt('Nama kolom baru (berlaku untuk semua filter Client/Project):', 'Kolom Baru');
@@ -4907,6 +5053,10 @@
     };
 
     window.matrixEditColumn = async function (sheetId, colId) {
+        if (!isMatrixAdmin()) {
+            showToast?.('Hanya admin yang dapat mengedit kolom', 'error');
+            return;
+        }
         const sheet = sheetById(sheetId);
         const col = sheet?.columns?.find(c => c.id === colId);
         if (!col) return;
@@ -4934,6 +5084,10 @@
     };
 
     window.matrixDeleteColumn = async function (sheetId, colId) {
+        if (!isMatrixAdmin()) {
+            showToast?.('Hanya admin yang dapat menghapus kolom', 'error');
+            return;
+        }
         if (!confirm('Hapus kolom ini dari semua baris?')) return;
         const sheet = sheetById(sheetId);
         const col = sheet?.columns?.find(c => c.id === colId);
@@ -5182,7 +5336,7 @@
     window.loadMatrixWorkbook = async function (silent) {
         const root = document.getElementById('matrix-content');
         if (!root) return;
-        if (!document.body.classList.contains('admin-mode')) {
+        if (!canAccessMatrix()) {
             paintMatrixScreen();
             return;
         }
@@ -5197,11 +5351,15 @@
             }
             if (!silent) clearHistory();
             paintMatrixScreen();
-            runMatrixBackgroundSetup();
-            if (isAllClients()) {
-                dedupeAllPersonnelInWorkbook().then(() => paintMatrixScreen()).catch(e => {
-                    console.warn('dedupeAllPersonnel:', e.message);
-                });
+            if (isMatrixAdmin()) {
+                runMatrixBackgroundSetup();
+                if (isAllClients()) {
+                    dedupeAllPersonnelInWorkbook().then(() => paintMatrixScreen()).catch(e => {
+                        console.warn('dedupeAllPersonnel:', e.message);
+                    });
+                }
+            } else {
+                paintMatrixScreen();
             }
         } catch (e) {
             root.innerHTML = `<div class="mx-empty">Gagal memuat: ${esc(e.message)}</div>`;
@@ -5268,7 +5426,7 @@
 
     document.addEventListener('keydown', (e) => {
         if (!document.getElementById('screen-matrix')?.classList.contains('active')) return;
-        if (!document.body.classList.contains('admin-mode')) return;
+        if (!canAccessMatrix()) return;
         if (e.target?.id === 'mx-search') return;
         const mod = e.metaKey || e.ctrlKey;
         if (!mod) return;

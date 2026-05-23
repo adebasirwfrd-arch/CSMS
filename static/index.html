@@ -2049,6 +2049,16 @@
             display: flex !important;
         }
 
+        /* Matrix nav: admin drawer login OR personnel with Matrix RBAC */
+        .matrix-nav-only {
+            display: none !important;
+        }
+
+        body.admin-mode .matrix-nav-only,
+        body.matrix-access .matrix-nav-only {
+            display: flex !important;
+        }
+
         /* Admin indicator badge */
         .admin-badge {
             background: linear-gradient(135deg, #27ae60, #2ecc71);
@@ -2626,7 +2636,7 @@
             </svg>
             <span>OTP</span>
         </div>
-        <div class="drawer-item admin-only hide-in-preview" onclick="navigateToMatrix()">
+        <div class="drawer-item matrix-nav-only hide-in-preview" onclick="navigateToMatrix()">
             <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M4 14l6-6 4 4 6-6V3H4v11z" />
                 <path d="M20 18v3H4v-3l6-6 4 4 6-6z" />
@@ -4070,7 +4080,7 @@
         </svg>
         <span>OTP</span>
     </div>
-    <div class="nav-item admin-only hide-in-preview" onclick="navigateToMatrix()">
+    <div class="nav-item matrix-nav-only hide-in-preview" onclick="navigateToMatrix()">
         <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M4 14l6-6 4 4 6-6V3H4v11z" />
             <path d="M20 18v3H4v-3l6-6 4 4 6-6z" />
@@ -7056,9 +7066,14 @@
     }
     window.navigateToMasterData = navigateToMasterData;
 
+    function canOpenMatrixScreen() {
+        return document.body.classList.contains('admin-mode')
+            || document.body.classList.contains('matrix-access');
+    }
+
     function navigateToMatrix() {
-        if (!document.body.classList.contains('admin-mode')) {
-            alert('Akses Ditolak: Halaman Matrix hanya untuk Admin.');
+        if (!canOpenMatrixScreen()) {
+            alert('Akses Ditolak: Anda belum memiliki akses Matrix. Hubungi admin untuk mengatur ACCESS TO PL atau ACCESS PERSONNEL ONLY di Master.');
             return;
         }
         navigateTo('matrix');
@@ -7069,8 +7084,8 @@
     function ensureMatrixScreenLoaded() {
         const root = document.getElementById('matrix-content');
         if (!root) return;
-        if (!document.body.classList.contains('admin-mode')) {
-            root.innerHTML = '<div class="mx-locked"><p>🔒 Matrix hanya tersedia dalam <strong>Admin Mode</strong>.</p><p style="font-size:12px;color:var(--text-muted);">Buka menu ☰ → Login Admin.</p></div>';
+        if (!canOpenMatrixScreen()) {
+            root.innerHTML = '<div class="mx-locked"><p>🔒 Matrix memerlukan akses personnel.</p><p style="font-size:12px;color:var(--text-muted);">Login Google dan pastikan akses Matrix diatur di Master, atau gunakan Login Admin.</p></div>';
             return;
         }
         if (typeof window.loadMatrixWorkbook === 'function') {
@@ -7093,8 +7108,8 @@
     window.ensureMatrixScreenLoaded = ensureMatrixScreenLoaded;
 
     function navigateTo(screen) {
-        if (screen === 'matrix' && !document.body.classList.contains('admin-mode')) {
-            alert('Akses Ditolak: Halaman Matrix hanya untuk Admin.');
+        if (screen === 'matrix' && !canOpenMatrixScreen()) {
+            alert('Akses Ditolak: Anda belum memiliki akses Matrix.');
             return;
         }
         // Update screens
@@ -11752,7 +11767,7 @@
     <script src="/static/exec-stats.js"></script>
     <script src="/static/matrix-stats.js"></script>
     <script src="/static/matrix-charts.js?v=3"></script>
-    <script src="/static/matrix-personnel.js?v=45"></script>
+    <script src="/static/matrix-personnel.js?v=46"></script>
 </body>
 
 </html>

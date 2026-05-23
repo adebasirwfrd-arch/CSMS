@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -1562,13 +1562,41 @@ def matrix_personnel_report_pdf(body: MatrixPersonnelReportBody):
     )
 
 
+def _session_from_bearer(authorization: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        from services.auth_service import get_session_from_token
+
+        return get_session_from_token(authorization[7:].strip())
+    except Exception:
+        return None
+
+
 @router.get("/matrix/workbook")
-def matrix_workbook():
-    return get_workbook()
+def matrix_workbook(authorization: Optional[str] = Header(None)):
+    workbook = get_workbook()
+    session = _session_from_bearer(authorization)
+    if session:
+        from services.matrix_rbac import filter_workbook_for_session
+
+        workbook = filter_workbook_for_session(workbook, session)
+    return workbook
+
+
+def _rbac_or_http(session: Optional[Dict[str, Any]], fn) -> None:
+    try:
+        fn(session)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
 
 
 @router.post("/matrix/sync-roster")
-def matrix_sync_roster(body: SyncRosterBody):
+def matrix_sync_roster(body: SyncRosterBody, authorization: Optional[str] = Header(None)):
+    from services.matrix_rbac import assert_matrix_structure
+
+    session = _session_from_bearer(authorization)
+    _rbac_or_http(session, assert_matrix_structure)
     """
     Sync product_line_employees into master-level Matrix rows on every sheet.
     Updates Personnel Name and Position (Job Family Description) only for roster fields;
@@ -1645,7 +1673,15 @@ def matrix_sheet(sheet_id: str):
 
 
 @router.post("/matrix/sheets/{sheet_id}/rows")
-def matrix_add_row(sheet_id: str, body: RowCellsBody):
+def matrix_add_row(
+    sheet_id: str,
+    body: RowCellsBody,
+    authorization: Optional[str] = Header(None),
+):
+    from services.matrix_rbac import assert_matrix_structure
+
+    session = _session_from_bearer(authorization)
+    _rbac_or_http(session, assert_matrix_structure)
     try:
         return add_row(sheet_id, body.cells)
     except KeyError as e:
@@ -1653,7 +1689,20 @@ def matrix_add_row(sheet_id: str, body: RowCellsBody):
 
 
 @router.put("/matrix/sheets/{sheet_id}/rows/{row_id}")
-def matrix_update_row(sheet_id: str, row_id: str, body: RowCellsBody):
+def matrix_update_row(
+    sheet_id: str,
+    row_id: str,
+    body: RowCellsBody,
+    authorization: Optional[str] = Header(None),
+):
+    from services.matrix_rbac import assert_matrix_row_edit
+
+    session = _session_from_bearer(authorization)
+    if session:
+        _rbac_or_http(
+            session,
+            lambda s: assert_matrix_row_edit(s, get_workbook(), sheet_id, row_id),
+        )
     try:
         return update_row(sheet_id, row_id, body.cells)
     except KeyError as e:
@@ -1661,7 +1710,19 @@ def matrix_update_row(sheet_id: str, row_id: str, body: RowCellsBody):
 
 
 @router.delete("/matrix/sheets/{sheet_id}/rows/{row_id}")
-def matrix_delete_row(sheet_id: str, row_id: str):
+def matrix_delete_row(
+    sheet_id: str,
+    row_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    from services.matrix_rbac import assert_matrix_row_edit
+
+    session = _session_from_bearer(authorization)
+    if session:
+        _rbac_or_http(
+            session,
+            lambda s: assert_matrix_row_edit(s, get_workbook(), sheet_id, row_id),
+        )
     try:
         delete_row(sheet_id, row_id)
         return {"ok": True}
@@ -1670,7 +1731,15 @@ def matrix_delete_row(sheet_id: str, row_id: str):
 
 
 @router.post("/matrix/sheets/{sheet_id}/columns")
-def matrix_add_column(sheet_id: str, body: ColumnCreateBody):
+def matrix_add_column(
+    sheet_id: str,
+    body: ColumnCreateBody,
+    authorization: Optional[str] = Header(None),
+):
+    from services.matrix_rbac import assert_matrix_structure
+
+    session = _session_from_bearer(authorization)
+    _rbac_or_http(session, assert_matrix_structure)
     try:
         return add_column(
             sheet_id,
@@ -1696,7 +1765,16 @@ def matrix_add_column(sheet_id: str, body: ColumnCreateBody):
 
 
 @router.put("/matrix/sheets/{sheet_id}/columns/{col_id}")
-def matrix_update_column(sheet_id: str, col_id: str, body: ColumnUpdateBody):
+def matrix_update_column(
+    sheet_id: str,
+    col_id: str,
+    body: ColumnUpdateBody,
+    authorization: Optional[str] = Header(None),
+):
+    from services.matrix_rbac import assert_matrix_structure
+
+    session = _session_from_bearer(authorization)
+    _rbac_or_http(session, assert_matrix_structure)
     try:
         return update_column(sheet_id, col_id, body.dict(exclude_none=True))
     except KeyError as e:
@@ -1704,7 +1782,15 @@ def matrix_update_column(sheet_id: str, col_id: str, body: ColumnUpdateBody):
 
 
 @router.delete("/matrix/sheets/{sheet_id}/columns/{col_id}")
-def matrix_delete_column(sheet_id: str, col_id: str):
+def matrix_delete_column(
+    sheet_id: str,
+    col_id: str,
+    authorization: Optional[str] = Header(None),
+):
+    from services.matrix_rbac import assert_matrix_structure
+
+    session = _session_from_bearer(authorization)
+    _rbac_or_http(session, assert_matrix_structure)
     try:
         delete_column(sheet_id, col_id)
         return {"ok": True}
