@@ -13,6 +13,7 @@ from database import (
     get_product_lines,
     update_product_line_employee,
 )
+from services.personnel_profile_photo import get_profile_photo_file_id
 from services.product_line_employee_utils import normalize_yes_no, sanitize_employee_payload
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
@@ -102,15 +103,17 @@ def build_session_from_employee(
     emp: Dict[str, Any], google_profile: Dict[str, Any]
 ) -> Dict[str, Any]:
     pl = get_product_line(emp.get("product_line_id"))
+    personnel_name = emp.get("name") or ""
     return {
         "email": google_profile["email"],
-        "name": google_profile.get("name") or emp.get("name") or "",
+        "name": google_profile.get("name") or personnel_name,
         "picture": google_profile.get("picture") or "",
+        "profile_photo_file_id": get_profile_photo_file_id(personnel_name),
         "sub": google_profile.get("sub") or "",
         "employee_id": emp.get("id"),
         "product_line_id": emp.get("product_line_id"),
         "product_line_name": (pl or {}).get("name") or "",
-        "personnel_name": emp.get("name") or "",
+        "personnel_name": personnel_name,
         "access_to_pl": normalize_yes_no(emp.get("access_to_pl")),
         "access_personnel_only": normalize_yes_no(emp.get("access_personnel_only")),
         "onboarded": True,

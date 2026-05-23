@@ -113,6 +113,186 @@
             cursor: pointer;
         }
 
+        .header-user-btn {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: 4px 8px 4px 4px;
+            border-radius: 8px;
+            max-width: min(220px, 42vw);
+            transition: background 0.2s;
+        }
+        .header-user-btn:hover,
+        .header-user-btn.open {
+            background: var(--bg-secondary);
+        }
+        .header-user-avatar-wrap {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            overflow: hidden;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, #C41E3A, #9A1830);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid rgba(255, 255, 255, 0.12);
+        }
+        .header-user-avatar-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .header-user-avatar-initials {
+            font-size: 11px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+        }
+        .header-user-name {
+            font-weight: 600;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .header-user-chevron {
+            width: 18px;
+            height: 18px;
+            opacity: 0.6;
+            flex-shrink: 0;
+            transition: transform 0.2s;
+        }
+        .header-user-btn.open .header-user-chevron {
+            transform: rotate(180deg);
+        }
+
+        .header-user-backdrop {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 150;
+        }
+        .header-user-backdrop.active { display: block; }
+
+        .header-user-dropdown {
+            display: none;
+            position: fixed;
+            top: 62px;
+            right: 12px;
+            width: min(320px, calc(100vw - 24px));
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+            z-index: 151;
+            overflow: hidden;
+        }
+        .header-user-dropdown.active { display: block; }
+
+        .header-user-dropdown-head {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-tertiary);
+        }
+        .header-user-dropdown-photo {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, #C41E3A, #9A1830);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+        .header-user-dropdown-photo-fallback {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            background: linear-gradient(135deg, #C41E3A, #9A1830);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            color: #fff;
+        }
+        .header-user-dropdown-meta h4 {
+            font-size: 15px;
+            font-weight: 700;
+            margin: 0 0 4px;
+            line-height: 1.3;
+        }
+        .header-user-dropdown-meta p {
+            margin: 0;
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .header-user-dropdown-section {
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .header-user-dropdown-section:last-child { border-bottom: none; }
+        .header-user-dropdown-label {
+            padding: 8px 16px 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+        }
+        .header-user-dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 12px 16px;
+            border: none;
+            background: none;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: left;
+            transition: background 0.15s;
+        }
+        .header-user-dropdown-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+        .header-user-dropdown-item svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+            opacity: 0.85;
+        }
+        .header-user-dropdown-item.danger {
+            color: #e74c3c;
+        }
+        .header-user-dropdown-item.danger:hover {
+            background: rgba(231, 76, 60, 0.12);
+        }
+        .header-user-dropdown-item.muted {
+            color: var(--text-muted);
+            cursor: default;
+            font-size: 13px;
+        }
+        .header-user-dropdown-item.muted:hover { background: none; }
+
         /* ===== SIDE DRAWER ===== */
         .drawer-overlay {
             position: fixed;
@@ -2268,10 +2448,61 @@
 <!-- Header -->
 <header class="header">
     <button class="menu-btn" onclick="toggleDrawer()">☰</button>
-    <!-- Global project dropdown removed from header -->
-    <div style="font-weight: 600; font-size: 14px;" id="header-user-badge">User</div>
-
+    <button type="button" class="header-user-btn" id="header-user-menu" onclick="toggleHeaderUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+        <span class="header-user-avatar-wrap">
+            <img id="header-user-avatar-img" class="header-user-avatar-img" alt="" style="display: none;">
+            <span id="header-user-avatar-initials" class="header-user-avatar-initials">U</span>
+        </span>
+        <span class="header-user-name" id="header-user-name">User</span>
+        <svg class="header-user-chevron" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M7 10l5 5 5-5H7z"/>
+        </svg>
+    </button>
 </header>
+
+<div class="header-user-backdrop" id="header-user-backdrop" onclick="closeHeaderUserMenu()"></div>
+<div class="header-user-dropdown" id="header-user-dropdown" role="menu" onclick="event.stopPropagation()">
+    <div class="header-user-dropdown-head">
+        <img id="header-dd-photo" class="header-user-dropdown-photo" alt="" style="display: none;">
+        <div id="header-dd-photo-fallback" class="header-user-dropdown-photo-fallback">U</div>
+        <div class="header-user-dropdown-meta">
+            <h4 id="header-dd-name">Personnel</h4>
+            <p id="header-dd-email">—</p>
+            <p id="header-dd-pl" style="margin-top: 2px;">—</p>
+        </div>
+    </div>
+    <div class="header-user-dropdown-section">
+        <div class="header-user-dropdown-label">Akun</div>
+        <div class="header-user-dropdown-item muted" id="header-dd-login-status">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            <span id="header-dd-login-text">Masuk dengan Google</span>
+        </div>
+    </div>
+    <div class="header-user-dropdown-section">
+        <div class="header-user-dropdown-label">Pengaturan</div>
+        <button type="button" class="header-user-dropdown-item" onclick="openSettingsFromHeader()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+            <span data-i18n="settings">Pengaturan</span>
+        </button>
+    </div>
+    <div class="header-user-dropdown-section">
+        <div class="header-user-dropdown-label">Akses</div>
+        <button type="button" class="header-user-dropdown-item" id="header-dd-admin-login" onclick="openAdminLoginFromHeader()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            <span data-i18n="adminLogin">Admin Login</span>
+        </button>
+        <div class="header-user-dropdown-item muted" id="header-dd-admin-active" style="display: none;">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            <span>Admin Mode Active</span>
+        </div>
+    </div>
+    <div class="header-user-dropdown-section">
+        <button type="button" class="header-user-dropdown-item danger" onclick="openLogoutConfirmModal()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+            <span>Keluar</span>
+        </button>
+    </div>
+</div>
 
 <!-- Preview Mode Banner -->
 <div class="preview-banner">
@@ -3967,6 +4198,28 @@
     </div>
 </div>
 
+<!-- Logout confirmation -->
+<div class="modal-overlay" id="logout-confirm-modal">
+    <div class="modal" style="max-width: 400px;">
+        <div class="modal-header" style="border-bottom: 1px solid var(--border);">
+            <span class="modal-title">Konfirmasi Keluar</span>
+            <button type="button" class="modal-back" onclick="closeLogoutConfirmModal()" aria-label="Tutup">✕</button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <p style="margin: 0 0 8px; font-size: 15px; line-height: 1.5;">
+                Anda yakin ingin keluar dari CSMS?
+            </p>
+            <p style="margin: 0; font-size: 13px; color: var(--text-muted); line-height: 1.5;">
+                Sesi Google akan diakhiri di perangkat ini. Anda perlu login ulang untuk masuk kembali.
+            </p>
+            <div style="display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end;">
+                <button type="button" class="btn btn-cancel" onclick="closeLogoutConfirmModal()">Batal</button>
+                <button type="button" class="btn btn-primary" style="background: #e74c3c;" onclick="executePersonnelSignOut()">Ya, Keluar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- LL Add Indicator Modal -->
 <div class="modal-overlay" id="ll-add-modal">
     <div class="modal-header">
@@ -4450,6 +4703,7 @@
             document.body.classList.remove('admin-mode');
             document.getElementById('admin-login-btn').style.display = 'flex';
         }
+        if (typeof updateHeaderUser === 'function') updateHeaderUser();
         console.log('[CSMS] Admin mode:', isAdmin);
     }
 
@@ -4479,6 +4733,7 @@
             localStorage.setItem('csms_admin_logged_in', 'true');
             document.body.classList.add('admin-mode');
             document.getElementById('admin-login-btn').style.display = 'none';
+            if (typeof updateHeaderUser === 'function') updateHeaderUser();
             closeAdminLoginModal();
             showToast('Admin login successful!', 'success');
             console.log('[CSMS] Admin logged in');
@@ -4499,6 +4754,7 @@
         localStorage.removeItem('csms_admin_logged_in');
         document.body.classList.remove('admin-mode');
         document.getElementById('admin-login-btn').style.display = 'flex';
+        if (typeof updateHeaderUser === 'function') updateHeaderUser();
         toggleDrawer(); // Close drawer
         showToast('Logged out successfully', 'success');
         console.log('[CSMS] Admin logged out');
@@ -4509,6 +4765,8 @@
     window.closeAdminLoginModal = closeAdminLoginModal;
     window.handleAdminLogin = handleAdminLogin;
     window.adminLogout = adminLogout;
+    window.openSettingsFromHeader = openSettingsFromHeader;
+    window.openAdminLoginFromHeader = openAdminLoginFromHeader;
 
     // Check admin status on page load (legacy admin login; Google admin emails get admin via auth-flow)
     document.addEventListener('DOMContentLoaded', () => {
@@ -4527,6 +4785,16 @@
     // ===== SETTINGS SYSTEM =====
     let currentLanguage = localStorage.getItem('csms_language') || 'id';
     let currentTheme = localStorage.getItem('csms_theme') || 'dark';
+
+    function openSettingsFromHeader() {
+        if (typeof closeHeaderUserMenu === 'function') closeHeaderUserMenu();
+        showSettingsModal();
+    }
+
+    function openAdminLoginFromHeader() {
+        if (typeof closeHeaderUserMenu === 'function') closeHeaderUserMenu();
+        showAdminLoginModal();
+    }
 
     function showSettingsModal() {
         const modal = document.getElementById('settings-modal');

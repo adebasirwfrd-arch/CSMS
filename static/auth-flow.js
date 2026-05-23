@@ -25,7 +25,7 @@
         authSession = session || null;
         if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
         else localStorage.removeItem(SESSION_KEY);
-        updateHeaderBadge();
+        updateHeaderUser();
     }
 
     function loadCachedSession() {
@@ -37,12 +37,165 @@
         }
     }
 
-    function updateHeaderBadge() {
-        const badge = document.getElementById('header-user-badge');
-        if (!badge || !authSession) return;
-        const name = authSession.personnel_name || authSession.name || authSession.email || 'User';
-        badge.textContent = name.split(',')[0].trim() || name;
-        badge.title = authSession.email || '';
+    function personnelDisplayName(session) {
+        const name = session?.personnel_name || session?.name || session?.email || 'User';
+        const short = name.split(',')[0].trim() || name;
+        return {
+            full: name,
+            short: short.length > 20 ? `${short.slice(0, 18)}…` : short,
+        };
+    }
+
+    function personnelInitials(name) {
+        const parts = (name || 'U').split(/[\s,]+/).filter(Boolean);
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+        return (name || 'U').substring(0, 3).toUpperCase();
+    }
+
+    function profilePhotoSrc(session) {
+        if (!session) return '';
+        if (session.profile_photo_file_id) {
+            return `${apiBase()}/matrix/profile-photo/view/${encodeURIComponent(session.profile_photo_file_id)}`;
+        }
+        return session.picture || '';
+    }
+
+    function applyAvatarToElements(session, imgEl, initialsEl, fallbackEl) {
+        const names = personnelDisplayName(session);
+        const initials = personnelInitials(names.full);
+        const src = profilePhotoSrc(session);
+        if (imgEl) {
+            if (src) {
+                imgEl.src = src;
+                imgEl.alt = names.full;
+                imgEl.style.display = 'block';
+                imgEl.onload = () => {
+                    if (initialsEl) initialsEl.style.display = 'none';
+                    if (fallbackEl) fallbackEl.style.display = 'none';
+                };
+                imgEl.onerror = () => {
+                    imgEl.style.display = 'none';
+                    if (initialsEl) {
+                        initialsEl.textContent = initials;
+                        initialsEl.style.display = 'flex';
+                    }
+                    if (fallbackEl) {
+                        fallbackEl.textContent = initials;
+                        fallbackEl.style.display = 'flex';
+                    }
+                };
+            } else {
+                imgEl.style.display = 'none';
+                imgEl.removeAttribute('src');
+            }
+        }
+        if (initialsEl) {
+            initialsEl.textContent = initials;
+            initialsEl.style.display = src ? 'none' : 'flex';
+        }
+        if (fallbackEl) {
+            fallbackEl.textContent = initials;
+            fallbackEl.style.display = src ? 'none' : 'flex';
+        }
+    }
+
+    function updateHeaderUser() {
+        const menuBtn = document.getElementById('header-user-menu');
+        if (!menuBtn) return;
+
+        const isPreview = new URLSearchParams(window.location.search).get('mode') === 'preview';
+        const locked = document.body.classList.contains('auth-locked');
+        if (locked || isPreview || !authSession) {
+            menuBtn.style.display = 'none';
+            closeHeaderUserMenu();
+            return;
+        }
+
+        menuBtn.style.display = 'flex';
+        const names = personnelDisplayName(authSession);
+        const nameEl = document.getElementById('header-user-name');
+        if (nameEl) {
+            nameEl.textContent = names.short;
+            nameEl.title = names.full;
+        }
+
+        applyAvatarToElements(
+            authSession,
+            document.getElementById('header-user-avatar-img'),
+            document.getElementById('header-user-avatar-initials'),
+            null
+        );
+
+        const ddName = document.getElementById('header-dd-name');
+        const ddEmail = document.getElementById('header-dd-email');
+        const ddPl = document.getElementById('header-dd-pl');
+        const ddLoginText = document.getElementById('header-dd-login-text');
+        if (ddName) ddName.textContent = names.full;
+        if (ddEmail) ddEmail.textContent = authSession.email || '—';
+        if (ddPl) {
+            ddPl.textContent = authSession.product_line_name
+                ? `Product Line: ${authSession.product_line_name}`
+                : 'Belum memilih Product Line';
+        }
+        if (ddLoginText) {
+            ddLoginText.textContent = authSession.email
+                ? `Masuk sebagai ${authSession.email}`
+                : 'Masuk dengan Google';
+        }
+
+        applyAvatarToElements(
+            authSession,
+            document.getElementById('header-dd-photo'),
+            null,
+            document.getElementById('header-dd-photo-fallback'),
+        );
+
+        const isAdmin = document.body.classList.contains('admin-mode');
+        const adminLogin = document.getElementById('header-dd-admin-login');
+        const adminActive = document.getElementById('header-dd-admin-active');
+        if (adminLogin) adminLogin.style.display = isAdmin ? 'none' : 'flex';
+        if (adminActive) adminActive.style.display = isAdmin ? 'flex' : 'none';
+    }
+
+    function closeHeaderUserMenu() {
+        document.getElementById('header-user-menu')?.classList.remove('open');
+        document.getElementById('header-user-dropdown')?.classList.remove('active');
+        document.getElementById('header-user-backdrop')?.classList.remove('active');
+        const btn = document.getElementById('header-user-menu');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+
+    function toggleHeaderUserMenu(event) {
+        event?.stopPropagation();
+        const menuBtn = document.getElementById('header-user-menu');
+        const dropdown = document.getElementById('header-user-dropdown');
+        const backdrop = document.getElementById('header-user-backdrop');
+        if (!menuBtn || !dropdown) return;
+        const open = dropdown.classList.toggle('active');
+        menuBtn.classList.toggle('open', open);
+        backdrop?.classList.toggle('active', open);
+        menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (open) {
+            setTimeout(() => {
+                document.addEventListener('click', closeHeaderUserMenu, { once: true });
+            }, 0);
+        }
+    }
+
+    function openLogoutConfirmModal() {
+        closeHeaderUserMenu();
+        document.getElementById('logout-confirm-modal')?.classList.add('active');
+    }
+
+    function closeLogoutConfirmModal() {
+        document.getElementById('logout-confirm-modal')?.classList.remove('active');
+    }
+
+    function executePersonnelSignOut() {
+        closeLogoutConfirmModal();
+        personnelSignOut();
     }
 
     function showLogin() {
@@ -64,7 +217,7 @@
         document.getElementById('csms-login-screen')?.classList.remove('active');
         document.getElementById('csms-onboarding-screen')?.classList.remove('active');
         document.body.classList.add('personnel-authenticated');
-        updateHeaderBadge();
+        updateHeaderUser();
         const logoutBtn = document.getElementById('personnel-logout-btn');
         if (logoutBtn) logoutBtn.style.display = 'flex';
         if (authSession?.is_admin) {
@@ -269,6 +422,8 @@
     }
 
     function personnelSignOut() {
+        closeHeaderUserMenu();
+        closeLogoutConfirmModal();
         setToken('');
         setSession(null);
         if (window.google?.accounts?.id) google.accounts.id.disableAutoSelect();
@@ -276,6 +431,7 @@
         localStorage.removeItem('csms_admin_logged_in');
         const logoutBtn = document.getElementById('personnel-logout-btn');
         if (logoutBtn) logoutBtn.style.display = 'none';
+        updateHeaderUser();
         showLogin();
         if (typeof showToast === 'function') showToast('Anda telah keluar', 'success');
     }
@@ -311,8 +467,21 @@
         }
     }
 
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeHeaderUserMenu();
+            closeLogoutConfirmModal();
+        }
+    });
+
     window.initAuthFlow = initAuthFlow;
     window.personnelSignOut = personnelSignOut;
+    window.updateHeaderUser = updateHeaderUser;
+    window.toggleHeaderUserMenu = toggleHeaderUserMenu;
+    window.closeHeaderUserMenu = closeHeaderUserMenu;
+    window.openLogoutConfirmModal = openLogoutConfirmModal;
+    window.closeLogoutConfirmModal = closeLogoutConfirmModal;
+    window.executePersonnelSignOut = executePersonnelSignOut;
     window.onOnboardPlChange = onOnboardPlChange;
     window.onOnboardPersonnelChange = onOnboardPersonnelChange;
     window.submitOnboarding = submitOnboarding;
