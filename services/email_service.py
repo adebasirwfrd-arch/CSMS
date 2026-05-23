@@ -118,7 +118,8 @@ class EmailService:
         </html>
         """
         
-        return self._send_email([recipient], subject, body_html)
+        to_emails = [e.strip() for e in str(recipient).split(",") if e.strip()]
+        return self._send_email(to_emails, subject, body_html)
 
     def send_matrix_expiry_reminder(
         self,

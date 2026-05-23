@@ -2457,6 +2457,64 @@
             font-size: 13px;
             color: #888;
         }
+        .personnel-picker-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin: 0 0 8px;
+        }
+        .personnel-picker-list {
+            max-height: 180px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #111;
+            padding: 6px;
+        }
+        .personnel-picker-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .personnel-picker-item:hover {
+            background: rgba(255, 255, 255, 0.04);
+        }
+        .personnel-picker-item.disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+        .personnel-picker-item input {
+            margin-top: 2px;
+            accent-color: var(--netflix-red);
+        }
+        .personnel-picker-item-main {
+            flex: 1;
+            min-width: 0;
+        }
+        .personnel-picker-item-name {
+            color: var(--text-primary);
+            font-weight: 600;
+            line-height: 1.3;
+        }
+        .personnel-picker-item-email {
+            color: var(--text-muted);
+            font-size: 11px;
+            margin-top: 2px;
+            word-break: break-all;
+        }
+        .personnel-picker-empty {
+            padding: 12px;
+            font-size: 12px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+        .personnel-picker-email-display {
+            margin-top: 8px;
+            opacity: 0.85;
+        }
         #onboard-personnel-preview {
             font-size: 13px;
             color: #5c5c5c;
@@ -3400,24 +3458,17 @@
                 <!-- PIC Section -->
                 <div class="form-group">
                     <label class="form-label" data-i18n="pic"
-                        style="font-weight: 600; font-size: 16px; margin-bottom: 16px;">PIC</label>
-
-                    <!-- PIC Name -->
-                    <div style="margin-bottom: 12px;">
-                        <input type="text" class="form-input" name="pic_name" placeholder="Name"
-                            data-placeholder="namePlaceholder" value="ADE" required>
-                    </div>
-
-                    <!-- Assigned To Email -->
-                    <div>
-                        <input type="email" class="form-input" name="assigned_to_email"
-                            placeholder="Email (e.g. john@weatherford.com)" data-placeholder="emailPlaceholder"
-                            required>
-                        <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;"
-                            data-i18n="emailNotification">
-                            An email notification will be sent to this address
-                        </p>
-                    </div>
+                        style="font-weight: 600; font-size: 16px; margin-bottom: 8px;">PIC</label>
+                    <p id="schedule-personnel-hint" class="personnel-picker-hint">Pilih Product Line dulu untuk memuat daftar personel dari Master.</p>
+                    <div id="schedule-personnel-list" class="personnel-picker-list"></div>
+                    <input type="hidden" name="pic_name" id="schedule-pic-name">
+                    <input type="hidden" name="assigned_to_email" id="schedule-pic-email">
+                    <input type="text" class="form-input personnel-picker-email-display" id="schedule-pic-email-display"
+                        readonly placeholder="Email otomatis dari Master (bisa lebih dari satu)" tabindex="-1">
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;"
+                        data-i18n="emailNotification">
+                        Notifikasi email akan dikirim ke alamat personel yang dipilih
+                    </p>
                 </div>
 
                 <!-- Create Schedule Button -->
@@ -4523,7 +4574,8 @@
 
             <div class="form-group">
                 <label class="form-label">Product Line <span>*</span></label>
-                <select class="form-input" name="product_line_id" id="project-product-line-select" required>
+                <select class="form-input" name="product_line_id" id="project-product-line-select" required
+                    onchange="onProjectFormProductLineChange()">
                     <option value="">Pilih Product Line</option>
                 </select>
                 <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
@@ -4598,13 +4650,15 @@
 
             <div class="form-group">
                 <label class="form-label" data-i18n="assignedTo">Assigned To</label>
-                <input type="text" class="form-input" name="assigned_to" value="ADE" placeholder="Assigned to">
+                <p id="project-personnel-hint" class="personnel-picker-hint">Pilih Product Line dulu untuk memuat daftar personel dari Master.</p>
+                <div id="project-personnel-list" class="personnel-picker-list"></div>
+                <input type="hidden" name="assigned_to" id="project-assigned-to">
             </div>
 
             <div class="form-group">
                 <label class="form-label"><span data-i18n="picEmail">PIC Email</span> <span>*</span></label>
-                <input type="email" class="form-input" name="pic_email" id="project-pic-email"
-                    placeholder="PIC email for reminders" autocomplete="off" required>
+                <input type="text" class="form-input" name="pic_email" id="project-pic-email"
+                    placeholder="PIC email for reminders" autocomplete="off" required readonly>
                 <p style="font-size: 11px; color: var(--text-muted); margin-top: 6px;" data-i18n="emailReminderHint">
                     Email will receive reminder 2 days before Rig Down if tasks &lt; 80% complete
                 </p>
@@ -5859,6 +5913,145 @@
         return Array.isArray(data) ? data : [];
     }
 
+    const personnelEmployeesCache = {};
+    const personnelPickerSelection = { schedule: new Set(), project: new Set() };
+    const PERSONNEL_PICKERS = {
+        schedule: {
+            listId: 'schedule-personnel-list',
+            hintId: 'schedule-personnel-hint',
+            namesInputId: 'schedule-pic-name',
+            emailsInputId: 'schedule-pic-email',
+            emailDisplayId: 'schedule-pic-email-display',
+            plSelectId: 'schedule-form-product-line-select',
+        },
+        project: {
+            listId: 'project-personnel-list',
+            hintId: 'project-personnel-hint',
+            namesInputId: 'project-assigned-to',
+            emailsInputId: 'project-pic-email',
+            plSelectId: 'project-product-line-select',
+        },
+    };
+
+    async function loadPersonnelEmployeesForPl(plId) {
+        const key = String(plId || '');
+        if (!key) return [];
+        if (personnelEmployeesCache[key]) return personnelEmployeesCache[key];
+        try {
+            const rows = await fetchProductLineEmployees(parseInt(plId, 10));
+            personnelEmployeesCache[key] = rows
+                .filter(e => (e.name || '').trim())
+                .sort((a, b) => {
+                    const na = parseInt(a.row_no, 10) || 0;
+                    const nb = parseInt(b.row_no, 10) || 0;
+                    if (na !== nb) return na - nb;
+                    return String(a.name || '').localeCompare(String(b.name || ''));
+                });
+            return personnelEmployeesCache[key];
+        } catch (e) {
+            console.warn('[PersonnelPicker] load failed pl', plId, e);
+            personnelEmployeesCache[key] = [];
+            return [];
+        }
+    }
+
+    function syncPersonnelPickerFields(pickerKey) {
+        const cfg = PERSONNEL_PICKERS[pickerKey];
+        if (!cfg) return;
+        const names = [];
+        const emails = [];
+        document.querySelectorAll(`#${cfg.listId} input[type="checkbox"]:checked`).forEach(cb => {
+            if (cb.dataset.name) names.push(cb.dataset.name);
+            if (cb.dataset.email) emails.push(cb.dataset.email);
+        });
+        const namesEl = document.getElementById(cfg.namesInputId);
+        const emailsEl = document.getElementById(cfg.emailsInputId);
+        if (namesEl) namesEl.value = names.join(', ');
+        if (emailsEl) emailsEl.value = emails.join(', ');
+        const displayEl = cfg.emailDisplayId ? document.getElementById(cfg.emailDisplayId) : null;
+        if (displayEl) displayEl.value = emails.join(', ');
+    }
+
+    function onPersonnelPickerToggle(pickerKey, checkbox) {
+        const cfg = PERSONNEL_PICKERS[pickerKey];
+        if (!cfg || checkbox.disabled) return;
+        const empId = checkbox.value;
+        if (checkbox.checked) personnelPickerSelection[pickerKey].add(empId);
+        else personnelPickerSelection[pickerKey].delete(empId);
+        syncPersonnelPickerFields(pickerKey);
+    }
+    window.onPersonnelPickerToggle = onPersonnelPickerToggle;
+
+    async function refreshPersonnelPicker(pickerKey, plIdOverride) {
+        const cfg = PERSONNEL_PICKERS[pickerKey];
+        if (!cfg) return;
+        const listEl = document.getElementById(cfg.listId);
+        const hintEl = document.getElementById(cfg.hintId);
+        const plSelect = document.getElementById(cfg.plSelectId);
+        const plId = plIdOverride != null ? plIdOverride : (plSelect?.value || '');
+
+        if (!listEl) return;
+
+        if (!plId) {
+            personnelPickerSelection[pickerKey] = new Set();
+            listEl.innerHTML = '<div class="personnel-picker-empty">Pilih Product Line terlebih dahulu.</div>';
+            if (hintEl) hintEl.textContent = 'Pilih Product Line dulu untuk memuat daftar personel dari Master.';
+            syncPersonnelPickerFields(pickerKey);
+            return;
+        }
+
+        listEl.innerHTML = '<div class="personnel-picker-empty">Memuat personel...</div>';
+        const employees = await loadPersonnelEmployeesForPl(plId);
+        const selected = personnelPickerSelection[pickerKey];
+        Array.from(selected).forEach(id => {
+            if (!employees.some(e => String(e.id) === String(id))) selected.delete(id);
+        });
+
+        if (!employees.length) {
+            listEl.innerHTML = '<div class="personnel-picker-empty">Belum ada karyawan di Product Line ini (Master Data).</div>';
+            if (hintEl) hintEl.textContent = 'Tambahkan karyawan di Master Data untuk Product Line ini.';
+            syncPersonnelPickerFields(pickerKey);
+            return;
+        }
+
+        const withEmail = employees.filter(e => (e.email || '').trim());
+        if (hintEl) {
+            hintEl.textContent = withEmail.length
+                ? `Pilih satu atau lebih personel (${withEmail.length} punya email di Master).`
+                : 'Semua karyawan belum punya email di Master — isi kolom Email dulu.';
+        }
+
+        listEl.innerHTML = employees.map(emp => {
+            const email = (emp.email || '').trim();
+            const hasEmail = !!email;
+            const checked = selected.has(String(emp.id)) ? ' checked' : '';
+            const disabled = hasEmail ? '' : ' disabled';
+            const cls = hasEmail ? 'personnel-picker-item' : 'personnel-picker-item disabled';
+            const emailLabel = hasEmail ? escapeHtmlMaster(email) : '(email kosong di Master)';
+            return `<label class="${cls}">
+                <input type="checkbox" value="${emp.id}" data-name="${escapeHtmlMaster(emp.name || '')}"
+                    data-email="${escapeHtmlMaster(email)}"${checked}${disabled}
+                    onchange="onPersonnelPickerToggle('${pickerKey}', this)">
+                <span class="personnel-picker-item-main">
+                    <span class="personnel-picker-item-name">${escapeHtmlMaster(emp.name || '—')}</span>
+                    <span class="personnel-picker-item-email">${emailLabel}</span>
+                </span>
+            </label>`;
+        }).join('');
+        syncPersonnelPickerFields(pickerKey);
+    }
+
+    function resetPersonnelPicker(pickerKey) {
+        personnelPickerSelection[pickerKey] = new Set();
+        syncPersonnelPickerFields(pickerKey);
+    }
+
+    function onProjectFormProductLineChange() {
+        resetPersonnelPicker('project');
+        refreshPersonnelPicker('project');
+    }
+    window.onProjectFormProductLineChange = onProjectFormProductLineChange;
+
     function escapeHtmlMaster(text) {
         return String(text ?? '')
             .replace(/&/g, '&amp;')
@@ -6127,6 +6320,7 @@
         ]);
         cachedClients = clients;
         cachedProductLines = productLines;
+        Object.keys(personnelEmployeesCache).forEach(k => delete personnelEmployeesCache[k]);
         return { clients, productLines };
     }
 
@@ -8661,13 +8855,18 @@
 
     // ===== MODALS =====
     function showCreateModal() {
-        populateClientProductLineDropdowns();
+        populateClientProductLineDropdowns().then(() => {
+            resetPersonnelPicker('project');
+            refreshPersonnelPicker('project');
+        });
         document.getElementById('create-modal').classList.add('active');
     }
 
     function closeCreateModal() {
         document.getElementById('create-modal').classList.remove('active');
         document.getElementById('project-form').reset();
+        resetPersonnelPicker('project');
+        refreshPersonnelPicker('project');
     }
 
     function selectStatus(el) {
@@ -8885,6 +9084,14 @@
         const productLineId = form.product_line_id?.value;
         if (!clientId || !productLineId) {
             showToast('Pilih Client dan Product Line', 'error');
+            return;
+        }
+        if (!form.assigned_to.value) {
+            showToast('Pilih minimal satu personel', 'error');
+            return;
+        }
+        if (!form.pic_email.value) {
+            showToast('Personel yang dipilih harus punya email di Master Data', 'error');
             return;
         }
 
@@ -10267,12 +10474,15 @@
             await reloadMasterDataCaches();
             fillSelectOptions(document.getElementById('schedule-form-client-select'), cachedClients, 'Pilih Client');
             fillSelectOptions(document.getElementById('schedule-form-product-line-select'), cachedProductLines, 'Pilih Product Line');
+            await refreshPersonnelPicker('schedule');
         } catch (e) {
             console.error('[Schedule] populate filters:', e);
         }
     }
 
     function onScheduleFormFilterChange() {
+        resetPersonnelPicker('schedule');
+        refreshPersonnelPicker('schedule');
         refreshScheduleProjectSelect();
         const select = document.getElementById('schedule-project-select');
         if (select && select.value) {
@@ -10296,6 +10506,7 @@
             if (clientSel && project.client_id != null) clientSel.value = String(project.client_id);
             if (plSel && project.product_line_id != null) plSel.value = String(project.product_line_id);
             refreshScheduleProjectSelect(projectId);
+            refreshPersonnelPicker('schedule', project.product_line_id);
         }
     }
     window.onScheduleProjectChange = onScheduleProjectChange;
@@ -10330,11 +10541,11 @@
             return;
         }
         if (!form.pic_name.value) {
-            showToast('Please enter PIC name', 'error');
+            showToast('Pilih minimal satu personel PIC', 'error');
             return;
         }
         if (!form.assigned_to_email.value) {
-            showToast('Please enter email', 'error');
+            showToast('Personel yang dipilih harus punya email di Master Data', 'error');
             return;
         }
 
@@ -10371,7 +10582,7 @@
             if (res.ok) {
                 showToast(`${typeLabel} schedule created successfully!`, 'success');
                 form.reset();
-                form.pic_name.value = 'ADE';
+                resetPersonnelPicker('schedule');
                 const hint = document.getElementById('schedule-project-filter-hint');
                 if (hint) hint.textContent = '';
                 selectScheduleType('mwt');
