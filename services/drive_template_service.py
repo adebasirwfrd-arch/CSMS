@@ -1,7 +1,84 @@
 import asyncio
-from typing import List, Dict, Any
+import os
+from typing import Dict, List, Optional, Tuple
+
+import requests
+
 from .google_drive import drive_service
-from .logger_service import log_info, log_error, log_warning, log_drive_operation
+from .logger_service import log_info, log_error, log_warning
+
+GAS_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbywzZs9ADxmgr9l3EFhzdbsmPjROj-Xh8APm04ecSYqIL4rUsaDUEh4CGarLDiV_j8MDA/exec"
+)
+
+
+def _gas_timeouts() -> Tuple[float, float]:
+    """(connect_seconds, read_seconds) for GAS web-app trigger."""
+    connect = float(os.getenv("GAS_CLONE_CONNECT_TIMEOUT", "15"))
+    read = float(os.getenv("GAS_CLONE_READ_TIMEOUT", "90"))
+    return connect, read
+
+
+def _gas_max_retries() -> int:
+    return max(1, int(os.getenv("GAS_CLONE_MAX_RETRIES", "3")))
+
+
+def trigger_gas_clone(source_id: str, target_id: str, name: str) -> bool:
+    """
+    Fire-and-forget trigger to Google Apps Script clone webhook.
+    Retries on timeout / connection errors. Returns True if HTTP accepted.
+    """
+    payload = {
+        "sourceId": source_id,
+        "destinationId": target_id,
+        "projectTitle": name,
+    }
+    connect_timeout, read_timeout = _gas_timeouts()
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, _gas_max_retries() + 1):
+        try:
+            resp = requests.post(
+                GAS_URL,
+                json=payload,
+                timeout=(connect_timeout, read_timeout),
+                allow_redirects=True,
+            )
+            # GAS may return 200/302 even while clone continues server-side
+            if resp.status_code < 500:
+                log_info(
+                    "TEMPLATE",
+                    f"GAS trigger OK for {name} (attempt {attempt}, status={resp.status_code})",
+                )
+                return True
+            last_error = RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+        except requests.exceptions.Timeout as e:
+            last_error = e
+            log_warning(
+                "TEMPLATE",
+                f"GAS trigger timeout for {name} (attempt {attempt}/{_gas_max_retries()})",
+            )
+        except requests.exceptions.RequestException as e:
+            last_error = e
+            log_warning(
+                "TEMPLATE",
+                f"GAS trigger failed for {name} (attempt {attempt}/{_gas_max_retries()}): {e}",
+            )
+
+        if attempt < _gas_max_retries():
+            import time
+
+            time.sleep(min(2 ** (attempt - 1), 8))
+
+    log_error(
+        "TEMPLATE",
+        f"GAS trigger exhausted retries for {name}: {last_error}",
+        last_error,
+        send_email=False,
+    )
+    return False
+
 
 class DriveTemplateService:
     def __init__(self):
@@ -13,13 +90,11 @@ class DriveTemplateService:
         """
         Trigger PARALLEL Google Apps Script executions.
         Instead of 1 big clone, we split it by top-level folders (Element 0, 1, 2...).
-        This runs ~10 scripts in parallel on Google Side -> 10x Speed.
 
         Args:
             project_folder_id: Destination folder (project or CLIENT_PRODUCTLINE template).
             source_folder_id: Source template folder; defaults to master_template_id.
         """
-        GAS_URL = "https://script.google.com/macros/s/AKfycbywzZs9ADxmgr9l3EFhzdbsmPjROj-Xh8APm04ecSYqIL4rUsaDUEh4CGarLDiV_j8MDA/exec"
         source_id = source_folder_id or self.master_template_id
 
         log_info(
@@ -28,55 +103,72 @@ class DriveTemplateService:
         )
 
         try:
-            # 1. Get Top-Level Elements from source template
             elements = drive_service.fetch_files_in_folder(source_id)
             if not elements:
-                log_error("TEMPLATE", "Master template is empty!")
+                log_error("TEMPLATE", "Master template is empty!", send_email=True)
                 return
-            
-            # Filter for folders only
-            element_folders = [e for e in elements if e['mimeType'] == 'application/vnd.google-apps.folder']
-            log_info("TEMPLATE", f"Found {len(element_folders)} elements to clone in parallel.")
-            
-            # 2. Function to trigger GAS for a single element
-            def trigger_gas(source_id, target_id, name):
-                import requests
-                payload = {
-                    "sourceId": source_id,
-                    "destinationId": target_id,
-                    "projectTitle": name
-                }
-                requests.post(GAS_URL, json=payload, timeout=5) # 5s timeout is enough for fire-and-forget
-            
-            # 3. Process each element
+
+            element_folders = [
+                e for e in elements if e["mimeType"] == "application/vnd.google-apps.folder"
+            ]
+            log_info(
+                "TEMPLATE",
+                f"Found {len(element_folders)} elements to clone in parallel.",
+            )
+
             loop = asyncio.get_running_loop()
             tasks = []
-            
+
             for element in element_folders:
-                elem_name = element['name']
-                elem_id = element['id']
-                
-                # A. Create destination element folder immediately (Fast)
-                #    This ensures the 'container' exists, so GAS just populates it.
-                #    We use find_or_create to handle "Merge" logic locally for the root folders.
-                dest_elem_id = await loop.run_in_executor(None, lambda: drive_service.find_or_create_folder(elem_name, project_folder_id))
-                
+                elem_name = element["name"]
+                elem_id = element["id"]
+
+                dest_elem_id = await loop.run_in_executor(
+                    None,
+                    lambda n=elem_name, pid=project_folder_id: drive_service.find_or_create_folder(
+                        n, pid
+                    ),
+                )
+
                 if dest_elem_id:
                     log_info("TEMPLATE", f"Triggering GAS for: {elem_name}...")
-                    # B. Fire Webhook for this specific pair
                     tasks.append(
-                        loop.run_in_executor(None, lambda s=elem_id, t=dest_elem_id, n=elem_name: trigger_gas(s, t, n))
+                        loop.run_in_executor(
+                            None,
+                            lambda s=elem_id, t=dest_elem_id, n=elem_name: trigger_gas_clone(
+                                s, t, n
+                            ),
+                        )
                     )
-            
-            # 4. Wait for all webhooks to be sent (not for cloning to finish)
-            await asyncio.gather(*tasks)
-            log_info("TEMPLATE", f"Successfully triggered {len(tasks)} parallel cloning jobs!")
+
+            if not tasks:
+                log_warning("TEMPLATE", "No element folders to clone")
+                return
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            ok = sum(1 for r in results if r is True)
+            failed = len(results) - ok
+            exc_count = sum(1 for r in results if isinstance(r, Exception))
+
+            log_info(
+                "TEMPLATE",
+                f"GAS triggers finished: {ok} ok, {failed} failed ({exc_count} exceptions)",
+            )
+
+            if ok == 0:
+                log_error(
+                    "TEMPLATE",
+                    "All parallel GAS clone triggers failed — check GAS deployment / timeouts",
+                    send_email=True,
+                )
+            elif failed > 0:
+                log_warning(
+                    "TEMPLATE",
+                    f"{failed} GAS trigger(s) failed; clone may be incomplete — retry template generation",
+                )
 
         except Exception as e:
-            log_error("TEMPLATE", f"Error during parallel clone trigger: {e}", send_email=True)
-
-    # _clone_recursive and other helper methods are no longer needed
-    # but we keep get_template_structure for reading task lists (which is fast/read-only)
+            log_error("TEMPLATE", f"Error during parallel clone trigger: {e}", e, send_email=True)
 
     async def get_template_structure(self) -> List[Dict[str, str]]:
         """Scan the master template and return a flat list of folder hierarchy for task creation."""
@@ -88,44 +180,39 @@ class DriveTemplateService:
         await self._scan_recursive(self.master_template_id, tasks)
         return tasks
 
-
-
-    async def _scan_recursive(self, folder_id: str, tasks_list: List[Dict[str, str]], current_path: str = ""):
+    async def _scan_recursive(
+        self, folder_id: str, tasks_list: List[Dict[str, str]], current_path: str = ""
+    ):
         """Scan folder names to extract codes and titles for task metadata."""
         if not drive_service.enabled or not drive_service.service:
             log_warning("TEMPLATE", "Drive service not available for scanning")
             return
-            
-        # Use the helper method instead of direct service call
+
         all_items = drive_service.fetch_files_in_folder(folder_id)
-        folders = [item for item in all_items if item.get('mimeType') == 'application/vnd.google-apps.folder']
-        
-        # Counter for synthetic codes (specifically for ELEMENT 0 or folders without codes)
+        folders = [
+            item
+            for item in all_items
+            if item.get("mimeType") == "application/vnd.google-apps.folder"
+        ]
+
         folder_idx = 1
-        
+
         for folder in folders:
-            name = folder['name']
-            f_id = folder['id']
-            
-            # Simple heuristic to identify task folders (e.g., "1.1.1 MWT REPORT")
-            # We look for a pattern like "X.Y.Z Title"
-            parts = name.split(' ', 1)
+            name = folder["name"]
+            f_id = folder["id"]
+
+            parts = name.split(" ", 1)
             code = parts[0]
             title = parts[1] if len(parts) > 1 else ""
-            
-            # SPECIAL CASE: Element 0 folders often don't have codes in name (e.g. "BRIDGING DOC")
-            # We assign them a code like "0.1", "0.2"...
+
             is_element_0 = current_path.upper() == "ELEMENT 0"
-            if is_element_0 and not (any(c.isdigit() for c in code) and '.' in code):
+            if is_element_0 and not (any(c.isdigit() for c in code) and "." in code):
                 code = f"0.{folder_idx}"
-                title = name # Use full name as title
+                title = name
                 folder_idx += 1
 
-            # Check if it looks like a code (contains digits and dots)
-            if any(c.isdigit() for c in code) and '.' in code:
-                # Determine category based on first part
-                category = "General"
-                element_num = code.split('.')[0]
+            if any(c.isdigit() for c in code) and "." in code:
+                element_num = code.split(".")[0]
                 category_map = {
                     "0": "Core Documents",
                     "1": "Management",
@@ -133,18 +220,19 @@ class DriveTemplateService:
                     "3": "HSE Facilities",
                     "4": "Safety Committee",
                     "5": "Inspection",
-                    "6": "Security"
+                    "6": "Security",
                 }
                 category = category_map.get(element_num, "Other")
-                
-                tasks_list.append({
-                    "code": code,
-                    "title": title.upper() if title else code,
-                    "category": category
-                })
-            
-            # Recurse
+
+                tasks_list.append(
+                    {
+                        "code": code,
+                        "title": title.upper() if title else code,
+                        "category": category,
+                    }
+                )
+
             await self._scan_recursive(f_id, tasks_list, name)
 
-# Singleton instance
+
 template_service = DriveTemplateService()
