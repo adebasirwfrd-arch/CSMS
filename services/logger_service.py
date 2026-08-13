@@ -217,6 +217,19 @@ def _get_email_service():
             _email_service = None
     return _email_service
 
+_DB_TIMEOUT_MARKERS = (
+    "canceling statement due to",
+    "statement timeout",
+    "57014",
+)
+
+
+def _is_db_timeout_noise(message: str, error: Exception = None) -> bool:
+    """Supabase/Postgres statement timeouts — noisy, not actionable as email floods."""
+    text = f"{message} {error or ''}".lower()
+    return any(marker in text for marker in _DB_TIMEOUT_MARKERS)
+
+
 def log_error(module: str, message: str, error: Exception = None, send_email: bool = True, request_info: str = ""):
     """
     Generic error logging with optional email notification.
@@ -237,7 +250,16 @@ def log_error(module: str, message: str, error: Exception = None, send_email: bo
         app_logger.error(message, extra={"module_name": module.upper()})
         tb_str = ""
     
-    # Send email notification for errors (with rate limiting)
+    # Send email notification for errors (with rate limiting).
+    # Skip statement-timeout noise — Vercel has no shared rate-limit memory,
+    # so these used to flood the admin inbox on every failed matrix request.
+    if send_email and _is_db_timeout_noise(message, error):
+        app_logger.warning(
+            f"Skipping error email for DB timeout: {message[:120]}",
+            extra={"module_name": "EMAIL"},
+        )
+        return
+
     if send_email:
         error_location = f"{module.upper()} - {message[:50]}"
         

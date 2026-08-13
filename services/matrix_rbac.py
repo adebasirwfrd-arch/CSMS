@@ -175,6 +175,15 @@ def assert_matrix_structure(session: Optional[Dict[str, Any]]) -> None:
         raise PermissionError("Admin only")
 
 
+def row_edit_needs_workbook(session: Optional[Dict[str, Any]]) -> bool:
+    """True only for personnel-only users (admin / product-line access skip full workbook)."""
+    if not session:
+        return False
+    if session.get("is_admin") or _yes(session.get("access_to_pl")):
+        return False
+    return _yes(session.get("access_personnel_only"))
+
+
 def assert_matrix_row_edit(
     session: Optional[Dict[str, Any]],
     workbook: Dict[str, Any],

@@ -83,6 +83,20 @@ def get_sheet(sheet_id: str) -> Dict[str, Any]:
     return deepcopy(_find_sheet_json(data, sheet_id))
 
 
+def get_sheet_columns(sheet_id: str) -> List[Dict[str, Any]]:
+    """Column metadata only — used by Drive upload so we do not load every row."""
+    if SUPABASE_MATRIX and supabase_service:
+        return supabase_service.get_matrix_sheet_columns(sheet_id)
+    return deepcopy(get_sheet(sheet_id).get("columns") or [])
+
+
+def get_row(sheet_id: str, row_id: str) -> Optional[Dict[str, Any]]:
+    if SUPABASE_MATRIX and supabase_service:
+        return supabase_service.get_matrix_row(sheet_id, row_id)
+    sheet = get_sheet(sheet_id)
+    return deepcopy(next((r for r in sheet.get("rows") or [] if r.get("id") == row_id), None))
+
+
 def bulk_add_rows(sheet_id: str, cells_list: List[Dict[str, str]]) -> int:
     if SUPABASE_MATRIX and supabase_service:
         return supabase_service.bulk_add_matrix_rows(sheet_id, cells_list)

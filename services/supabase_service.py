@@ -1144,7 +1144,7 @@ class SupabaseService:
             def _build(start=start, end=end, sid=sheet_id):
                 return (
                     self.client.table("matrix_rows")
-                    .select("*")
+                    .select("id,cells,sort_order")
                     .eq("sheet_id", sid)
                     .order("sort_order")
                     .range(start, end)
@@ -1192,12 +1192,42 @@ class SupabaseService:
             self._log_err("SELECT", "matrix_workbook", e)
             raise
 
+    def get_matrix_sheet_columns(self, sheet_id: str) -> List[Dict]:
+        """Column metadata only — no row payload."""
+        if not self.enabled:
+            raise KeyError(f"Sheet not found: {sheet_id}")
+        return [self._matrix_col_to_api(c) for c in self._list_matrix_columns_db(sheet_id)]
+
+    def get_matrix_row(self, sheet_id: str, row_id: str) -> Optional[Dict]:
+        if not self.enabled:
+            return None
+        result = self._execute_with_retry(
+            lambda: (
+                self.client.table("matrix_rows")
+                .select("*")
+                .eq("id", row_id)
+                .eq("sheet_id", sheet_id)
+                .limit(1)
+            ),
+            f"matrix_row:{sheet_id}:{row_id}",
+        )
+        if not result.data:
+            return None
+        return self._matrix_row_to_api(result.data[0])
+
     def get_matrix_sheet(self, sheet_id: str) -> Dict:
-        wb = self.get_matrix_workbook()
-        for s in wb.get("sheets", []):
-            if s.get("id") == sheet_id:
-                return s
-        raise KeyError(f"Sheet not found: {sheet_id}")
+        """Load a single sheet (columns + rows). Never pull the full workbook."""
+        if not self.enabled:
+            raise KeyError(f"Sheet not found: {sheet_id}")
+        sheet_r = self._execute_with_retry(
+            lambda: self.client.table("matrix_sheets").select("*").eq("id", sheet_id).limit(1),
+            f"matrix_sheet:{sheet_id}",
+        )
+        if not sheet_r.data:
+            raise KeyError(f"Sheet not found: {sheet_id}")
+        cols = self._list_matrix_columns_db(sheet_id)
+        rows = self._fetch_matrix_rows(sheet_id)
+        return self._matrix_sheet_to_api(sheet_r.data[0], cols, rows)
 
     def seed_matrix_workbook(self, workbook: Dict) -> None:
         """Replace all matrix data from imported workbook (Excel / JSON)."""

@@ -19,7 +19,9 @@ from services.matrix_store import (
     delete_row,
     ensure_doc_columns,
     filter_unsent_reminders,
+    get_row,
     get_sheet,
+    get_sheet_columns,
     get_workbook,
     log_reminder_sent,
     seed_workbook,
@@ -95,7 +97,10 @@ OTHER_TRAINING_UPLOAD_COL_ID = "col_other_training_cert_doc"
 
 def _sanitize_folder_name(name: str) -> str:
     cleaned = re.sub(r'[\\/:*?"<>|]+', "-", (name or "").strip())
-    return (cleaned[:120] or "Unknown Personnel")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -")
+    if not cleaned or cleaned.lower() in ("new folder", "folder baru", "untitled", "untitled folder"):
+        return "Unknown Personnel"
+    return cleaned[:120]
 
 
 def _personnel_photo_folder(personnel_name: str) -> str:
@@ -125,19 +130,14 @@ def _resolve_product_line_folder_name(
                 return _sanitize_folder_name(val)
 
     try:
-        workbook = get_workbook()
-        for sh in workbook.get("sheets", []):
-            if sh.get("id") != PROFILE_SHEET_ID:
-                continue
-            prow = _find_row_by_personnel_name(sh, personnel_name)
-            if not prow:
-                continue
-            pl_col2 = _find_product_line_col_id(sh)
+        profile = get_sheet(PROFILE_SHEET_ID)
+        prow = _find_row_by_personnel_name(profile, personnel_name)
+        if prow:
+            pl_col2 = _find_product_line_col_id(profile)
             if pl_col2:
                 val = (prow.get("cells", {}).get(pl_col2) or "").strip()
                 if val:
                     return _sanitize_folder_name(val)
-            break
     except Exception:
         pass
 
@@ -234,15 +234,18 @@ def _document_upload_parent_for_matrix(
     product_line: str = "",
     row_id: str = "",
 ) -> str:
-    sheet = None
+    sheet = {"id": sheet_id, "columns": []} if sheet_id else None
     row = None
     if sheet_id:
         try:
-            sheet = get_sheet(sheet_id)
-            if row_id:
-                row = next((r for r in sheet.get("rows", []) if r.get("id") == row_id), None)
-        except KeyError:
-            pass
+            sheet = {"id": sheet_id, "columns": get_sheet_columns(sheet_id)}
+        except Exception:
+            sheet = {"id": sheet_id, "columns": []}
+        if row_id:
+            try:
+                row = get_row(sheet_id, row_id)
+            except Exception:
+                row = None
     folder = _resolve_upload_folder_name(column_name, sheet_id, col_id, sheet)
     if folder in (PELATIHAN_DRIVE_FOLDER, DATA_PERSONEL_DRIVE_FOLDER):
         pl_folder = _resolve_product_line_folder_name(
@@ -538,19 +541,14 @@ def _resolve_product_line_code(
             return _abbreviate_product_line(val)
 
     try:
-        workbook = get_workbook()
-        for sh in workbook.get("sheets", []):
-            if sh.get("id") != PROFILE_SHEET_ID:
-                continue
-            prow = _find_row_by_personnel_name(sh, personnel_name)
-            if not prow:
-                continue
-            pl_col2 = _find_product_line_col_id(sh)
+        profile = get_sheet(PROFILE_SHEET_ID)
+        prow = _find_row_by_personnel_name(profile, personnel_name)
+        if prow:
+            pl_col2 = _find_product_line_col_id(profile)
             if pl_col2:
                 val = (prow.get("cells", {}).get(pl_col2) or "").strip()
                 if val:
                     return _abbreviate_product_line(val)
-            break
     except Exception:
         pass
 
@@ -1705,14 +1703,21 @@ def matrix_update_row(
     body: RowCellsBody,
     authorization: Optional[str] = Header(None),
 ):
-    from services.matrix_rbac import assert_matrix_row_edit
+    from services.matrix_rbac import (
+        assert_matrix_access,
+        assert_matrix_row_edit,
+        row_edit_needs_workbook,
+    )
 
     session = _session_from_bearer(authorization)
     if session:
-        _rbac_or_http(
-            session,
-            lambda s: assert_matrix_row_edit(s, get_workbook(), sheet_id, row_id),
-        )
+        if row_edit_needs_workbook(session):
+            _rbac_or_http(
+                session,
+                lambda s: assert_matrix_row_edit(s, get_workbook(), sheet_id, row_id),
+            )
+        else:
+            _rbac_or_http(session, assert_matrix_access)
     try:
         return update_row(sheet_id, row_id, body.cells)
     except KeyError as e:
@@ -1725,14 +1730,21 @@ def matrix_delete_row(
     row_id: str,
     authorization: Optional[str] = Header(None),
 ):
-    from services.matrix_rbac import assert_matrix_row_edit
+    from services.matrix_rbac import (
+        assert_matrix_access,
+        assert_matrix_row_edit,
+        row_edit_needs_workbook,
+    )
 
     session = _session_from_bearer(authorization)
     if session:
-        _rbac_or_http(
-            session,
-            lambda s: assert_matrix_row_edit(s, get_workbook(), sheet_id, row_id),
-        )
+        if row_edit_needs_workbook(session):
+            _rbac_or_http(
+                session,
+                lambda s: assert_matrix_row_edit(s, get_workbook(), sheet_id, row_id),
+            )
+        else:
+            _rbac_or_http(session, assert_matrix_access)
     try:
         delete_row(sheet_id, row_id)
         return {"ok": True}

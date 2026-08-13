@@ -11,6 +11,7 @@ from googleapiclient.http import MediaInMemoryUpload
 from googleapiclient.errors import HttpError
 import os
 import json
+import re
 import time
 import ssl
 import random
@@ -29,6 +30,16 @@ BASE_DELAY = 1  # seconds
 MAX_DELAY = 32  # seconds
 
 SCOPES = ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive']
+
+# Google Drive untitled-folder defaults (API creates these when name is empty).
+_UNTITLED_FOLDER_NAMES = frozenset({
+    "",
+    "new folder",
+    "folder baru",
+    "untitled",
+    "untitled folder",
+    "untitled document",
+})
 
 class GoogleDriveService:
     """
@@ -299,6 +310,19 @@ class GoogleDriveService:
         return ".".join(p.strip() for p in str(task_code).strip().split(".") if p.strip())
 
     @staticmethod
+    def _safe_drive_folder_name(name: str) -> str:
+        """Return a Drive-safe folder name, or '' if it would become untitled ('New Folder')."""
+        cleaned = re.sub(r'[\\/:*?"<>|]+', "-", (name or "").strip())
+        cleaned = re.sub(r"\s+", " ", cleaned).strip(" -")
+        if not cleaned or cleaned.lower() in _UNTITLED_FOLDER_NAMES:
+            return ""
+        return cleaned[:120]
+
+    @staticmethod
+    def _escape_drive_query_value(value: str) -> str:
+        return (value or "").replace("\\", "\\\\").replace("'", "\\'")
+
+    @staticmethod
     def _folder_matches_segment(folder_name: str, segment_code: str) -> bool:
         """
         True when folder_name is exactly the code or code + space + title.
@@ -385,12 +409,16 @@ class GoogleDriveService:
         """Find an existing folder by name without creating one. Returns folder id or None."""
         if not self.enabled or not self.service:
             return None
+        folder_name = self._safe_drive_folder_name(folder_name)
+        if not folder_name:
+            return None
         try:
             parent_id = parent_id or self.folder_id
             if prefix_search:
                 return self._find_child_for_segment(parent_id, folder_name)
+            q_name = self._escape_drive_query_value(folder_name)
             query = (
-                f"name='{folder_name}' and '{parent_id}' in parents "
+                f"name='{q_name}' and '{parent_id}' in parents "
                 f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
             )
             search_request = self.service.files().list(
@@ -418,6 +446,11 @@ class GoogleDriveService:
         if not self.enabled or not self.service:
             print("[WARN] Drive not enabled")
             return None
+
+        folder_name = self._safe_drive_folder_name(folder_name)
+        if not folder_name:
+            log_warning("DRIVE", "Refusing to create Drive folder with empty/untitled name")
+            return None
         
         try:
             parent_id = parent_id or self.folder_id
@@ -434,8 +467,9 @@ class GoogleDriveService:
                     print(f"[FOUND] Segment folder for: {folder_name}")
                     return folder_id
             else:
+                q_name = self._escape_drive_query_value(folder_name)
                 query = (
-                    f"name='{folder_name}' and '{parent_id}' in parents "
+                    f"name='{q_name}' and '{parent_id}' in parents "
                     f"and mimeType='application/vnd.google-apps.folder' and trashed=false"
                 )
                 search_request = self.service.files().list(
@@ -472,7 +506,7 @@ class GoogleDriveService:
             file = self._execute_with_retry(create_request, f"CREATE_FOLDER_{folder_name[:15]}")
             folder_id = file.get('id')
             self.folders_cache[cache_key] = folder_id
-            print(f"[CREATED] New folder: {folder_name}")
+            print(f"[CREATED] Folder: {folder_name}")
             return folder_id
             
         except Exception as e:
@@ -491,6 +525,10 @@ class GoogleDriveService:
             return None
 
         task_code = self._normalize_task_code(task_code)
+        project_name = self._safe_drive_folder_name(project_name)
+        if not project_name:
+            log_warning("DRIVE", "Cannot resolve nested folder: empty project name")
+            return None
         if not task_code:
             log_warning("DRIVE", "No task code provided, falling back to project folder")
             return self.find_or_create_folder(project_name)

@@ -114,7 +114,10 @@ async def sync_template_folder_to_project_folder(
                 stats["tagged"] += 1
 
     for tpl_sub in tpl_folders:
-        sub_name = tpl_sub["name"]
+        sub_name = drive_service._safe_drive_folder_name(tpl_sub.get("name") or "")
+        if not sub_name:
+            log_warning("TEMPLATE_SYNC", "Skipping untitled template subfolder")
+            continue
         proj_sub_id = drive_service.find_or_create_folder(sub_name, project_folder_id)
         if proj_sub_id:
             await sync_template_folder_to_project_folder(

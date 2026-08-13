@@ -120,8 +120,11 @@ class DriveTemplateService:
             tasks = []
 
             for element in element_folders:
-                elem_name = element["name"]
+                elem_name = drive_service._safe_drive_folder_name(element.get("name") or "")
                 elem_id = element["id"]
+                if not elem_name:
+                    log_warning("TEMPLATE", "Skipping untitled template folder during clone")
+                    continue
 
                 dest_elem_id = await loop.run_in_executor(
                     None,

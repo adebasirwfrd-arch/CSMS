@@ -43,3 +43,19 @@ def test_other_elements_and_depths():
 def test_exact_code_without_title():
     assert m("3.2", "3.2")
     assert not m("3.2.1", "3.2")
+
+
+def test_safe_drive_folder_name_rejects_untitled():
+    assert G._safe_drive_folder_name("") == ""
+    assert G._safe_drive_folder_name("   ") == ""
+    assert G._safe_drive_folder_name("New Folder") == ""
+    assert G._safe_drive_folder_name("new folder") == ""
+    assert G._safe_drive_folder_name("Folder Baru") == ""
+    assert G._safe_drive_folder_name("///") == ""
+    assert G._safe_drive_folder_name("1.1 HSE Committee") == "1.1 HSE Committee"
+    assert G._safe_drive_folder_name("  ELEMENT 4  ") == "ELEMENT 4"
+    assert G._safe_drive_folder_name('PHSS / ISDT') == "PHSS - ISDT"
+
+
+def test_escape_drive_query_value():
+    assert G._escape_drive_query_value("O'Brien") == "O\\'Brien"
